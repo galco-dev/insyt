@@ -10,9 +10,9 @@
   "scripts": {
     "test": "node --test \"packages/**/test/*.test.js\" \"apps/**/test/*.test.js\"",
     "start:web": "node apps/web/src/main.js",
-    "start:worker": "node apps/worker/src/service.js",
-    "start:poller": "node apps/poller/src/service.js",
-    "start:cron": "node apps/cron/src/service.js",
+    "start:worker": "node apps/worker/src/main.js",
+    "start:poller": "node apps/poller/src/main.js",
+    "start:cron": "node apps/cron/src/main.js",
     "lint:jargon": "node scripts/jargon-lint.js",
     "crawl": "node packages/crawler/cli.js"
   },
@@ -20,6 +20,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "playwright": "^1.49.0"
+    "playwright": "^1.49.0",
+    "bullmq": "^5.34.0"
   }
 }
