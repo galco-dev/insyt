@@ -1,1 +1,1 @@
-deploy request 2026-08-19T17:50Z — backend complete: google fetchers + transports + apply loop + watch handlers + auth bridge + sentry (retry: prior request skipped by [skip ci])
+deploy request 2026-08-19T18:05Z — OAuth data-scope routes + discovery-on-callback + Stripe Checkout routes + webhook tenant fix (95f5606)
