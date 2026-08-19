@@ -1,0 +1,21 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Install chromium for e2e crawl tests
+        run: npx playwright install chromium --with-deps
+      - name: Jargon linter (master §4 — the register is the product)
+        run: node scripts/jargon-lint.js
+      - name: Unit + e2e tests
+        run: npm test
