@@ -1,0 +1,162 @@
+// app.tryinsyt.com — Journey A server slice (build-doc §11 screens 1, 3, 4).
+// Framework-free node http; React/shadcn dashboard replaces the shell later,
+// the routes and store contract stay. All I/O injected for tests.
+//
+// deps (injected):
+//   store: {
+//     createCrawl(row) -> id, getCrawl(id), patchCrawl(id, patch),
+//     crawlCountForDomain(domain, sinceMs) -> n,
+//     getReportHtml(reportId) -> { html_web, unlocked } | null,
+//     magicLinks: { findByHash, markUsed, insertLink },   // packages/emails contract
+//   }
+//   crawler: { discoveryCrawl(url) }  — real one on Railway; stub in tests
+//   now: () => ms epoch
+
+const http = require('http');
+const { findingsStrip } = require('../../../packages/crawler/src/findings-strip');
+const { redeemLink } = require('../../../packages/emails/src/magic-links');
+const { landingPage, progressPage } = require('./pages');
+const { handleOps } = require('./ops');
+const { issueSession, readSession, cookieFor } = require('./session');
+const screens = require('./screens');
+
+// §5 limits: 1 crawl/domain/hour, 3/day (email-verified: 5 — later).
+const LIMITS = { perHour: 1, perDay: 3 };
+
+function json(res, code, body) {
+  res.writeHead(code, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+function html(res, code, body) {
+  res.writeHead(code, { 'content-type': 'text/html; charset=utf-8' });
+  res.end(body);
+}
+
+function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret' }) {
+  async function handleCrawlRequest(res, urlRaw) {
+    let target;
+    try { target = new URL(urlRaw.startsWith('http') ? urlRaw : `https://${urlRaw}`); } catch {
+      return json(res, 400, { error: 'That does not look like a website address.' });
+    }
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(target.hostname)) {
+      return json(res, 400, { error: 'That does not look like a website address.' });
+    }
+    const domain = target.hostname;
+    if (store.crawlCountForDomain(domain, now() - 3_600_000) >= LIMITS.perHour
+      || store.crawlCountForDomain(domain, now() - 86_400_000) >= LIMITS.perDay) {
+      return json(res, 429, { error: 'This site was checked very recently — try again in a little while.' });
+    }
+    const id = store.createCrawl({ url: target.href, domain, status: 'running', created_at: now() });
+    // Fire and record; progress endpoint reflects state.
+    crawler.discoveryCrawl(target.href)
+      .then((result) => store.patchCrawl(id, { status: result.status, result, strip: findingsStrip(result) }))
+      .catch((err) => store.patchCrawl(id, { status: 'failed', error: String(err.message || err) }));
+    return json(res, 202, { id });
+  }
+
+  return http.createServer(async (req, res) => {
+    const u = new URL(req.url, 'http://x');
+    const path = u.pathname;
+
+    try {
+      if (req.method === 'GET' && path === '/healthz') return json(res, 200, { ok: true });
+      if (req.method === 'GET' && path === '/') return html(res, 200, landingPage());
+
+      if (req.method === 'POST' && path === '/api/crawl') {
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        await new Promise((r) => req.on('end', r));
+        let parsed;
+        try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
+        if (!parsed.url) return json(res, 400, { error: 'url required' });
+        return handleCrawlRequest(res, parsed.url);
+      }
+
+      if (req.method === 'GET' && path.startsWith('/api/crawl/')) {
+        const c = store.getCrawl(path.split('/')[3]);
+        if (!c) return json(res, 404, { error: 'unknown crawl' });
+        return json(res, 200, { status: c.status, strip: c.strip || null });
+      }
+
+      if (req.method === 'GET' && path.startsWith('/check/')) {
+        return html(res, 200, progressPage(path.split('/')[2]));
+      }
+
+      // Magic-link redemption: single-use, purpose-routed (§12).
+      if (req.method === 'GET' && path.startsWith('/m/')) {
+        const token = path.slice(3);
+        const r = redeemLink(token, now(), store.magicLinks);
+        if (!r.ok) {
+          const msg = r.reason === 'expired' ? 'This link has expired — request a fresh one from your latest email.'
+            : r.reason === 'used' ? 'This link was already used. Open your dashboard instead.'
+              : 'This link is not valid.';
+          return html(res, 410, `<p style="font-family:sans-serif">${msg}</p>`);
+        }
+        // Redemption signs the tenant in (one tap from inbox — master §5).
+        const session = issueSession({ tenantId: r.link.tenant_id, secret: sessionSecret, now: now() });
+        const dest = {
+          view_report: `/r/${r.link.target_id}`,
+          approve_all: '/app/approvals',
+          approve_one: '/app/approvals',
+          revert: `/app/revert/${r.link.target_id}`,
+          reconnect: '/app/settings',
+          resume_journey: '/app/journey',
+        }[r.link.purpose] || '/app';
+        res.writeHead(302, { location: dest, 'set-cookie': cookieFor(session) });
+        return res.end();
+      }
+
+      // ---- ops console (internal)
+      if (path.startsWith('/ops') && opsStore) {
+        const handled = await handleOps(req, res, u, { opsStore, queue, opsToken });
+        if (handled) return undefined;
+      }
+
+      // ---- authed dashboard (§11 screens 2, 5–12)
+      if (path.startsWith('/app') && dashStore) {
+        const session = readSession(req.headers.cookie, sessionSecret, now());
+        if (!session) {
+          res.writeHead(302, { location: '/' });
+          return res.end();
+        }
+        const t = session.tenantId;
+        if (req.method === 'GET') {
+          if (path === '/app') {
+            const [health, pending, cumulative, reports] = await Promise.all([
+              dashStore.healthLatest(t), dashStore.pendingApprovals(t), dashStore.cumulative(t), dashStore.reports(t),
+            ]);
+            return html(res, 200, screens.homeScreen({ health, pending, cumulative, latestReportId: reports[0] && reports[0].id }));
+          }
+          if (path === '/app/approvals') return html(res, 200, screens.approvalsScreen({ pending: await dashStore.pendingApprovals(t) }));
+          if (path === '/app/ledger') return html(res, 200, screens.ledgerScreen({ entries: await dashStore.ledger(t) }));
+          if (path === '/app/reports') return html(res, 200, screens.reportsScreen({ reports: await dashStore.reports(t) }));
+          if (path === '/app/settings') return html(res, 200, screens.settingsScreen({ settings: await dashStore.settings(t) }));
+          if (path === '/app/confirm') return html(res, 200, screens.discoveryScreen(await dashStore.discovery(t)));
+          if (path === '/app/plan') return html(res, 200, screens.planScreen({ plan: await dashStore.planOptions(t) }));
+          if (path === '/app/first-fix') return html(res, 200, screens.firstFixScreen({ fix: await dashStore.firstFix(t) }));
+          if (path === '/app/journey') return html(res, 200, screens.journeyScreen({ journey: await dashStore.journey(t) }));
+        }
+        if (req.method === 'POST') {
+          const redirect = (loc) => { res.writeHead(302, { location: loc }); res.end(); };
+          if (path.startsWith('/app/approve/')) { await dashStore.approveChange(t, path.split('/')[3]); return redirect('/app/approvals'); }
+          if (path.startsWith('/app/dismiss/')) { await dashStore.dismissChange(t, path.split('/')[3]); return redirect('/app/approvals'); }
+          if (path.startsWith('/app/revert/')) { await dashStore.requestRevert(t, path.split('/')[3]); return redirect('/app/ledger'); }
+          if (path === '/app/confirm') { await dashStore.confirmAssets(t); return redirect('/app'); }
+        }
+        return json(res, 404, { error: 'not found' });
+      }
+
+      if (req.method === 'GET' && path.startsWith('/r/')) {
+        const rep = store.getReportHtml(path.slice(3));
+        if (!rep) return html(res, 404, '<p style="font-family:sans-serif">Report not found.</p>');
+        return html(res, 200, rep.html_web);
+      }
+
+      return json(res, 404, { error: 'not found' });
+    } catch (err) {
+      return json(res, 500, { error: 'something went wrong on our side' });
+    }
+  });
+}
+
+module.exports = { createApp, LIMITS };
