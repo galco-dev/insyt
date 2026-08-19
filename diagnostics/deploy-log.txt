@@ -1,4 +1,4 @@
-deploy transcript 2026-08-19T14:56:26Z
+deploy transcript 2026-08-19T15:16:16Z
 railway 5.41.2
 
 
@@ -19,10 +19,10 @@ Linked service
 All resources
 
     Services
-      - web: ○ Offline · https://web-production-e9146.up.railway.app
-      - worker: ○ Offline
-      - cron: ○ Offline
-      - poller: ○ Offline
+      - web: ● Crashed · https://web-production-55c64.up.railway.app
+      - worker: ● Crashed · Building (1m)
+      - cron: ● Crashed · Building (40s)
+      - poller: ● Crashed · Building (45s)
     Databases
       - redis: ● Online · redis-volume
 
@@ -30,19 +30,19 @@ All resources
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=da98981f-3f9a-4878-b938-821ad5a61d70&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=281d6226-5ac9-4b47-b921-f2cd6f3e812f&
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=cdcc6adf-21c3-42b3-b9ae-a73be88986d8&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=0613314d-6998-4261-8a7f-7836a2639c58&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=8bfed597-182f-4c20-9469-a5848af01462&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=dd7ddf94-ccb6-4863-8436-04489559b7d2&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=eb225a7b-9aab-4d2d-b2eb-a894afbc7020&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=a44ec2ab-d837-4f71-a63f-ec703ebb78f2&
