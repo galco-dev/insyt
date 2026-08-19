@@ -467,3 +467,38 @@ Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/53bc201f-cf6b-4f2
 1:M 19 Aug 2026 15:41:10.280 * Opening AOF incr file appendonly.aof.1.incr.aof on server start
 1:M 19 Aug 2026 15:41:10.280 * Ready to accept connections tcp
 Starting Container
+1:M 19 Aug 2026 15:57:41.527 * 100 changes in 300 seconds. Saving...
+1:M 19 Aug 2026 15:57:41.527 * Background saving started by pid 7
+7:C 19 Aug 2026 15:57:41.532 * DB saved on disk
+7:C 19 Aug 2026 15:57:41.532 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
+1:M 19 Aug 2026 15:57:41.628 * Background saving terminated with success
+1:M 19 Aug 2026 16:14:41.586 * 100 changes in 300 seconds. Saving...
+1:M 19 Aug 2026 16:14:41.586 * Background saving started by pid 8
+8:C 19 Aug 2026 16:14:41.590 * DB saved on disk
+8:C 19 Aug 2026 16:14:41.591 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
+1:M 19 Aug 2026 16:14:41.687 * Background saving terminated with success
+1:M 19 Aug 2026 16:32:11.709 * 100 changes in 300 seconds. Saving...
+1:M 19 Aug 2026 16:32:11.709 * Background saving started by pid 9
+9:C 19 Aug 2026 16:32:11.716 * DB saved on disk
+9:C 19 Aug 2026 16:32:11.716 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
+1:M 19 Aug 2026 16:32:11.810 * Background saving terminated with success
+1:M 19 Aug 2026 16:49:11.767 * 100 changes in 300 seconds. Saving...
+1:M 19 Aug 2026 16:49:11.768 * Background saving started by pid 10
+10:C 19 Aug 2026 16:49:11.773 * DB saved on disk
+10:C 19 Aug 2026 16:49:11.773 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
+1:M 19 Aug 2026 16:49:11.868 * Background saving terminated with success
+1:M 19 Aug 2026 17:06:11.866 * 100 changes in 300 seconds. Saving...
+1:M 19 Aug 2026 17:06:11.867 * Background saving started by pid 11
+11:C 19 Aug 2026 17:06:11.871 * DB saved on disk
+11:C 19 Aug 2026 17:06:11.871 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
+1:M 19 Aug 2026 17:06:11.968 * Background saving terminated with success
+1:M 19 Aug 2026 17:23:11.984 * 100 changes in 300 seconds. Saving...
+1:M 19 Aug 2026 17:23:11.984 * Background saving started by pid 12
+12:C 19 Aug 2026 17:23:11.988 * DB saved on disk
+12:C 19 Aug 2026 17:23:11.989 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
+1:M 19 Aug 2026 17:23:12.085 * Background saving terminated with success
+1:M 19 Aug 2026 17:41:12.080 * 100 changes in 300 seconds. Saving...
+1:M 19 Aug 2026 17:41:12.080 * Background saving started by pid 13
+13:C 19 Aug 2026 17:41:12.088 * DB saved on disk
+13:C 19 Aug 2026 17:41:12.088 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
+1:M 19 Aug 2026 17:41:12.181 * Background saving terminated with success
