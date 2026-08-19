@@ -144,6 +144,12 @@ function dashStore(db) {
       return row ? { fixes: row.fixes_applied, waste_removed_usd: Math.round(row.waste_removed_usd) } : null;
     },
     reports: async (tenantId) => db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id,type,created_at,viewed_at&order=created_at.desc&limit=50`),
+    reportData: async (tenantId, reportId) => {
+      const r = await db.select('reports',
+        `id=eq.${q(reportId)}&tenant_id=eq.${q(tenantId)}&select=id,type,created_at,findings_snapshot,unlocked`, { single: true });
+      if (r) await db.update('reports', `id=eq.${q(reportId)}`, { viewed_at: new Date().toISOString() }).catch(() => {});
+      return r;
+    },
     ledger: async (tenantId) => db.select('ledger', `tenant_id=eq.${q(tenantId)}&select=*&order=created_at.desc&limit=100`),
     settings: async (tenantId) => {
       const [sub, auto, conn] = await Promise.all([
