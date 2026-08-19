@@ -18,7 +18,7 @@ const crypto = require('crypto');
 const API = 'https://backboard.railway.com/graphql/v2';
 
 const SERVICES = [
-  { name: 'web', start: 'npm run start:web', build: 'npm ci && npx playwright install chromium --with-deps' },
+  { name: 'web', start: 'npm run start:web', build: 'npm ci && npx playwright install chromium --with-deps && npm run build:client' },
   { name: 'worker', start: 'npm run start:worker', build: 'npm ci && npx playwright install chromium --with-deps' },
   { name: 'poller', start: 'npm run start:poller', build: 'npm ci && npx playwright install chromium --with-deps' },
   { name: 'cron', start: 'npm run start:cron', build: 'npm ci' },
