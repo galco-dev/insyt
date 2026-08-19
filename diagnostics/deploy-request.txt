@@ -1,1 +1,1 @@
-deploy request 2026-08-19T18:05Z — OAuth data-scope routes + discovery-on-callback + Stripe Checkout routes + webhook tenant fix (95f5606)
+deploy request 2026-08-19T21:30Z — F2+F4: React SPA (funnel spine + all dashboard screens), JSON API, SPA serving; web build now runs build:client
