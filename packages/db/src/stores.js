@@ -114,6 +114,7 @@ function opsStore(db) {
     enqueueRun: async (row) => { const [r] = await db.insert('runs', [row]); return r; },
     activeTenants: async () => db.select('tenants', "select=id&status=eq.active"),
     dueWatches: async (nowIso) => db.select('watches', `status=eq.active&select=*&or=(last_check_at.is.null,last_check_at.lt.${q(nowIso)})`),
+    patchWatch: async (id, patch) => { await db.update('watches', `id=eq.${q(id)}`, patch); },
     connectionsForSweep: async () => db.select('google_connections', 'select=id,user_id,status,last_validated_at'),
   };
 }
