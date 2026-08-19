@@ -18,6 +18,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Preflight diagnostics (token + API schema)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: node scripts/railway/preflight.js
       - name: Provision project, services, redis, variables
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
