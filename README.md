@@ -13,7 +13,12 @@ packages/shared  findings JSON contract (§2) — types
 packages/db      Postgres schema as ordered migrations (§1)
 packages/crawler discovery + verification crawler (§5)
 packages/google  OAuth scope ladder, connection lifecycle, discovery + journey routing (§6–7)
-packages/rules   rules engine core + layer rule modules (§2–3); health score (§13)
+packages/rules   rules engine core + all 5 layer rule modules (§2–3); health score (§13)
+packages/report  run envelope, narration stage w/ grounding guard, email+web renderer (§2.3, §13)
+packages/tools   the 16-tool constrained write surface + changeset executor (§4)
+packages/billing Stripe catalogue from pricing_config + webhook mirror (§10)
+packages/emails  template set, magic links, customer-facing copy — CI-linted (§12)
+packages/journeys tag-install state machine (§9) + run scheduling (§8, §15)
 scripts          CI tooling incl. the jargon linter (master §4)
 ```
 
