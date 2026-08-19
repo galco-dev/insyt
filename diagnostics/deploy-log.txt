@@ -1,0 +1,40 @@
+deploy transcript 2026-08-19T14:46:59Z
+railway 5.41.2
+
+project: d6255fed-897f-4f9d-a600-08c2c62aca74
+
+===== web =====
+Unauthorized. Please check that your RAILWAY_API_TOKEN is valid and has access to the resource you're trying to use.
+LINK FAILED rc=1
+No linked project found. Run railway link to connect to a project
+  → Run `railway link` to connect to a project.
+No linked project found. Run railway link to connect to a project
+  → Run `railway link` to connect to a project.
+UP FAILED rc=1
+
+===== worker =====
+Unauthorized. Please check that your RAILWAY_API_TOKEN is valid and has access to the resource you're trying to use.
+LINK FAILED rc=1
+No linked project found. Run railway link to connect to a project
+  → Run `railway link` to connect to a project.
+No linked project found. Run railway link to connect to a project
+  → Run `railway link` to connect to a project.
+UP FAILED rc=1
+
+===== poller =====
+Unauthorized. Please check that your RAILWAY_API_TOKEN is valid and has access to the resource you're trying to use.
+LINK FAILED rc=1
+No linked project found. Run railway link to connect to a project
+  → Run `railway link` to connect to a project.
+No linked project found. Run railway link to connect to a project
+  → Run `railway link` to connect to a project.
+UP FAILED rc=1
+
+===== cron =====
+Unauthorized. Please check that your RAILWAY_API_TOKEN is valid and has access to the resource you're trying to use.
+LINK FAILED rc=1
+No linked project found. Run railway link to connect to a project
+  → Run `railway link` to connect to a project.
+No linked project found. Run railway link to connect to a project
+  → Run `railway link` to connect to a project.
+UP FAILED rc=1
