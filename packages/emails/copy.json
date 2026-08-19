@@ -1,0 +1,33 @@
+{
+  "_comment": "Customer-facing strings for reports and emails. This tree IS linted by scripts/jargon-lint.js (master §4 blocklist + register). Change copy here, never inline in renderer code.",
+  "report": {
+    "health_label": "Account health",
+    "money_headline_waste": "About {amount} a month is going to waste",
+    "money_headline_clean": "No money leaks found this week",
+    "since_last_week_title": "Since last week",
+    "cumulative_strip": "{fixes} fixes applied since day one · about {amount} of waste removed",
+    "locked_placeholder": "{count} {noun} found — unlock the full report to see the list and the fix",
+    "locked_fix_placeholder": "The exact fix is in the full report",
+    "unlock_cta": "Unlock the full report — $20, credited to your first month",
+    "view_online": "View this report online",
+    "settings_link": "Email settings",
+    "degraded_notice": "Part of this check could not run this week ({reasons}). Everything shown is complete; nothing is guessed.",
+    "footer_note": "We check your ads, your visit tracking and your site every week, and fix what you approve.",
+    "severity_labels": {
+      "critical": "Needs attention now",
+      "warning": "Costing you money",
+      "opportunity": "Worth grabbing",
+      "info": "Good to know"
+    },
+    "noun_for_kind": {
+      "search_term": "search terms",
+      "gtm_tag": "setup items",
+      "conversion_action": "counters",
+      "event": "tracked actions",
+      "campaign": "campaigns",
+      "page": "pages",
+      "measurement_id": "tracking codes",
+      "default": "items"
+    }
+  }
+}
