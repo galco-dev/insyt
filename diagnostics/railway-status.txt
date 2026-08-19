@@ -5,14 +5,19 @@ instance worker@production: start="npm run start:worker" build="npm ci && npx pl
 instance redis@production: start="redis-server --requirepass d0d58598ff383ab5d21dcd265883013f62bda465781e799d --appendonly yes --dir /data" build=null source={"repo":null,"image":"redis:7-alpine"}
 instance cron@production: start="npm run start:cron" build="npm ci" source=null
 instance poller@production: start="npm run start:poller" build="npm ci && npx playwright install chromium --with-deps" source=null
-instance web@production: start="npm run start:web" build="npm ci && npx playwright install chromium --with-deps" source=null
+instance web@production: start="npm run start:web" build="npm ci && npx playwright install chromium --with-deps && npm run build:client" source=null
 
 ===== ALL project deployments (latest 20) =====
-2026-08-19T18:52:18.170Z  SUCCESS   cron@production    (1f248ee4-3238-4d5e-8867-c69c1a0698df)
-2026-08-19T18:52:17.182Z  SUCCESS   poller@production    (fc2c20ee-affb-42f2-9ab8-754b15a96a9f)
-2026-08-19T18:52:16.211Z  SUCCESS   worker@production    (bba20a17-baae-453d-9ccd-dab503c74401)
-2026-08-19T18:52:15.278Z  SUCCESS   web@production  web-production-55c64.up.railway.app  (1264a024-e386-460e-abb5-dd17bb94107d)
-2026-08-19T18:51:55.556Z  SUCCESS   redis@production    (5e81934b-81e5-4d4a-ad96-f61550b1fe20)
+2026-08-19T21:18:35.626Z  SUCCESS   cron@production    (da221ead-25da-45aa-b8d8-71215689e410)
+2026-08-19T21:18:34.912Z  SUCCESS   poller@production    (bde0f816-41c8-4904-abb2-fc27931e4f89)
+2026-08-19T21:18:34.200Z  SUCCESS   worker@production    (25348b83-f6a2-4bf9-9f23-1b2d721c17d8)
+2026-08-19T21:18:33.391Z  SUCCESS   web@production  web-production-55c64.up.railway.app  (7800d70b-1ea2-4259-bc6a-d49a300eac03)
+2026-08-19T21:18:10.434Z  SUCCESS   redis@production    (b508bb62-f86f-47bf-b14e-bb250980a7bf)
+2026-08-19T18:52:18.170Z  REMOVED   cron@production    (1f248ee4-3238-4d5e-8867-c69c1a0698df)
+2026-08-19T18:52:17.182Z  REMOVED   poller@production    (fc2c20ee-affb-42f2-9ab8-754b15a96a9f)
+2026-08-19T18:52:16.211Z  REMOVED   worker@production    (bba20a17-baae-453d-9ccd-dab503c74401)
+2026-08-19T18:52:15.278Z  REMOVED   web@production  web-production-55c64.up.railway.app  (1264a024-e386-460e-abb5-dd17bb94107d)
+2026-08-19T18:51:55.556Z  REMOVED   redis@production    (5e81934b-81e5-4d4a-ad96-f61550b1fe20)
 2026-08-19T17:49:58.158Z  REMOVED   cron@production    (00507a76-1a87-4d90-a8f0-0f985619d608)
 2026-08-19T17:49:57.037Z  REMOVED   poller@production    (4570d400-f6ea-41ce-997a-b9d34f0d7b74)
 2026-08-19T17:49:55.793Z  REMOVED   worker@production    (f47918b3-6b7c-4551-9ab6-e19849f4098e)
@@ -23,43 +28,42 @@ instance web@production: start="npm run start:web" build="npm ci && npx playwrig
 2026-08-19T15:42:30.699Z  REMOVED   worker@production    (246a8ffd-1b34-42c4-aebb-baeca446e0cd)
 2026-08-19T15:42:29.775Z  REMOVED   web@production  web-production-55c64.up.railway.app  (118174f7-f137-493f-bfa9-80f12df2283d)
 2026-08-19T15:41:06.608Z  REMOVED   redis@production    (f3f85d17-e89c-4b9c-aee9-fdcb62853def)
-2026-08-19T15:16:21.656Z  REMOVED   cron@production    (a44ec2ab-d837-4f71-a63f-ec703ebb78f2)
-2026-08-19T15:16:20.967Z  REMOVED   poller@production    (dd7ddf94-ccb6-4863-8436-04489559b7d2)
-2026-08-19T15:16:19.275Z  REMOVED   worker@production    (0613314d-6998-4261-8a7f-7836a2639c58)
-2026-08-19T15:16:18.506Z  REMOVED   web@production  web-production-55c64.up.railway.app  (281d6226-5ac9-4b47-b921-f2cd6f3e812f)
-2026-08-19T15:15:37.548Z  REMOVED   cron@production    (cdf3d130-374f-4ffb-b9a7-d336c79a4a73)
 
 ----- logs: cron (SUCCESS) -----
 --- build ---
-copy /mise/installs
-create mise config
-docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.8.6
-docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.8.6
-docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.8.6
-docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.8.6
-docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.8.6
-docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.8.6
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
-copy /app
-copy /root/.cache
-copy /app/node_modules
-npm ci
-[railpack] secrets hash
-copy .
-copy / /app
-npm install
-copy package.json
+copy /mise/installs
+install mise packages: node
+loading .
+docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.8.6
 [railpack] secrets hash
 loading .
+docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.8.6
+docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.8.6
+docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.8.6
 loading .
 loading .
-[railpack] secrets hash
 mkdir /etc/mise
 create mise config
 install mise packages: node
 mkdir -p /app/node_modules/.cache
+mkdir -p /app/node_modules/.cache
+copy package-lock.json
+[railpack] secrets hash
 copy package-lock.json
 copy package.json
+copy package.json
+npm install
+npm warn config production Use `--omit=dev` instead.
+
+npm warn deprecated cron-parser@4.9.0: v4 is no longer maintained, upgrade to v5
+
+
+added 117 packages, and audited 118 packages in 3s
+
+
+found 0 vulnerabilities
+
 npm install
 copy / /app
 copy / /app
@@ -68,50 +72,50 @@ copy .
 npm ci
 npm warn config production Use `--omit=dev` instead.
 
+scheduling build on Metal builder "builder-geiqef"
 npm warn deprecated cron-parser@4.9.0: v4 is no longer maintained, upgrade to v5
 
 
-added 22 packages, and audited 23 packages in 2s
+added 117 packages, and audited 118 packages in 3s
 
 
 found 0 vulnerabilities
 
 npm ci
+install apt packages: libatomic1
 copy /mise/shims
 copy /mise/installs
 copy /usr/local/bin/mise
 copy /etc/mise/config.toml
 copy /root/.local/state/mise
 install apt packages: libatomic1
-copy /root/.local/state/mise
-install apt packages: libatomic1
 copy /app/node_modules
+copy /root/.local/state/mise
+copy /root/.cache
 copy /root/.cache
 copy /app
 copy /app
+copy /app/node_modules
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 exporting to docker image format
 exporting to docker image format
-containerimage.digest: sha256:81be5adbc4d35dcd0f7139cb11627a6303ee2d83df55d58825386bc6271a2bfc
-containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6ODFiZTVhZGJjNGQzNWRjZDBmNzEzOWNiMTE2MjdhNjMwM2VlMmQ4M2RmNTVkNTg4MjUzODZiYzYyNzFhMmJmYyIsInNpemUiOjIzODUsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxODo1MzoxNFoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
-containerimage.config.digest: sha256:b977dc5919550e62681bf2a8eb1b12bd3d6930e52f716ce7b1afcc942bf6b0fc
-scheduling build on Metal builder "builder-geiqef"
+containerimage.digest: sha256:50ad90e871ca2bd768ff43a5d227edee6e4fe8753e835525f380ee33d7bb8548
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6NTBhZDkwZTg3MWNhMmJkNzY4ZmY0M2E1ZDIyN2VkZWU2ZTRmZTg3NTNlODM1NTI1ZjM4MGVlMzNkN2JiODU0OCIsInNpemUiOjIzODYsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQyMToxOTo1NVoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:ea3a823dad9f0965687a5240381b752367683d62fdb4673f6ec660ac8cd47f4e
 image push
 --- deploy ---
 Starting Container
+email drain active (1-minute tick)
+cron running (5-minute tick)
 npm warn config production Use `--omit=dev` instead.
 
 > insyt@0.1.0 start:cron
 > node apps/cron/src/main.js
 
-email drain active (1-minute tick)
-cron running (5-minute tick)
 
 ----- logs: poller (SUCCESS) -----
 --- build ---
-Downloading Chrome for Testing 151.0.7922.34 (playwright chromium v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-linux64.zip
-
 |                                                                                |   0% of 184.3 MiB
 
 |■■■■■■■■                                                                        |  10% of 184.3 MiB
@@ -189,35 +193,36 @@ Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-sh
 Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /root/.cache/ms-playwright/chromium_headless_shell-1234
 
 npm ci && npx playwright install chromium --with-deps
-copy /root/.cache
+copy /app/node_modules
+install apt packages: libatomic1
 copy /mise/shims
 copy /mise/installs
 copy /usr/local/bin/mise
 copy /etc/mise/config.toml
 copy /root/.local/state/mise
-copy /app/node_modules
 install apt packages: libatomic1
-copy /app
 copy /root/.local/state/mise
-copy /app/node_modules
-install apt packages: libatomic1
+copy /root/.cache
+copy /root/.cache
 copy /app
+copy /app
+copy /app/node_modules
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 exporting to docker image format
 exporting to docker image format
-containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6YzliN2VjNTYyMDYwNzkwOWZkOGE0NzY1YmZiZGVlOGJiZjk3ZGEwNzMzZDU3NTM4YWMyZmRlN2MyYmNmOWE2YyIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxODo1MzoxMFoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
-containerimage.config.digest: sha256:dd8e59b4bb0aa9e1dfff6ece5d370daff3daf057a6fe204c5676e500080628fc
-containerimage.digest: sha256:c9b7ec5620607909fd8a4765bfbdee8bbf97da0733d57538ac2fde7c2bcf9a6c
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6MDgwYmU1NzczNDg4OTUxYzM1YjgyZjE2Nzc2ZTczMWZmOGVkY2Y5MmE1ZmI5YjMzZjUxZGZmYmVlYTVmNWYzZCIsInNpemUiOjIzOTIsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQyMToxOTozOVoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:88f51c16b13d695b9f4067c66354cdab2efa6241c54014effb0f481d0eb7b117
+containerimage.digest: sha256:080be5773488951c35b82f16776e731ff8edcf92a5fb9b33f51dffbeea5f5f3d
 image push
 --- deploy ---
 Starting Container
-npm warn config production Use `--omit=dev` instead.
 
 > insyt@0.1.0 start:poller
 > node apps/poller/src/main.js
 
 poller running: tag_alive + changeset_verify handlers, tag-install pump
+npm warn config production Use `--omit=dev` instead.
 
 ----- logs: worker (SUCCESS) -----
 --- build ---
@@ -300,7 +305,6 @@ Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-sh
 Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /root/.cache/ms-playwright/chromium_headless_shell-1234
 
 npm ci && npx playwright install chromium --with-deps
-copy /app/node_modules
 copy /mise/shims
 copy /mise/installs
 copy /usr/local/bin/mise
@@ -308,8 +312,9 @@ copy /etc/mise/config.toml
 copy /root/.local/state/mise
 install apt packages: libatomic1
 copy /root/.local/state/mise
-copy /root/.cache
 install apt packages: libatomic1
+copy /app/node_modules
+copy /app/node_modules
 copy /root/.cache
 copy /app
 copy /app
@@ -317,12 +322,11 @@ copy /app
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 exporting to docker image format
 exporting to docker image format
-containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6MmM4YTgwNzk2Mjk1MGY5ZmRkZTQwYjVhMjkyNzhhMDE5YmJhZDZiMzRkOGNhNmFiNmQ1NmZkYzM2NjRkZmUyZCIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxODo1MzowM1oifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
-containerimage.config.digest: sha256:db3f14ee3ac90e35bcbde39d5a9eacf52d91be2f8e83f57f1a0d0352901f9b01
-containerimage.digest: sha256:2c8a807962950f9fdde40b5a29278a019bbad6b34d8ca6ab6d56fdc3664dfe2d
+containerimage.config.digest: sha256:77b573c36c805a1e1f97a4a969bebe7ac474ac93cc5c79a23168b572dffb413f
+containerimage.digest: sha256:29506adb1382043e84c798b9ae410323ba0053716cc53d8ed10fb606ab440cc8
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6Mjk1MDZhZGIxMzgyMDQzZTg0Yzc5OGI5YWU0MTAzMjNiYTAwNTM3MTZjYzUzZDhlZDEwZmI2MDZhYjQ0MGNjOCIsInNpemUiOjIzOTIsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQyMToxOTozMloifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
 image push
 --- deploy ---
-Starting Container
 npm warn config production Use `--omit=dev` instead.
 
 > insyt@0.1.0 start:worker
@@ -330,25 +334,10 @@ npm warn config production Use `--omit=dev` instead.
 
 apply loop idle: Google OAuth client not configured
 worker consuming queues
+Starting Container
 
 ----- logs: web (SUCCESS) -----
 --- build ---
-|                                                                                |   0% of 184.3 MiB
-
-|■■■■■■■■                                                                        |  10% of 184.3 MiB
-
-|■■■■■■■■■■■■■■■■                                                                |  20% of 184.3 MiB
-
-|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 184.3 MiB
-
-|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 184.3 MiB
-
-|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 184.3 MiB
-
-|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 184.3 MiB
-
-|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 184.3 MiB
-
 |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 184.3 MiB
 
 |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 184.3 MiB
@@ -409,62 +398,85 @@ Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-sh
 
 Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /root/.cache/ms-playwright/chromium_headless_shell-1234
 
-npm ci && npx playwright install chromium --with-deps
-copy /root/.cache
-install apt packages: libatomic1
+npm warn config production Use `--omit=dev` instead.
+
+
+> insyt@0.1.0 build:client
+> vite build apps/web/client
+
+
+[36mvite v8.2.1 [32mbuilding client environment for production...[36m[39m
+
+transforming...
+
+✓ 1820 modules transformed.
+
+rendering chunks...
+
+computing gzip size...
+
+apps/web/public/app/index.html                   0.70 kB │ gzip:  0.38 kB
+apps/web/public/app/assets/index-DpH1qNMh.css   15.15 kB │ gzip:  3.93 kB
+apps/web/public/app/assets/index-mcgONiTv.js   256.33 kB │ gzip: 78.71 kB
+
+
+[32m✓ built in 1.32s[39m
+
+npm ci && npx playwright install chromium --with-deps && npm run build:client
 copy /mise/shims
 copy /mise/installs
 copy /usr/local/bin/mise
 copy /etc/mise/config.toml
 copy /root/.local/state/mise
+install apt packages: libatomic1
+install apt packages: libatomic1
+copy /app/node_modules
 copy /app/node_modules
 copy /root/.cache
-install apt packages: libatomic1
-copy /root/.local/state/mise
-copy /app/node_modules
+copy /root/.cache
 copy /app
 copy /app
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 exporting to docker image format
 exporting to docker image format
-containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6NDUzNTQxNDE1MTA3M2I5NGQ1ZmY4YzhlYmY4MzIyZWE0OTQwNDY3ZTEzNTk1ODU1ZmExOGEwZDg1OTk2ZjkwYyIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxODo1MzoxMloifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
-containerimage.config.digest: sha256:7b1a60017b6fd399dfd9cb49b38464945ffefc7a8dd74dc61046e52eb4bff0d5
-containerimage.digest: sha256:4535414151073b94d5ff8c8ebf8322ea4940467e13595855fa18a0d85996f90c
+containerimage.digest: sha256:62fda1d46c3eaef2309f6e87b303d30efc1c0ee0a16d1da00357f4044b5fb459
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6NjJmZGExZDQ2YzNlYWVmMjMwOWY2ZTg3YjMwM2QzMGVmYzFjMGVlMGExNmQxZGEwMDM1N2Y0MDQ0YjVmYjQ1OSIsInNpemUiOjIzOTIsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQyMToxOTo0M1oifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:d7d9f104c1244575d8760c691b3bb15d09c50be23efb2454f295f19f7b3a60fa
 image push
 --- deploy ---
-Starting Container
 npm warn config production Use `--omit=dev` instead.
 
 > insyt@0.1.0 start:web
 > node apps/web/src/main.js
 
+Starting Container
 web listening on :8080
 
 ----- logs: redis (SUCCESS) -----
 --- deploy ---
-1:C 19 Aug 2026 18:51:59.204 * Configuration loaded
-1:M 19 Aug 2026 18:51:59.213 * Ready to accept connections tcp
-1:M 19 Aug 2026 18:51:59.204 * monotonic clock: POSIX clock_gettime
-1:M 19 Aug 2026 18:51:59.205 * Running mode=standalone, port=6379.
-1:C 19 Aug 2026 18:51:59.204 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
-1:M 19 Aug 2026 18:51:59.213 * DB loaded from incr file appendonly.aof.1.incr.aof: 0.004 seconds
-1:M 19 Aug 2026 18:51:59.208 * DB loaded from base file appendonly.aof.1.base.rdb: 0.000 seconds
-1:M 19 Aug 2026 18:51:59.205 * Server initialized
-1:M 19 Aug 2026 18:51:59.208 * Loading RDB produced by version 7.4.10
-1:C 19 Aug 2026 18:51:59.204 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
-1:M 19 Aug 2026 18:51:59.213 * DB loaded from append only file: 0.005 seconds
-1:M 19 Aug 2026 18:51:59.208 * RDB is base AOF
-1:C 19 Aug 2026 18:51:59.204 * Redis version=7.4.10, bits=64, commit=00000000, modified=0, pid=1, just started
-1:M 19 Aug 2026 18:51:59.208 * Reading RDB base file on AOF loading...
-1:M 19 Aug 2026 18:51:59.208 * RDB age 18386 seconds
-1:M 19 Aug 2026 18:51:59.213 * Opening AOF incr file appendonly.aof.1.incr.aof on server start
-1:M 19 Aug 2026 18:51:59.208 * Done loading RDB, keys loaded: 0, keys expired: 0.
-1:M 19 Aug 2026 18:51:59.208 * RDB memory usage when created 0.91 Mb
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/5c44fa41-0142-4e7b-af03-f87130db67bc/vol_3w8e4u25s8rqopup
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/862387f7-6ecc-488c-b283-cca75970c337/vol_3w8e4u25s8rqopup
 Starting Container
-1:M 19 Aug 2026 18:57:00.022 * 100 changes in 300 seconds. Saving...
-1:M 19 Aug 2026 18:57:00.022 * Background saving started by pid 7
-7:C 19 Aug 2026 18:57:00.028 * DB saved on disk
-7:C 19 Aug 2026 18:57:00.028 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
-1:M 19 Aug 2026 18:57:00.123 * Background saving terminated with success
+1:M 19 Aug 2026 21:18:14.089 * Done loading RDB, keys loaded: 0, keys expired: 0.
+1:M 19 Aug 2026 21:18:14.089 * DB loaded from base file appendonly.aof.1.base.rdb: 0.001 seconds
+1:M 19 Aug 2026 21:18:14.097 * DB loaded from incr file appendonly.aof.1.incr.aof: 0.008 seconds
+1:C 19 Aug 2026 21:18:14.085 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+1:C 19 Aug 2026 21:18:14.085 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+1:C 19 Aug 2026 21:18:14.085 * Redis version=7.4.10, bits=64, commit=00000000, modified=0, pid=1, just started
+1:C 19 Aug 2026 21:18:14.085 * Configuration loaded
+1:M 19 Aug 2026 21:18:14.085 * monotonic clock: POSIX clock_gettime
+1:M 19 Aug 2026 21:18:14.086 * Running mode=standalone, port=6379.
+1:M 19 Aug 2026 21:18:14.086 * Server initialized
+1:M 19 Aug 2026 21:18:14.089 * Reading RDB base file on AOF loading...
+1:M 19 Aug 2026 21:18:14.089 * Loading RDB produced by version 7.4.10
+1:M 19 Aug 2026 21:18:14.089 * RDB age 27161 seconds
+1:M 19 Aug 2026 21:18:14.089 * RDB memory usage when created 0.91 Mb
+1:M 19 Aug 2026 21:18:14.089 * RDB is base AOF
+1:M 19 Aug 2026 21:18:14.097 * DB loaded from append only file: 0.009 seconds
+1:M 19 Aug 2026 21:18:14.097 * Opening AOF incr file appendonly.aof.1.incr.aof on server start
+1:M 19 Aug 2026 21:18:14.097 * Ready to accept connections tcp
+1:M 19 Aug 2026 21:23:15.067 * 100 changes in 300 seconds. Saving...
+1:M 19 Aug 2026 21:23:15.067 * Background saving started by pid 7
+7:C 19 Aug 2026 21:23:15.074 * DB saved on disk
+7:C 19 Aug 2026 21:23:15.074 * Fork CoW for RDB: current 0 MB, peak 0 MB, average 0 MB
+1:M 19 Aug 2026 21:23:15.168 * Background saving terminated with success
