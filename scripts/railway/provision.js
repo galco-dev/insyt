@@ -2,8 +2,10 @@
 // Provision the Insyt Railway project — build-doc §15 topology.
 // Runs inside GitHub Actions (the Cowork sandbox cannot reach Railway's API).
 // Idempotent: safe to re-run; it finds-or-creates everything by name.
+// Works with BOTH personal account tokens (me.projects) and workspace/team
+// tokens (top-level projects + teamId on create).
 //
-//   RAILWAY_TOKEN=... node scripts/railway/provision.js [--plan]
+//   RAILWAY_TOKEN=... node scripts/railway/provision.js
 //
 // Creates: project "insyt" → services web/worker/poller/cron (+ redis from
 // image, with volume) → start/build commands → env vars. Secrets are passed
@@ -14,7 +16,6 @@
 const crypto = require('crypto');
 
 const API = 'https://backboard.railway.com/graphql/v2';
-const PLAN = process.argv.includes('--plan');
 
 const SERVICES = [
   { name: 'web', start: 'npm run start:web', build: 'npm ci' },
@@ -28,36 +29,56 @@ const PASSTHROUGH = [
   'GOOGLE_ADS_DEVELOPER_TOKEN', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RESEND_API_KEY', 'SENTRY_DSN',
 ];
 
-async function gql(query, variables = {}) {
+async function gqlRaw(query, variables = {}) {
   const res = await fetch(API, {
     method: 'POST',
     headers: { authorization: `Bearer ${process.env.RAILWAY_TOKEN}`, 'content-type': 'application/json' },
     body: JSON.stringify({ query, variables }),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok || body.errors) {
-    throw new Error(`railway api: ${res.status} ${JSON.stringify(body.errors || body).slice(0, 500)}`);
-  }
+  return { ok: res.ok && !body.errors, body };
+}
+
+async function gql(query, variables = {}) {
+  const { ok, body } = await gqlRaw(query, variables);
+  if (!ok) throw new Error(`railway api: ${JSON.stringify(body.errors || body).slice(0, 500)}`);
   return body.data;
 }
 
 async function main() {
   if (!process.env.RAILWAY_TOKEN) { console.error('RAILWAY_TOKEN required'); process.exit(1); }
 
-  // 1. Project (find or create).
-  const me = await gql('query { me { name email projects { edges { node { id name } } } } }');
-  console.log(`token ok — account: ${me.me.email || me.me.name}`);
-  let project = me.me.projects.edges.map((e) => e.node).find((p) => p.name === 'insyt');
+  // 1. Project (find or create) — dual token mode.
+  let projectList = null;
+  let teamId = null;
+  const meRes = await gqlRaw('query { me { name email projects { edges { node { id name } } } } }');
+  if (meRes.ok && meRes.body.data && meRes.body.data.me) {
+    const me = meRes.body.data.me;
+    console.log(`token ok — account mode: ${me.email || me.name}`);
+    projectList = me.projects.edges.map((e) => e.node);
+  } else {
+    const pr = await gqlRaw('query { projects { edges { node { id name } } } }');
+    if (!pr.ok || !pr.body.data || !pr.body.data.projects) {
+      throw new Error(`token rejected in both account and workspace modes: ${JSON.stringify(pr.body.errors || meRes.body.errors).slice(0, 400)}`);
+    }
+    projectList = pr.body.data.projects.edges.map((e) => e.node);
+    const teams = await gqlRaw('query { teams { edges { node { id name } } } }');
+    if (teams.ok && teams.body.data && teams.body.data.teams && teams.body.data.teams.edges[0]) {
+      teamId = teams.body.data.teams.edges[0].node.id;
+    }
+    console.log(`token ok — workspace mode${teamId ? ` (team ${teamId})` : ''}; ${projectList.length} project(s) visible`);
+  }
+
+  let project = projectList.find((p) => p.name === 'insyt');
   if (!project) {
-    if (PLAN) { console.log('PLAN: would create project "insyt"'); return; }
-    project = (await gql('mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { id name } }',
-      { input: { name: 'insyt', description: 'Insyt — build-doc §15 services' } })).projectCreate;
+    const input = { name: 'insyt', description: 'Insyt — build-doc §15 services', ...(teamId ? { teamId } : {}) };
+    project = (await gql('mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { id name } }', { input })).projectCreate;
     console.log(`created project ${project.id}`);
   } else {
     console.log(`found project ${project.id}`);
   }
 
-  // 2. Production environment id.
+  // 2. Production environment id + existing services.
   const envs = await gql('query($id: String!) { project(id: $id) { environments { edges { node { id name } } } services { edges { node { id name } } } } }', { id: project.id });
   const environment = envs.project.environments.edges.map((e) => e.node).find((e) => e.name === 'production')
     || envs.project.environments.edges[0].node;
