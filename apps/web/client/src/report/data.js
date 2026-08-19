@@ -1,8 +1,8 @@
 // Sample audit — real-shaped, anonymized. This is the seed for the report
 // screen and the public sample. Every number is internally consistent:
 // verdicts follow from the stats on their own row, waste sums to the headline.
-// Register: customer-facing strings never use container/snippet/property/
-// "conversion action"/measurement-ID language.
+// Register: customer-facing strings use the plain-language register only
+// (the CI jargon linter scans this whole tree).
 
 export const audit = {
   business: 'Glow Studio',
