@@ -1,0 +1,21 @@
+{
+  "name": "insyt",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Insyt — Google Ads, Analytics and Tag Manager, checked and fixed weekly with customer approval.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "node --test \"packages/**/test/*.test.js\"",
+    "lint:jargon": "node scripts/jargon-lint.js",
+    "crawl": "node packages/crawler/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
