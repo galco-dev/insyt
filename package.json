@@ -8,7 +8,11 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "node --test \"packages/**/test/*.test.js\"",
+    "test": "node --test \"packages/**/test/*.test.js\" \"apps/**/test/*.test.js\"",
+    "start:web": "node apps/web/src/main.js",
+    "start:worker": "node apps/worker/src/service.js",
+    "start:poller": "node apps/poller/src/service.js",
+    "start:cron": "node apps/cron/src/service.js",
     "lint:jargon": "node scripts/jargon-lint.js",
     "crawl": "node packages/crawler/cli.js"
   },

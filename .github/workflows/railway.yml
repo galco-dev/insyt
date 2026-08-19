@@ -1,0 +1,51 @@
+name: railway
+# Provision + deploy the four Insyt services (deploy/README.md).
+# Manual trigger only. Needs the RAILWAY_TOKEN repo secret; other secrets
+# (SUPABASE_SERVICE_KEY, ANTHROPIC_API_KEY, …) are passed through when set.
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Also deploy code to the services (railway up)"
+        type: boolean
+        default: true
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Provision project, services, redis, variables
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
+        run: node scripts/railway/provision.js
+
+  deploy:
+    needs: provision
+    if: ${{ inputs.deploy }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [web, worker, poller, cron]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+      - name: Deploy ${{ matrix.service }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service ${{ matrix.service }} --project insyt --detach || railway up --service ${{ matrix.service }} --detach
