@@ -1,1 +1,1 @@
-status request 2026-08-19T19:00Z — verify oauth+checkout deploy (95f5606) all services healthy
+status request 2026-08-19T21:33Z — verify F2+F4 SPA deploy (web build:client) healthy
