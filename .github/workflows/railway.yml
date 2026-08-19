@@ -2,6 +2,8 @@ name: railway
 # Provision + deploy the four Insyt services (deploy/README.md).
 # Manual trigger only. Needs the RAILWAY_TOKEN repo secret; other secrets
 # (SUPABASE_SERVICE_KEY, ANTHROPIC_API_KEY, …) are passed through when set.
+# Step output is mirrored into the run summary (visible on the run page) so
+# failures can be diagnosed without opening the raw logs.
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +23,11 @@ jobs:
       - name: Preflight diagnostics (token + API schema)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: node scripts/railway/preflight.js
+        run: |
+          echo '## Preflight' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          node scripts/railway/preflight.js 2>&1 | tee -a $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Provision project, services, redis, variables
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -36,7 +42,14 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
-        run: node scripts/railway/provision.js
+        run: |
+          echo '## Provision' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          set -o pipefail
+          node scripts/railway/provision.js 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+          rc=$?
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          exit $rc
 
   deploy:
     needs: provision
@@ -52,4 +65,4 @@ jobs:
       - name: Deploy ${{ matrix.service }}
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service ${{ matrix.service }} --project insyt --detach || railway up --service ${{ matrix.service }} --detach
+        run: railway up --service ${{ matrix.service }} --project insyt --detach 2>&1 | tee -a $GITHUB_STEP_SUMMARY || railway up --service ${{ matrix.service }} --detach 2>&1 | tee -a $GITHUB_STEP_SUMMARY
