@@ -18,7 +18,7 @@ const crypto = require('crypto');
 const API = 'https://backboard.railway.com/graphql/v2';
 
 const SERVICES = [
-  { name: 'web', start: 'npm run start:web', build: 'npm ci' },
+  { name: 'web', start: 'npm run start:web', build: 'npm ci && npx playwright install chromium --with-deps' },
   { name: 'worker', start: 'npm run start:worker', build: 'npm ci && npx playwright install chromium --with-deps' },
   { name: 'poller', start: 'npm run start:poller', build: 'npm ci && npx playwright install chromium --with-deps' },
   { name: 'cron', start: 'npm run start:cron', build: 'npm ci' },
@@ -88,21 +88,42 @@ async function main() {
   const results = { created: [], updated: [], missing_secrets: [] };
 
   // 3. Redis — image service with a volume; app services reach it over
-  // private networking at redis.railway.internal.
-  const redisPassword = process.env.REDIS_PASSWORD || crypto.randomBytes(24).toString('hex');
+  // private networking at redis.railway.internal. The password is STABLE:
+  // reuse whatever the existing instance's start command carries, so app
+  // REDIS_URLs always match the running server; generate only on creation.
+  let redisPassword = process.env.REDIS_PASSWORD || null;
+  let redisCreated = false;
   if (!existing.has('redis')) {
     const svc = (await gql('mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id name } }',
       { input: { projectId: project.id, name: 'redis', source: { image: 'redis:7-alpine' } } })).serviceCreate;
     existing.set('redis', svc);
     results.created.push('redis');
+    redisCreated = true;
     await gql('mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }',
       { input: { projectId: project.id, environmentId: environment.id, serviceId: svc.id, mountPath: '/data' } })
       .catch((e) => console.warn(`volume: ${e.message}`));
   }
   const redisId = existing.get('redis').id;
+  if (!redisPassword) {
+    const inst = await gqlRaw(
+      'query($serviceId: String!, $environmentId: String!) { serviceInstance(serviceId: $serviceId, environmentId: $environmentId) { startCommand } }',
+      { serviceId: redisId, environmentId: environment.id },
+    );
+    const cmd = inst.ok && inst.body.data.serviceInstance ? inst.body.data.serviceInstance.startCommand : null;
+    const m = cmd && /--requirepass\s+(\S+)/.exec(cmd);
+    redisPassword = m ? m[1] : crypto.randomBytes(24).toString('hex');
+    if (!m) console.log('redis: no existing password found — generated a new one (redis will be redeployed)');
+  }
+  const desiredRedisCmd = `redis-server --requirepass ${redisPassword} --appendonly yes --dir /data`;
   await gql('mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input) }',
-    { serviceId: redisId, environmentId: environment.id, input: { startCommand: `redis-server --requirepass ${redisPassword} --appendonly yes --dir /data` } })
+    { serviceId: redisId, environmentId: environment.id, input: { startCommand: desiredRedisCmd } })
     .catch((e) => console.warn(`redis start command: ${e.message}`));
+  // One redeploy so the RUNNING redis matches the current password (converges
+  // the earlier password drift; harmless when already matching).
+  await gql('mutation($serviceId: String!, $environmentId: String!) { serviceInstanceRedeploy(serviceId: $serviceId, environmentId: $environmentId) }',
+    { serviceId: redisId, environmentId: environment.id })
+    .then(() => console.log('redis: redeployed with current password'))
+    .catch((e) => console.warn(`redis redeploy: ${e.message}${redisCreated ? ' (fresh create deploys itself)' : ''}`));
   const redisUrl = `redis://default:${redisPassword}@redis.railway.internal:6379`;
 
   // 4. App services.
