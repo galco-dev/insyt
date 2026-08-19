@@ -1,42 +1,16 @@
 // The Report — §11 screen 4, anatomy per frontend-strategy §6.
-// THE screen: funnel proof moment, marketing hero screenshot, demo centerpiece.
+// Without a reportId: the full sample audit (public showcase + demo).
+// With a reportId: the tenant's real report (findings snapshot from the API).
 // Locked (pre-unlock) by default; ?unlocked=1 shows everything.
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
+import { CheckCircle2, AlertTriangle, Lock, ArrowRight, Undo2, Eye } from 'lucide-react';
+import { audit } from './data.js';
+import { api, isDemo } from '../lib/api.js';
 import {
-  AlertOctagon, AlertTriangle, Info, CheckCircle2, Lock, ArrowRight, Undo2, Eye,
-} from 'lucide-react';
-import { audit, severityMeta, verdictMeta } from './data.js';
-
-const SEV_ICON = { critical: AlertOctagon, warning: AlertTriangle, info: Info, success: CheckCircle2 };
-const COLOR = {
-  critical: { text: 'text-critical', bg: 'bg-critical', tint: 'bg-critical-tint', borderL: 'border-l-critical' },
-  warning: { text: 'text-warning', bg: 'bg-warning', tint: 'bg-warning-tint', borderL: 'border-l-warning' },
-  info: { text: 'text-info', bg: 'bg-info', tint: 'bg-info-tint', borderL: 'border-l-info' },
-  success: { text: 'text-success', bg: 'bg-success', tint: 'bg-success-tint', borderL: 'border-l-success' },
-};
-
-// ---------------------------------------------------------------- atoms
-
-function MonoLabel({ children, className }) {
-  return (
-    <div className={clsx('font-mono text-tiny uppercase tracking-[0.12em] text-neutral-900', className)}>
-      {children}
-    </div>
-  );
-}
-
-function SeverityBadge({ severity }) {
-  const m = severityMeta[severity];
-  const IconEl = SEV_ICON[severity];
-  return (
-    <span className={clsx('inline-flex items-center gap-1.5 font-mono text-tiny uppercase tracking-[0.1em]', COLOR[m.color].text)}>
-      <IconEl size={13} strokeWidth={2.4} aria-hidden />
-      {m.label}
-    </span>
-  );
-}
+  COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState,
+} from '../lib/ui.jsx';
 
 function VerdictChip({ verdict }) {
   const m = verdictMeta[verdict.v];
@@ -50,7 +24,7 @@ function VerdictChip({ verdict }) {
 
 // ---------------------------------------------------------------- health dial
 
-function HealthDial({ score, label }) {
+export function HealthDial({ score, label }) {
   const sevColor = score < 50 ? '#DC2626' : score < 70 ? '#D97706' : '#16A34A';
   const r = 64;
   const cx = 80; const cy = 80;
@@ -79,23 +53,25 @@ function HealthDial({ score, label }) {
 // ---------------------------------------------------------------- finding card
 
 function FindingCard({ f, locked }) {
-  const m = severityMeta[f.severity];
+  const m = severityMeta[f.severity] || severityMeta.info;
   return (
     <div className={clsx('rounded border border-neutral-300 bg-white border-l-[3px]', COLOR[m.color].borderL)}>
       <div className="p-5">
         <div className="flex items-center justify-between gap-3">
-          <SeverityBadge severity={f.severity} />
+          <SeverityBadge severity={severityMeta[f.severity] ? f.severity : 'info'} />
           {f.money && <span className="text-small font-semibold">{f.money}</span>}
         </div>
         <h3 className="mt-2 text-h5">{f.title}</h3>
         <p className="mt-1.5 text-body text-neutral-900">{f.body}</p>
-        <div className={clsx('mt-3 flex items-start gap-2 rounded-sm px-3 py-2.5', COLOR[m.color].tint)}>
-          <ArrowRight size={15} strokeWidth={2.2} className={clsx('mt-0.5 shrink-0', COLOR[m.color].text)} aria-hidden />
-          <p className={clsx('text-small font-medium', locked && 'blurred')} aria-hidden={locked || undefined}>
-            {locked ? 'The exact fix is in the full report — one approval away.' : f.fix}
-          </p>
-          {locked && <Lock size={13} className="mt-0.5 shrink-0 text-neutral-900" aria-label="Unlocks with the full report" />}
-        </div>
+        {f.fix !== undefined && (
+          <div className={clsx('mt-3 flex items-start gap-2 rounded-sm px-3 py-2.5', COLOR[m.color].tint)}>
+            <ArrowRight size={15} strokeWidth={2.2} className={clsx('mt-0.5 shrink-0', COLOR[m.color].text)} aria-hidden />
+            <p className={clsx('text-small font-medium', locked && 'blurred')} aria-hidden={locked || undefined}>
+              {locked ? 'The exact fix is in the full report — one approval away.' : f.fix}
+            </p>
+            {locked && <Lock size={13} className="mt-0.5 shrink-0 text-neutral-900" aria-label="Unlocks with the full report" />}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -176,9 +152,9 @@ function statCell(cell, j, key) {
   );
 }
 
-// ---------------------------------------------------------------- tracking table (status column)
+// ---------------------------------------------------------------- tracking table
 
-function TrackingRow({ row, locked, blur }) {
+function TrackingRow({ row, blur }) {
   const [check, status, detail] = row;
   const ok = status === 'ok';
   const IconEl = ok ? CheckCircle2 : AlertTriangle;
@@ -198,43 +174,89 @@ function TrackingRow({ row, locked, blur }) {
 // ---------------------------------------------------------------- unlock
 
 function UnlockBar({ visible }) {
+  const [note, setNote] = useState(null);
+  const [busy, setBusy] = useState(false);
   if (!visible) return null;
+  async function unlock() {
+    setBusy(true); setNote(null);
+    try {
+      const r = await api('/api/checkout/audit', { method: 'POST', body: { kind: 'audit_unlock' } });
+      if (r.url) { window.location.href = r.url; return; }
+      setNote(isDemo() ? 'Demo mode — checkout opens here once payments are connected.' : 'Payments are almost ready — try again shortly.');
+    } catch (e) { setNote(e.status === 401 ? 'Sign in first — run your free check from the start page.' : e.message); }
+    setBusy(false);
+  }
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-300 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-l2 flex-col items-start gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-body font-semibold">{audit.unlock.line}</div>
-          <div className="mt-0.5 text-small text-neutral-900">{audit.unlock.sub}</div>
+          <div className="mt-0.5 text-small text-neutral-900">{note || audit.unlock.sub}</div>
         </div>
-        <a
-          href="#unlock"
-          className="inline-flex shrink-0 items-center gap-2 rounded bg-accent px-6 py-3 text-small font-medium text-white"
+        <button
+          type="button"
+          onClick={unlock}
+          disabled={busy}
+          className="inline-flex shrink-0 items-center gap-2 rounded bg-accent px-6 py-3 text-small font-medium text-white disabled:opacity-40"
         >
-          Unlock for {audit.unlock.price} <ArrowRight size={15} aria-hidden />
-        </a>
+          {busy ? 'Opening checkout…' : `Unlock for ${audit.unlock.price}`} <ArrowRight size={15} aria-hidden />
+        </button>
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------- page
+// ---------------------------------------------------------------- real report (findings snapshot)
 
-export default function Report() {
+const SNAPSHOT_SEV = { critical: 'critical', warning: 'warning', info: 'info', opportunity: 'info' };
+
+function RealReport({ reportId }) {
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => { api(`/api/app/report/${reportId}`).then((d) => setReport(d.report)).catch((e) => setError(e.message)); }, [reportId]);
+
+  if (error) return <div className="mx-auto max-w-l2 px-5 pt-14"><ErrorNote message={error} /></div>;
+  if (!report) return <Spinner label="Loading your report" />;
+
+  const findings = (report.findings_snapshot || []).map((f) => ({
+    severity: SNAPSHOT_SEV[f.severity] || 'info',
+    title: f.title,
+    money: f.money_impact_monthly_usd ? `about $${Math.round(f.money_impact_monthly_usd)} / month` : null,
+    body: f.explanation,
+  }));
+  const locked = report.unlocked === false;
+
+  return (
+    <main className="mx-auto max-w-l2 px-5 pb-32">
+      <section className="pt-10">
+        <MonoLabel>{report.type === 'weekly' ? 'Weekly report' : report.type === 'deep' ? 'Deep review' : 'Your audit'} · {new Date(report.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</MonoLabel>
+        <h1 className="mt-2 text-h2 tracking-tight">
+          {findings.length === 0 ? 'All clear this week.' : `${findings.length} finding${findings.length === 1 ? '' : 's'}, biggest money first.`}
+        </h1>
+      </section>
+      {findings.length === 0 ? (
+        <div className="mt-8"><EmptyState title="Nothing needed your attention" body="We checked everything on schedule. The next report lands in a week." /></div>
+      ) : (
+        <div className="mt-6 flex flex-col gap-3">
+          {findings.map((f) => <FindingCard key={f.title} f={f} locked={locked} />)}
+        </div>
+      )}
+      <UnlockBar visible={locked} />
+    </main>
+  );
+}
+
+// ---------------------------------------------------------------- sample page
+
+export default function Report({ reportId = null }) {
+  if (reportId) return <RealReport reportId={reportId} />;
   const locked = !new URLSearchParams(window.location.search).get('unlocked');
   const chips = [
     ['critical', audit.counts.critical], ['warning', audit.counts.warning], ['info', audit.counts.info],
   ];
 
   return (
-    <div className={clsx('min-h-screen pb-32', locked && 'locked')}>
-      {/* top bar */}
-      <header className="border-b border-neutral-300 bg-white">
-        <div className="mx-auto flex max-w-l2 items-center justify-between px-5 py-4">
-          <div className="text-h5 font-semibold tracking-tight">Insyt</div>
-          <MonoLabel>{audit.type} · {audit.date}</MonoLabel>
-        </div>
-      </header>
-
+    <div className={clsx('pb-32', locked && 'locked')}>
       <main className="mx-auto max-w-l2 px-5">
         {/* hero */}
         <section className="flex flex-col gap-8 pt-10 sm:flex-row sm:items-center">
@@ -296,7 +318,7 @@ export default function Report() {
               </thead>
               <tbody>
                 {audit.tracking.rows.map((row, i) => (
-                  <TrackingRow key={row[0]} row={row} locked={locked} blur={locked && i >= 3} />
+                  <TrackingRow key={row[0]} row={row} blur={locked && i >= 3} />
                 ))}
               </tbody>
             </table>
