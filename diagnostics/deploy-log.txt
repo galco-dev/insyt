@@ -1,40 +1,48 @@
-deploy transcript 2026-08-19T14:46:59Z
+deploy transcript 2026-08-19T14:56:26Z
 railway 5.41.2
 
-project: d6255fed-897f-4f9d-a600-08c2c62aca74
+
+Workspace:       galco-dev's Projects
+
+Project:         insyt
+Project ID:      d6255fed-897f-4f9d-a600-08c2c62aca74
+
+Environment:     production
+Environment ID:  273a616e-7005-433f-894f-230d1ff5cda2
+
+Linked service
+
+    Service:         None
+
+────────────────────────────────────────────────
+
+All resources
+
+    Services
+      - web: ○ Offline · https://web-production-e9146.up.railway.app
+      - worker: ○ Offline
+      - cron: ○ Offline
+      - poller: ○ Offline
+    Databases
+      - redis: ● Online · redis-volume
+
 
 ===== web =====
-Unauthorized. Please check that your RAILWAY_API_TOKEN is valid and has access to the resource you're trying to use.
-LINK FAILED rc=1
-No linked project found. Run railway link to connect to a project
-  → Run `railway link` to connect to a project.
-No linked project found. Run railway link to connect to a project
-  → Run `railway link` to connect to a project.
-UP FAILED rc=1
+Indexing...
+Uploading...
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=da98981f-3f9a-4878-b938-821ad5a61d70&
 
 ===== worker =====
-Unauthorized. Please check that your RAILWAY_API_TOKEN is valid and has access to the resource you're trying to use.
-LINK FAILED rc=1
-No linked project found. Run railway link to connect to a project
-  → Run `railway link` to connect to a project.
-No linked project found. Run railway link to connect to a project
-  → Run `railway link` to connect to a project.
-UP FAILED rc=1
+Indexing...
+Uploading...
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=cdcc6adf-21c3-42b3-b9ae-a73be88986d8&
 
 ===== poller =====
-Unauthorized. Please check that your RAILWAY_API_TOKEN is valid and has access to the resource you're trying to use.
-LINK FAILED rc=1
-No linked project found. Run railway link to connect to a project
-  → Run `railway link` to connect to a project.
-No linked project found. Run railway link to connect to a project
-  → Run `railway link` to connect to a project.
-UP FAILED rc=1
+Indexing...
+Uploading...
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=8bfed597-182f-4c20-9469-a5848af01462&
 
 ===== cron =====
-Unauthorized. Please check that your RAILWAY_API_TOKEN is valid and has access to the resource you're trying to use.
-LINK FAILED rc=1
-No linked project found. Run railway link to connect to a project
-  → Run `railway link` to connect to a project.
-No linked project found. Run railway link to connect to a project
-  → Run `railway link` to connect to a project.
-UP FAILED rc=1
+Indexing...
+Uploading...
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=eb225a7b-9aab-4d2d-b2eb-a894afbc7020&
