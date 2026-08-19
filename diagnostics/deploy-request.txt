@@ -1,1 +1,1 @@
-deploy request 2026-08-19T15:42Z — plumbing: dashStore, sender, webhook, web chromium, redis converge
+deploy request 2026-08-19 — backend complete: google fetchers + transports + apply loop + watch handlers + auth bridge + sentry
