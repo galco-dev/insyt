@@ -1,0 +1,36 @@
+# Regenerates package-lock.json whenever package.json changes on main.
+# Why: sessions add dependencies through the GitHub API, and pushing the
+# full lockfile through chat is impractical — so the lockfile is derived
+# server-side. The sync commit carries no [skip ci], so CI validates the
+# newly synced lockfile immediately after.
+name: lockfile
+on:
+  push:
+    branches: [main]
+    paths: ['package.json']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Regenerate lockfile
+        run: npm install --package-lock-only
+      - name: Commit if changed
+        run: |
+          if git diff --quiet package-lock.json; then
+            echo 'lockfile already in sync'
+            exit 0
+          fi
+          git config user.name 'lockfile-bot'
+          git config user.email 'noreply@tryinsyt.com'
+          git add package-lock.json
+          git commit -m 'chore: sync package-lock.json to package.json'
+          git push

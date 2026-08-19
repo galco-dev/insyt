@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  body { @apply bg-neutral-50 text-accent font-sans text-body; }
+  table { font-variant-numeric: tabular-nums; }
+}
+
+@layer components {
+  /* Locked-report blur: content visible in shape, unreadable in detail. */
+  .blurred {
+    filter: blur(5px);
+    user-select: none;
+    pointer-events: none;
+  }
+}

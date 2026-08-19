@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "test": "node --test \"packages/**/test/*.test.js\" \"apps/**/test/*.test.js\"",
+    "build:client": "vite build apps/web/client",
     "start:web": "node apps/web/src/main.js",
     "start:worker": "node apps/worker/src/main.js",
     "start:poller": "node apps/poller/src/main.js",
@@ -20,7 +21,18 @@
     "node": ">=22"
   },
   "dependencies": {
-    "playwright": "^1.49.0",
-    "bullmq": "^5.34.0"
+    "bullmq": "^5.34.0",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.5",
+    "autoprefixer": "^10.5.4",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.33.0",
+    "postcss": "^8.5.26",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwindcss": "^3.4.19",
+    "vite": "^8.2.1"
   }
 }
