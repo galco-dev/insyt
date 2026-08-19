@@ -1,0 +1,30 @@
+
+===== worker (4276ae96-e23b-428c-bba2-d02cf82aa3d1) =====
+no deployments
+
+===== redis (4533cfa5-9527-4812-9b4b-88f9de076d94) =====
+2026-08-19T13:45:29.641Z  SUCCESS    (3535d7a8-0452-4116-99cb-284d443f5ddd)
+2026-08-19T13:45:00.156Z  REMOVED    (683dd09c-023b-4a5a-916d-a2028766e95b)
+--- build logs (last 0) ---
+--- deploy logs (last 12) ---
+1:C 19 Aug 2026 13:45:33.676 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+1:C 19 Aug 2026 13:45:33.676 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+1:C 19 Aug 2026 13:45:33.676 * Redis version=7.4.10, bits=64, commit=00000000, modified=0, pid=1, just started
+1:C 19 Aug 2026 13:45:33.676 * Configuration loaded
+1:M 19 Aug 2026 13:45:33.677 * monotonic clock: POSIX clock_gettime
+1:M 19 Aug 2026 13:45:33.677 * Running mode=standalone, port=6379.
+1:M 19 Aug 2026 13:45:33.677 * Server initialized
+1:M 19 Aug 2026 13:45:33.683 * Creating AOF base file appendonly.aof.1.base.rdb on server start
+1:M 19 Aug 2026 13:45:33.686 * Creating AOF incr file appendonly.aof.1.incr.aof on server start
+1:M 19 Aug 2026 13:45:33.686 * Ready to accept connections tcp
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/b8c72089-2866-4cc6-ac8b-f94d3e37cd3a/vol_3w8e4u25s8rqopup
+Starting Container
+
+===== cron (51c88e84-f8e6-4233-bfa0-af4e07ae7b51) =====
+no deployments
+
+===== poller (8903485c-afcb-40fe-bda0-9ac8907f0e05) =====
+no deployments
+
+===== web (90b0649c-00a5-42a7-a76a-e02284ddcf8e) =====
+no deployments
