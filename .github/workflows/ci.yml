@@ -2,6 +2,7 @@ name: ci
 on:
   push:
     branches: [main]
+    paths-ignore: ['diagnostics/**']
   pull_request:
 
 jobs:

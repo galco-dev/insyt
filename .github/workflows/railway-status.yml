@@ -1,7 +1,15 @@
 name: railway-status
-# Read-only: latest deployment state + logs for every insyt service,
-# mirrored into the run summary.
-on: workflow_dispatch
+# Read-only Railway diagnostic. Triggered by pushing diagnostics/request.txt
+# (or manually). Writes the result to diagnostics/railway-status.txt and
+# commits it back, so the outcome is readable via the repo itself.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['diagnostics/request.txt']
+
+permissions:
+  contents: write
 
 jobs:
   status:
@@ -15,7 +23,14 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          echo '## Railway status' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          node scripts/railway/status.js 2>&1 | tee -a $GITHUB_STEP_SUMMARY || true
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          mkdir -p diagnostics
+          node scripts/railway/status.js > diagnostics/railway-status.txt 2>&1 || true
+          tail -20 diagnostics/railway-status.txt
+      - name: Commit result
+        run: |
+          git config user.name 'railway-status-bot'
+          git config user.email 'noreply@tryinsyt.com'
+          git add diagnostics/railway-status.txt
+          git commit -m 'diagnostics: railway status [skip ci]' || echo 'no change'
+          git pull --rebase origin main || true
+          git push
