@@ -13,6 +13,8 @@
 //   now: () => ms epoch
 
 const http = require('http');
+const fs = require('fs');
+const nodePath = require('path');
 const { findingsStrip } = require('../../../packages/crawler/src/findings-strip');
 const { redeemLink } = require('../../../packages/emails/src/magic-links');
 const { landingPage, progressPage } = require('./pages');
@@ -33,7 +35,21 @@ function html(res, code, body) {
   res.end(body);
 }
 
-function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null }) {
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+
+function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null, clientDir = null }) {
+  // React client build (apps/web/client → public/app). When present, GET
+  // /app* serves the SPA; the server-rendered screens remain the fallback
+  // (tests, and any deploy that predates the client build).
+  const clientIndex = clientDir ? nodePath.join(clientDir, 'index.html') : null;
+  const hasClient = () => !!clientIndex && fs.existsSync(clientIndex);
+  function serveClientFile(res, rel) {
+    const file = nodePath.join(clientDir, rel);
+    if (!file.startsWith(clientDir) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
+    res.writeHead(200, { 'content-type': MIME[nodePath.extname(file)] || 'application/octet-stream', 'cache-control': rel.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache' });
+    res.end(fs.readFileSync(file));
+    return true;
+  }
   async function handleCrawlRequest(res, urlRaw) {
     let target;
     try { target = new URL(urlRaw.startsWith('http') ? urlRaw : `https://${urlRaw}`); } catch {
@@ -178,13 +194,58 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
         return res.end();
       }
 
+      // ---- JSON API for the React client (§11 screens over dashStore)
+      if (path.startsWith('/api/app') && dashStore) {
+        const session = readSession(req.headers.cookie, sessionSecret, now());
+        if (!session) return json(res, 401, { error: 'Sign in first.' });
+        const t = session.tenantId;
+        const sub = path.slice('/api/app'.length) || '/';
+        if (req.method === 'GET') {
+          if (sub === '/home') {
+            const [health, pending, cumulative, reports] = await Promise.all([
+              dashStore.healthLatest(t), dashStore.pendingApprovals(t), dashStore.cumulative(t), dashStore.reports(t),
+            ]);
+            return json(res, 200, { health, pending, cumulative, reports });
+          }
+          if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t) });
+          if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t) });
+          if (sub === '/reports') return json(res, 200, { reports: await dashStore.reports(t) });
+          if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t) });
+          if (sub === '/discovery') return json(res, 200, await dashStore.discovery(t));
+          if (sub === '/plan') return json(res, 200, { plan: await dashStore.planOptions(t) });
+          if (sub === '/first-fix') return json(res, 200, { fix: await dashStore.firstFix(t) });
+          if (sub === '/journey') return json(res, 200, { journey: await dashStore.journey(t) });
+          if (sub.startsWith('/report/')) {
+            const r = await dashStore.reportData(t, sub.split('/')[2]);
+            if (!r) return json(res, 404, { error: 'Report not found.' });
+            return json(res, 200, { report: r });
+          }
+        }
+        if (req.method === 'POST') {
+          if (sub.startsWith('/approve/')) { await dashStore.approveChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (sub.startsWith('/dismiss/')) { await dashStore.dismissChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (sub.startsWith('/revert/')) { await dashStore.requestRevert(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (sub === '/confirm') { await dashStore.confirmAssets(t); return json(res, 200, { ok: true }); }
+        }
+        return json(res, 404, { error: 'not found' });
+      }
+
       // ---- ops console (internal)
       if (path.startsWith('/ops') && opsStore) {
         const handled = await handleOps(req, res, u, { opsStore, queue, opsToken });
         if (handled) return undefined;
       }
 
-      // ---- authed dashboard (§11 screens 2, 5–12)
+      // ---- React SPA (when built): assets are public; /app* GETs get the shell.
+      // The client handles session state itself via /api/app (401 → sign-in view).
+      if (req.method === 'GET' && path.startsWith('/app') && hasClient()) {
+        const rel = path.slice('/app'.length).replace(/^\//, '');
+        if (rel && serveClientFile(res, rel)) return undefined;
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+        return res.end(fs.readFileSync(clientIndex));
+      }
+
+      // ---- authed dashboard (server-rendered fallback, §11 screens 2, 5–12)
       if (path.startsWith('/app') && dashStore) {
         const session = readSession(req.headers.cookie, sessionSecret, now());
         if (!session) {
