@@ -126,7 +126,13 @@ function buildStages({ google, crawler, model, store }) {
       required: true,
       run: async (ctx) => {
         await store.saveFindings(ctx.run.id, ctx.findings);
-        await store.saveReport(ctx.run.id, { html_email: ctx.html_email, html_web: ctx.html_web, findings_snapshot: ctx.envelope.findings });
+        await store.saveReport(ctx.run.id, {
+          html_email: ctx.html_email,
+          html_web: ctx.html_web,
+          findings_snapshot: ctx.envelope.findings,
+          tenant_id: ctx.run.tenant_id,
+          type: ctx.run.type === 'signup_audit' ? 'signup' : ctx.run.type === 'deep' ? 'deep' : 'weekly',
+        });
         return {};
       },
     },
