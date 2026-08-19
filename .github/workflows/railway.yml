@@ -3,6 +3,10 @@ name: railway
 # Triggers: manual, or pushing diagnostics/deploy-request.txt. The deploy job
 # writes the full CLI transcript to diagnostics/deploy-log.txt and commits it
 # back so the outcome is readable via the repo.
+#
+# Tokens: RAILWAY_TOKEN (workspace token) drives the GraphQL provisioning.
+# RAILWAY_PROJECT_TOKEN (project token, production environment) drives the CLI
+# deploys — workspace tokens are API-only and the CLI rejects them.
 on:
   workflow_dispatch:
     inputs:
@@ -42,11 +46,6 @@ jobs:
         run: |
           set -o pipefail
           node scripts/railway/provision.js 2>&1 | tee provision-out.txt
-      - name: Keep provision output for deploy job
-        uses: actions/upload-artifact@v4
-        with:
-          name: provision-out
-          path: provision-out.txt
 
   deploy:
     needs: provision
@@ -54,37 +53,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Install Railway CLI
         run: npm i -g @railway/cli
       - name: Deploy all services (sequential, transcripted)
         env:
-          # Account/workspace tokens must be RAILWAY_API_TOKEN for the CLI.
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          # Project token: CLI-native, pre-scoped to project+environment,
+          # no link step needed.
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
         run: |
           set -o pipefail
           {
             echo "deploy transcript $(date -u +%FT%TZ)"
             railway --version || true
-            PROJECT_ID=$(node -e "
-              fetch('https://backboard.railway.com/graphql/v2', {
-                method: 'POST',
-                headers: { authorization: 'Bearer ' + process.env.RAILWAY_API_TOKEN, 'content-type': 'application/json' },
-                body: JSON.stringify({ query: 'query { projects { edges { node { id name } } } }' }),
-              }).then(r => r.json()).then(b => {
-                const p = ((b.data||{}).projects||{edges:[]}).edges.map(e => e.node).find(p => p.name === 'insyt');
-                if (!p) { console.error('project insyt not found'); process.exit(1); }
-                console.log(p.id);
-              });
-            ")
-            echo "project: $PROJECT_ID"
+            if [ -z "$RAILWAY_TOKEN" ]; then
+              echo "RAILWAY_PROJECT_TOKEN secret is missing — create a project token (insyt → Settings → Tokens, production environment) and add it."
+              exit 1
+            fi
+            railway status 2>&1 || true
             for SVC in web worker poller cron; do
               echo; echo "===== $SVC ====="
-              railway link --project "$PROJECT_ID" --environment production --service "$SVC" 2>&1 || echo "LINK FAILED rc=$?"
-              railway status 2>&1 || true
-              railway up --service "$SVC" --detach --verbose 2>&1 || echo "UP FAILED rc=$?"
+              railway up --service "$SVC" --detach 2>&1 || echo "UP FAILED rc=$?"
             done
           } | tee diagnostics/deploy-log.txt
       - name: Commit transcript
