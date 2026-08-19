@@ -15,7 +15,7 @@ const BLOCKLIST = [
 ];
 
 // Only these trees hold customer-facing copy.
-const COPY_GLOBS = ['apps/web/copy', 'apps/worker/templates', 'packages/emails'];
+const COPY_GLOBS = ['apps/web/copy', 'apps/worker/templates', 'packages/emails', 'apps/web/client/src'];
 
 function* walk(dir) {
   if (!fs.existsSync(dir)) return;
