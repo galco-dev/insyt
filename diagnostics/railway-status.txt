@@ -5,13 +5,18 @@ instance worker@production: start="npm run start:worker" build="npm ci && npx pl
 instance redis@production: start="redis-server --requirepass d0d58598ff383ab5d21dcd265883013f62bda465781e799d --appendonly yes --dir /data" build=null source={"repo":null,"image":"redis:7-alpine"}
 instance cron@production: start="npm run start:cron" build="npm ci" source=null
 instance poller@production: start="npm run start:poller" build="npm ci && npx playwright install chromium --with-deps" source=null
-instance web@production: start="npm run start:web" build="npm ci" source=null
+instance web@production: start="npm run start:web" build="npm ci && npx playwright install chromium --with-deps" source=null
 
 ===== ALL project deployments (latest 20) =====
-2026-08-19T15:16:21.656Z  SUCCESS   cron@production    (a44ec2ab-d837-4f71-a63f-ec703ebb78f2)
-2026-08-19T15:16:20.967Z  SUCCESS   poller@production    (dd7ddf94-ccb6-4863-8436-04489559b7d2)
-2026-08-19T15:16:19.275Z  SUCCESS   worker@production    (0613314d-6998-4261-8a7f-7836a2639c58)
-2026-08-19T15:16:18.506Z  SUCCESS   web@production  web-production-55c64.up.railway.app  (281d6226-5ac9-4b47-b921-f2cd6f3e812f)
+2026-08-19T15:42:32.860Z  SUCCESS   cron@production    (0f5cce46-f740-4568-aa6a-853c20e9777f)
+2026-08-19T15:42:31.618Z  SUCCESS   poller@production    (4ac3f235-aa8a-4d8e-a3dc-1900de5bb5a4)
+2026-08-19T15:42:30.699Z  SUCCESS   worker@production    (246a8ffd-1b34-42c4-aebb-baeca446e0cd)
+2026-08-19T15:42:29.775Z  SUCCESS   web@production  web-production-55c64.up.railway.app  (118174f7-f137-493f-bfa9-80f12df2283d)
+2026-08-19T15:41:06.608Z  SUCCESS   redis@production    (f3f85d17-e89c-4b9c-aee9-fdcb62853def)
+2026-08-19T15:16:21.656Z  REMOVED   cron@production    (a44ec2ab-d837-4f71-a63f-ec703ebb78f2)
+2026-08-19T15:16:20.967Z  REMOVED   poller@production    (dd7ddf94-ccb6-4863-8436-04489559b7d2)
+2026-08-19T15:16:19.275Z  REMOVED   worker@production    (0613314d-6998-4261-8a7f-7836a2639c58)
+2026-08-19T15:16:18.506Z  REMOVED   web@production  web-production-55c64.up.railway.app  (281d6226-5ac9-4b47-b921-f2cd6f3e812f)
 2026-08-19T15:15:37.548Z  REMOVED   cron@production    (cdf3d130-374f-4ffb-b9a7-d336c79a4a73)
 2026-08-19T15:15:32.451Z  REMOVED   poller@production    (5dae6e98-8b9b-4536-827e-8e1a63c39997)
 2026-08-19T15:15:13.091Z  REMOVED   worker@production    (ddfaf73c-4dcf-420b-aa41-bd6edfff4d56)
@@ -20,45 +25,39 @@ instance web@production: start="npm run start:web" build="npm ci" source=null
 2026-08-19T14:56:36.269Z  REMOVED   poller@production    (8bfed597-182f-4c20-9469-a5848af01462)
 2026-08-19T14:56:35.195Z  REMOVED   worker@production    (cdcc6adf-21c3-42b3-b9ae-a73be88986d8)
 2026-08-19T14:56:34.146Z  REMOVED   web@production  web-production-55c64.up.railway.app  (da98981f-3f9a-4878-b938-821ad5a61d70)
-2026-08-19T13:45:29.641Z  SUCCESS   redis@production    (3535d7a8-0452-4116-99cb-284d443f5ddd)
+2026-08-19T13:45:29.641Z  REMOVED   redis@production    (3535d7a8-0452-4116-99cb-284d443f5ddd)
 2026-08-19T13:45:00.156Z  REMOVED   redis@production    (683dd09c-023b-4a5a-916d-a2028766e95b)
 
 ----- logs: cron (SUCCESS) -----
 --- build ---
-copy /app/node_modules
-npm ci
-[railpack] secrets hash
-copy .
 copy / /app
 npm install
+copy package.json
+copy package-lock.json
+loading .
+mkdir -p /app/node_modules/.cache
+copy /root/.local/state/mise
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+copy /app
+copy /root/.cache
+docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.8.6
 [railpack] secrets hash
 loading .
+docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.8.6
+loading .
+docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.8.6
+docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.8.6
 loading .
 loading .
 [railpack] secrets hash
-[railpack] secrets hash
-loading .
 mkdir /etc/mise
 create mise config
 install mise packages: node
 mkdir -p /app/node_modules/.cache
-mkdir -p /app/node_modules/.cache
 copy package-lock.json
-copy package-lock.json
-copy package.json
 copy package.json
 npm install
-npm warn config production Use `--omit=dev` instead.
-
-npm warn deprecated cron-parser@4.9.0: v4 is no longer maintained, upgrade to v5
-
-
-added 22 packages, and audited 23 packages in 1s
-
-
-found 0 vulnerabilities
-
+[railpack] secrets hash
 npm install
 copy / /app
 copy / /app
@@ -76,41 +75,40 @@ added 22 packages, and audited 23 packages in 1s
 found 0 vulnerabilities
 
 npm ci
-copy /app/node_modules
-install apt packages: libatomic1
+copy /root/.cache
 install apt packages: libatomic1
 copy /mise/shims
 copy /mise/installs
 copy /usr/local/bin/mise
 copy /etc/mise/config.toml
 copy /root/.local/state/mise
-copy /root/.local/state/mise
-copy /root/.cache
-copy /app
-copy /app
 copy /app/node_modules
+install apt packages: libatomic1
+copy /app
+copy /root/.local/state/mise
+copy /app/node_modules
+copy /app
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 exporting to docker image format
 exporting to docker image format
-containerimage.config.digest: sha256:36e2e79177a4015a3ad8744bcdc1f9738e3267bbf7d4fd69b759deb6d258d0c1
-containerimage.digest: sha256:09c0170b0104a42cc69535e4779c9aab4c5105f7edbbbaa4ab65eec83dce3861
-containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6MDljMDE3MGIwMTA0YTQyY2M2OTUzNWU0Nzc5YzlhYWI0YzUxMDVmN2VkYmJiYWE0YWI2NWVlYzgzZGNlMzg2MSIsInNpemUiOjIzODUsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNToxNzo1OVoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:6a96e0f11bcd52c05f7dc32a4b0f4f69b3bf396220919a8e01ae2665c24dce81
+containerimage.digest: sha256:b16202ea81899a991976809e95ab0e78ac85267fed9baccdb6e2998c2bb2d0ec
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6YjE2MjAyZWE4MTg5OWE5OTE5NzY4MDllOTVhYjBlNzhhYzg1MjY3ZmVkOWJhY2NkYjZlMjk5OGMyYmIyZDBlYyIsInNpemUiOjIzODUsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNTo0MzozMFoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
 scheduling build on Metal builder "builder-geiqef"
 image push
 --- deploy ---
 Starting Container
+email drain active (1-minute tick)
+cron running (5-minute tick)
 npm warn config production Use `--omit=dev` instead.
 
 > insyt@0.1.0 start:cron
 > node apps/cron/src/main.js
 
-cron running (5-minute tick)
 
 ----- logs: poller (SUCCESS) -----
 --- build ---
-Processing triggers for libc-bin (2.41-12+deb13u3) ...
-
 Downloading Chrome for Testing 151.0.7922.34 (playwright chromium v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-linux64.zip
 
 |                                                                                |   0% of 184.3 MiB
@@ -190,34 +188,35 @@ Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-sh
 Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /root/.cache/ms-playwright/chromium_headless_shell-1234
 
 npm ci && npx playwright install chromium --with-deps
+copy /root/.cache
+copy /app/node_modules
 copy /mise/shims
 copy /mise/installs
 copy /usr/local/bin/mise
 copy /etc/mise/config.toml
 copy /root/.local/state/mise
-install apt packages: libatomic1
 copy /app/node_modules
 install apt packages: libatomic1
-copy /app/node_modules
-copy /root/.cache
 copy /app
+copy /root/.local/state/mise
+install apt packages: libatomic1
 copy /app
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 exporting to docker image format
 exporting to docker image format
-containerimage.digest: sha256:cb1e0ea0f41b2a0917103398912cffcc6d898bd756964ed6072d9fa10ff7fc5a
-containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6Y2IxZTBlYTBmNDFiMmEwOTE3MTAzMzk4OTEyY2ZmY2M2ZDg5OGJkNzU2OTY0ZWQ2MDcyZDlmYTEwZmY3ZmM1YSIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNToxOToxOVoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
-containerimage.config.digest: sha256:8f9095aa4793f155d849b0422d2c224794433bcd7207cdab398dc74892e000d3
+containerimage.config.digest: sha256:acf9e6cfab620d61656bb66337e4bccbf6d222a5d5fbcef5fd44630e9034e711
+containerimage.digest: sha256:fd91b66011e51865d9ed17c045babda93c8ba9f6ed42834209d70f3390e7c4dd
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6ZmQ5MWI2NjAxMWU1MTg2NWQ5ZWQxN2MwNDViYWJkYTkzYzhiYTlmNmVkNDI4MzQyMDlkNzBmMzM5MGU3YzRkZCIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNTo0MzozOVoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
 image push
 --- deploy ---
+Starting Container
 npm warn config production Use `--omit=dev` instead.
 
 > insyt@0.1.0 start:poller
 > node apps/poller/src/main.js
 
 poller running (no handlers wired yet — watches accumulate untouched)
-Starting Container
 
 ----- logs: worker (SUCCESS) -----
 --- build ---
@@ -300,7 +299,7 @@ Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-sh
 Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /root/.cache/ms-playwright/chromium_headless_shell-1234
 
 npm ci && npx playwright install chromium --with-deps
-copy /app/node_modules
+copy /root/.cache
 copy /mise/shims
 copy /mise/installs
 copy /usr/local/bin/mise
@@ -308,123 +307,163 @@ copy /etc/mise/config.toml
 copy /root/.local/state/mise
 install apt packages: libatomic1
 copy /root/.local/state/mise
+copy /app/node_modules
 install apt packages: libatomic1
-copy /root/.cache
-copy /app
 copy /app/node_modules
 copy /app
+copy /app
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 exporting to docker image format
 exporting to docker image format
-containerimage.config.digest: sha256:8d5ef7fd33c049fc83e54f028058c334a5a9ab84fb669b95b259acc20b185391
-containerimage.digest: sha256:1ca46993fe0ef187f0ff4da48b66b0912b4f431951e10e37ee94edc19fb52ffa
-containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6MWNhNDY5OTNmZTBlZjE4N2YwZmY0ZGE0OGI2NmIwOTEyYjRmNDMxOTUxZTEwZTM3ZWU5NGVkYzE5ZmI1MmZmYSIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNToxNzo1N1oifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.digest: sha256:9bb9b03e6238252fc1cc3cdc6e5acc065b3779dc31600b1552d22661736ab909
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6OWJiOWIwM2U2MjM4MjUyZmMxY2MzY2RjNmU1YWNjMDY1YjM3NzlkYzMxNjAwYjE1NTJkMjI2NjE3MzZhYjkwOSIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNTo0MzoxN1oifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:16a1a7f1ce448e5497be0c99e3eeba47522268bd117b1ace75788ea73ee81bc0
 image push
 --- deploy ---
+Starting Container
 npm warn config production Use `--omit=dev` instead.
 
 > insyt@0.1.0 start:worker
 > node apps/worker/src/main.js
 
 worker consuming queues
-Starting Container
 
 ----- logs: web (SUCCESS) -----
 --- build ---
-copy /mise/shims
-copy .
-npm ci
-copy /root/.local/state/mise
-install mise packages: node
-copy package-lock.json
-[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
-copy /app
+Setting up xserver-common (2:21.1.16-1.3+deb13u3) ...
+
+Setting up libglx-mesa0:amd64 (25.0.7-2+deb13u1) ...
+
+Setting up libglx0:amd64 (1.7.0-1+b2) ...
+
+Setting up libgl1:amd64 (1.7.0-1+b2) ...
+
+Setting up xvfb (2:21.1.16-1.3+deb13u3) ...
+
+Processing triggers for libc-bin (2.41-12+deb13u3) ...
+
+Downloading Chrome for Testing 151.0.7922.34 (playwright chromium v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-linux64.zip
+
+|                                                                                |   0% of 184.3 MiB
+
+|■■■■■■■■                                                                        |  10% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■                                                                |  20% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 184.3 MiB
+
+Chrome for Testing 151.0.7922.34 (playwright chromium v1234) downloaded to /root/.cache/ms-playwright/chromium-1234
+
+Downloading FFmpeg (playwright ffmpeg v1011) from https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1011/ffmpeg-linux.zip
+
+|                                                                                |   0% of 2.3 MiB
+
+|■■■■■■■■                                                                        |  10% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■                                                                |  20% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 2.3 MiB
+
+FFmpeg (playwright ffmpeg v1011) downloaded to /root/.cache/ms-playwright/ffmpeg-1011
+
+Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-headless-shell-linux64.zip
+
+|                                                                                |   0% of 114.7 MiB
+
+|■■■■■■■■                                                                        |  10% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■                                                                |  20% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 114.7 MiB
+
+Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /root/.cache/ms-playwright/chromium_headless_shell-1234
+
+npm ci && npx playwright install chromium --with-deps
 copy /root/.cache
-loading .
-[railpack] secrets hash
-loading .
-loading .
-[railpack] secrets hash
-mkdir /etc/mise
-create mise config
-install mise packages: node
-mkdir -p /app/node_modules/.cache
-[railpack] secrets hash
-mkdir -p /app/node_modules/.cache
-copy package-lock.json
-copy package-lock.json
-copy package.json
-copy package.json
-npm install
-npm warn config production Use `--omit=dev` instead.
-
-npm warn deprecated cron-parser@4.9.0: v4 is no longer maintained, upgrade to v5
-
-
-added 22 packages, and audited 23 packages in 1s
-
-
-found 0 vulnerabilities
-
-npm install
-copy / /app
-copy / /app
-copy .
-copy .
-npm ci
-npm warn config production Use `--omit=dev` instead.
-
-npm warn deprecated cron-parser@4.9.0: v4 is no longer maintained, upgrade to v5
-
-
-added 22 packages, and audited 23 packages in 2s
-
-
-found 0 vulnerabilities
-
-npm ci
-copy /mise/shims
-copy /mise/installs
-copy /usr/local/bin/mise
-copy /etc/mise/config.toml
-copy /root/.local/state/mise
-install apt packages: libatomic1
-install apt packages: libatomic1
 copy /app/node_modules
 copy /root/.cache
-copy /root/.cache
-copy /app
 copy /app/node_modules
+copy /app
 copy /app
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
 exporting to docker image format
 exporting to docker image format
-containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6NDZkZTRkOTVjZTNkM2FjMTcyOWZiNzVlYWE4ZjEwYzVlNGZiNDkzMWI0MDczNjE0ZWZjMzMwODE5N2M1YjBhOCIsInNpemUiOjIzODUsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNToxODozNFoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
-containerimage.config.digest: sha256:4f4a9a58f059af8e5ca939bd09573f37354dbbc9d5907b093bd27d156febaa2a
-containerimage.digest: sha256:46de4d95ce3d3ac1729fb75eaa8f10c5e4fb4931b4073614efc3308197c5b0a8
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6MDE0YWUyNThkY2Y3ZThmYzBlOWJkZGQ5MzZhMmZiMGUwYzEyYjEwMDU2MzljOTA5YmQ0ZmM4ZmFjZjBmY2QyNCIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNTo0MzozN1oifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:01033d8724564452d750d26638a9556c8519cdc503769f9779628727488027e4
+containerimage.digest: sha256:014ae258dcf7e8fc0e9bddd936a2fb0e0c12b1005639c909bd4fc8facf0fcd24
+image push
 image push
 --- deploy ---
-
+web listening on :8080
 npm warn config production Use `--omit=dev` instead.
 
 > insyt@0.1.0 start:web
 > node apps/web/src/main.js
-web listening on :8080
+
 Starting Container
 
 ----- logs: redis (SUCCESS) -----
 --- deploy ---
-1:C 19 Aug 2026 13:45:33.676 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
-1:C 19 Aug 2026 13:45:33.676 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
-1:C 19 Aug 2026 13:45:33.676 * Redis version=7.4.10, bits=64, commit=00000000, modified=0, pid=1, just started
-1:C 19 Aug 2026 13:45:33.676 * Configuration loaded
-1:M 19 Aug 2026 13:45:33.677 * monotonic clock: POSIX clock_gettime
-1:M 19 Aug 2026 13:45:33.677 * Running mode=standalone, port=6379.
-1:M 19 Aug 2026 13:45:33.677 * Server initialized
-1:M 19 Aug 2026 13:45:33.683 * Creating AOF base file appendonly.aof.1.base.rdb on server start
-1:M 19 Aug 2026 13:45:33.686 * Creating AOF incr file appendonly.aof.1.incr.aof on server start
-1:M 19 Aug 2026 13:45:33.686 * Ready to accept connections tcp
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/b8c72089-2866-4cc6-ac8b-f94d3e37cd3a/vol_3w8e4u25s8rqopup
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/53bc201f-cf6b-4f29-b547-e2f382c8b579/vol_3w8e4u25s8rqopup
+1:M 19 Aug 2026 15:41:10.277 * Running mode=standalone, port=6379.
+1:M 19 Aug 2026 15:41:10.278 * Server initialized
+1:M 19 Aug 2026 15:41:10.280 * Reading RDB base file on AOF loading...
+1:C 19 Aug 2026 15:41:10.277 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+1:M 19 Aug 2026 15:41:10.280 * Loading RDB produced by version 7.4.10
+1:C 19 Aug 2026 15:41:10.277 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+1:M 19 Aug 2026 15:41:10.280 * RDB age 6937 seconds
+1:C 19 Aug 2026 15:41:10.277 * Redis version=7.4.10, bits=64, commit=00000000, modified=0, pid=1, just started
+1:M 19 Aug 2026 15:41:10.280 * RDB memory usage when created 0.91 Mb
+1:M 19 Aug 2026 15:41:10.280 * RDB is base AOF
+1:C 19 Aug 2026 15:41:10.277 * Configuration loaded
+1:M 19 Aug 2026 15:41:10.280 * Done loading RDB, keys loaded: 0, keys expired: 0.
+1:M 19 Aug 2026 15:41:10.277 * monotonic clock: POSIX clock_gettime
+1:M 19 Aug 2026 15:41:10.280 * DB loaded from base file appendonly.aof.1.base.rdb: 0.000 seconds
+1:M 19 Aug 2026 15:41:10.280 * DB loaded from append only file: 0.000 seconds
+1:M 19 Aug 2026 15:41:10.280 * Opening AOF incr file appendonly.aof.1.incr.aof on server start
+1:M 19 Aug 2026 15:41:10.280 * Ready to accept connections tcp
 Starting Container
