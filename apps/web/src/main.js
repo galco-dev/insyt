@@ -137,6 +137,7 @@ const app = createApp({
   },
   googleAuth,
   checkout,
+  clientDir: require('path').join(__dirname, '../public/app'),
 });
 
 const port = process.env.PORT || 3000;
