@@ -93,7 +93,7 @@ function billingStore(db) {
     scheduleEmail: async (templateId, tenantId, vars) => {
       await db.insert('emails', [{
         tenant_id: tenantId, template_id: templateId, to_email: vars.to_email || '',
-        stream: 'transactional', status: 'queued',
+        stream: 'transactional', status: 'queued', payload: vars || {},
       }], { returning: false });
     },
     tenantIdByCustomer: async (customerId) => {
@@ -119,4 +119,98 @@ function opsStore(db) {
   };
 }
 
-module.exports = { workerStore, webStore, executorStore, billingStore, opsStore };
+// ---------------------------------------------------------------- dashboard (§11 screens)
+// Consumed by apps/web server routes. healthScore comes from the rules
+// package so the dial always matches the report's number.
+function dashStore(db) {
+  const { healthScore } = require('../../rules/src/engine');
+  return {
+    healthLatest: async (tenantId) => {
+      const open = await db.select('findings', `tenant_id=eq.${q(tenantId)}&status=in.(open,approved,suspect)&select=severity,status`);
+      return { score: healthScore(open), trend: [] };
+    },
+    pendingApprovals: async (tenantId) => {
+      const rows = await db.select('changes',
+        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,finding:findings(title,money_impact_monthly_usd)&order=created_at.desc`);
+      return rows.map((r) => ({
+        id: r.id,
+        title: (r.finding && r.finding.title) || 'A fix is ready',
+        money_line: r.finding && r.finding.money_impact_monthly_usd
+          ? `about $${Math.round(r.finding.money_impact_monthly_usd)} a month` : null,
+      }));
+    },
+    cumulative: async (tenantId) => {
+      const row = await db.select('ledger_cumulative', `tenant_id=eq.${q(tenantId)}`, { single: true });
+      return row ? { fixes: row.fixes_applied, waste_removed_usd: Math.round(row.waste_removed_usd) } : null;
+    },
+    reports: async (tenantId) => db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id,type,created_at,viewed_at&order=created_at.desc&limit=50`),
+    ledger: async (tenantId) => db.select('ledger', `tenant_id=eq.${q(tenantId)}&select=*&order=created_at.desc&limit=100`),
+    settings: async (tenantId) => {
+      const [sub, auto, conn] = await Promise.all([
+        db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,size_band,price_usd,status&limit=1`, { single: true }),
+        db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }),
+        db.select('google_connections', `select=status&limit=1`, { single: true }).catch(() => null),
+      ]);
+      return {
+        plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check — no plan yet',
+        autopilot: (auto && auto.categories) || {},
+        connection_status: conn && conn.status === 'valid' ? 'Google connection healthy.' : 'Google connection pending.',
+      };
+    },
+    discovery: async (tenantId) => {
+      const assets = await db.select('assets', `tenant_id=eq.${q(tenantId)}&select=id,kind,external_id,display_name,linked`);
+      return { matched: assets.filter((a) => a.linked), unmatched: assets.filter((a) => !a.linked) };
+    },
+    confirmAssets: async (tenantId) => {
+      await db.update('assets', `tenant_id=eq.${q(tenantId)}`, { linked: true });
+    },
+    planOptions: async (tenantId) => {
+      const [pricing, tenant] = await Promise.all([
+        db.select('pricing_config', 'select=matrix&order=effective_from.desc&limit=1', { single: true }),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band`, { single: true }),
+      ]);
+      const band = (tenant && tenant.size_band) || '4k';
+      const labels = { core: 'Core', autopilot: 'Autopilot', scale: 'Scale' };
+      return {
+        band,
+        tiers: ['core', 'autopilot', 'scale'].map((tier) => ({
+          tier, label: labels[tier], price_usd: pricing.matrix[tier][band], selected: tier === 'core',
+        })),
+      };
+    },
+    firstFix: async (tenantId) => {
+      const change = await db.select('changes',
+        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,before,after,finding:findings(title,explanation)&order=created_at.asc&limit=1`, { single: true });
+      if (!change) return null;
+      return {
+        change_id: change.id,
+        finding_title: change.finding ? change.finding.title : 'Your first fix',
+        explanation: change.finding ? change.finding.explanation : '',
+        before_line: change.before ? JSON.stringify(change.before).slice(0, 120) : 'current setup',
+        after_line: change.after ? JSON.stringify(change.after).slice(0, 120) : 'proposed setup',
+      };
+    },
+    journey: async (tenantId) => {
+      const j = await db.select('journey_state', `tenant_id=eq.${q(tenantId)}&select=journey,stage,gates&limit=1`, { single: true });
+      if (!j) return { journey: 'A', stage: 'active', gates: { tag: true, billing: true, approval: true }, instruction_line: 'Everything is set up — your weekly checks run automatically.' };
+      const next = !j.gates.tag ? 'Install your tracking — the guide takes 30 seconds.'
+        : !j.gates.approval ? 'Review and approve your campaigns.'
+          : !j.gates.billing ? 'Connect your ad money to Google — last step.' : 'All gates clear — launching.';
+      return { ...j, instruction_line: next };
+    },
+    approveChange: async (tenantId, changeId) => {
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}`, { status: 'approved' });
+      await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: changeId, channel: 'dashboard' }], { returning: false });
+    },
+    dismissChange: async (tenantId, changeId) => {
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}`, { status: 'failed' });
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&select=finding_id`, { single: true });
+      if (ch) await db.update('findings', `id=eq.${q(ch.finding_id)}`, { status: 'dismissed' });
+    },
+    requestRevert: async (tenantId, changeId) => {
+      await db.insert('audit_log', [{ tenant_id: tenantId, event: 'revert_requested', detail: { change_id: changeId } }], { returning: false });
+    },
+  };
+}
+
+module.exports = { workerStore, webStore, executorStore, billingStore, opsStore, dashStore };
