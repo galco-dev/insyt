@@ -18,6 +18,7 @@ const { redeemLink } = require('../../../packages/emails/src/magic-links');
 const { landingPage, progressPage } = require('./pages');
 const { handleOps } = require('./ops');
 const { issueSession, readSession, cookieFor } = require('./session');
+const { handleGoogleAuth } = require('./auth-routes');
 const screens = require('./screens');
 
 // §5 limits: 1 crawl/domain/hour, 3/day (email-verified: 5 — later).
@@ -32,7 +33,7 @@ function html(res, code, body) {
   res.end(body);
 }
 
-function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null }) {
+function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null }) {
   async function handleCrawlRequest(res, urlRaw) {
     let target;
     try { target = new URL(urlRaw.startsWith('http') ? urlRaw : `https://${urlRaw}`); } catch {
@@ -111,6 +112,41 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
         const session = issueSession({ tenantId, secret: sessionSecret, now: now() });
         res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': cookieFor(session) });
         return res.end(JSON.stringify({ ok: true }));
+      }
+
+      // Google data-scope OAuth (§6 ladder steps 2–4) + §7 discovery.
+      if (path.startsWith('/auth/google') && googleAuth) {
+        const session = readSession(req.headers.cookie, sessionSecret, now());
+        const handled = await handleGoogleAuth(req, res, u, session, { ...googleAuth, sessionSecret, now });
+        if (handled) return undefined;
+      }
+
+      // Stripe Checkout + billing portal (§10). checkout injected only when
+      // STRIPE_SECRET_KEY exists; routes 404 otherwise.
+      if (req.method === 'POST' && path.startsWith('/api/checkout') && checkout) {
+        const session = readSession(req.headers.cookie, sessionSecret, now());
+        if (!session) return json(res, 401, { error: 'Sign in first.' });
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        await new Promise((r) => req.on('end', r));
+        let parsed; try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
+        try {
+          if (path === '/api/checkout/audit') {
+            const r = await checkout.audit({ tenantId: session.tenantId, kind: parsed.kind || 'audit_unlock' });
+            return json(res, 200, { url: r.url });
+          }
+          if (path === '/api/checkout/subscribe') {
+            if (!parsed.tier) return json(res, 400, { error: 'tier required' });
+            const r = await checkout.subscribe({ tenantId: session.tenantId, tier: parsed.tier, cadence: parsed.cadence || 'monthly' });
+            return json(res, 200, { url: r.url });
+          }
+          if (path === '/api/checkout/portal') {
+            const r = await checkout.portal({ tenantId: session.tenantId });
+            return json(res, 200, { url: r.url });
+          }
+        } catch (err) {
+          return json(res, 400, { error: 'We could not start that payment — try again in a moment.' });
+        }
       }
 
       // Report-stream List-Unsubscribe target (§17).

@@ -66,6 +66,50 @@ if (process.env.REDIS_URL) {
   };
 }
 
+// Google data-scope OAuth deps (§6) — active once the GCP client exists.
+const baseUrl = process.env.APP_BASE_URL || 'https://app.tryinsyt.com';
+const googleAuth = (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) ? {
+  db,
+  config: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri: process.env.OAUTH_REDIRECT_URL || `${baseUrl}/auth/google/callback`,
+    developerToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN || null,
+    loginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '3315824995',
+  },
+} : null;
+
+// Stripe checkout deps (§10) — active once STRIPE_SECRET_KEY exists.
+let checkout = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  const { createStripeCheckout } = require('../../../packages/billing/src/checkout');
+  const stripe = createStripeCheckout({ secretKey: process.env.STRIPE_SECRET_KEY });
+  const qe = (s) => encodeURIComponent(s);
+  const ownerEmail = async (tenantId) => {
+    const u = await db.select('users', `tenant_id=eq.${qe(tenantId)}&select=email&limit=1`, { single: true });
+    return u && u.email;
+  };
+  checkout = {
+    audit: async ({ tenantId, kind }) => stripe.auditCheckout({
+      tenantId, kind, customerEmail: await ownerEmail(tenantId),
+      successUrl: `${baseUrl}/app?paid=1`, cancelUrl: `${baseUrl}/app`,
+    }),
+    subscribe: async ({ tenantId, tier, cadence }) => {
+      const t = await db.select('tenants', `id=eq.${qe(tenantId)}&select=size_band`, { single: true });
+      return stripe.subscriptionCheckout({
+        tenantId, tier, band: (t && t.size_band) || '4k', cadence,
+        customerEmail: await ownerEmail(tenantId),
+        successUrl: `${baseUrl}/app?subscribed=1`, cancelUrl: `${baseUrl}/app/plan`,
+      });
+    },
+    portal: async ({ tenantId }) => {
+      const sub = await db.select('subscriptions', `tenant_id=eq.${qe(tenantId)}&select=stripe_customer_id&limit=1`, { single: true });
+      if (!sub || !sub.stripe_customer_id) throw new Error('no billing account yet');
+      return stripe.portalSession({ customerId: sub.stripe_customer_id, returnUrl: `${baseUrl}/app/settings` });
+    },
+  };
+}
+
 const app = createApp({
   store,
   crawler: { discoveryCrawl },
@@ -91,6 +135,8 @@ const app = createApp({
     },
     findOrCreateTenantByGoogle: (identity) => authStore(db).findOrCreateTenantByGoogle(identity),
   },
+  googleAuth,
+  checkout,
 });
 
 const port = process.env.PORT || 3000;
