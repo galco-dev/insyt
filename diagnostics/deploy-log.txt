@@ -1,4 +1,4 @@
-deploy transcript 2026-08-19T15:16:16Z
+deploy transcript 2026-08-19T15:42:28Z
 railway 5.41.2
 
 
@@ -19,10 +19,10 @@ Linked service
 All resources
 
     Services
-      - web: ● Crashed · https://web-production-55c64.up.railway.app
-      - worker: ● Crashed · Building (1m)
-      - cron: ● Crashed · Building (40s)
-      - poller: ● Crashed · Building (45s)
+      - web: ● Online · https://web-production-55c64.up.railway.app
+      - worker: ● Online
+      - cron: ● Online
+      - poller: ● Online
     Databases
       - redis: ● Online · redis-volume
 
@@ -30,19 +30,19 @@ All resources
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=281d6226-5ac9-4b47-b921-f2cd6f3e812f&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=118174f7-f137-493f-bfa9-80f12df2283d&
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=0613314d-6998-4261-8a7f-7836a2639c58&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=246a8ffd-1b34-42c4-aebb-baeca446e0cd&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=dd7ddf94-ccb6-4863-8436-04489559b7d2&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=4ac3f235-aa8a-4d8e-a3dc-1900de5bb5a4&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=a44ec2ab-d837-4f71-a63f-ec703ebb78f2&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=0f5cce46-f740-4568-aa6a-853c20e9777f&
