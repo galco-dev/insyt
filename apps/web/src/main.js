@@ -2,8 +2,9 @@
 // Requires SUPABASE_URL + SUPABASE_SERVICE_KEY (deploy/README.md).
 
 const { createClient } = require('../../../packages/db/src/postgrest');
-const { webStore, opsStore } = require('../../../packages/db/src/stores');
+const { webStore, opsStore, dashStore, billingStore } = require('../../../packages/db/src/stores');
 const { discoveryCrawl } = require('../../../packages/crawler/src/crawl');
+const { handleWebhook } = require('../../../packages/billing/src/webhooks');
 const { createApp } = require('./server');
 
 function required(name) {
@@ -67,10 +68,13 @@ const app = createApp({
   store,
   crawler: { discoveryCrawl },
   opsStore: opsStore(db),
+  dashStore: dashStore(db),
   queue,
   opsToken: process.env.OPS_TOKEN || null,
   sessionSecret: required('SESSION_SECRET'),
-  // dashStore lands with the Supabase Auth wiring (deploy phase).
+  billing: process.env.STRIPE_WEBHOOK_SECRET
+    ? { handleWebhook, store: billingStore(db), webhookSecret: process.env.STRIPE_WEBHOOK_SECRET }
+    : null,
 });
 
 const port = process.env.PORT || 3000;

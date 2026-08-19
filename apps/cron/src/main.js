@@ -42,4 +42,17 @@ const sweep = {
 };
 
 start({ store, queue, sweep });
+
+// Email drain — every minute, when the Resend key exists (§12/§17 send loop).
+if (process.env.RESEND_API_KEY) {
+  const { drainQueuedEmails } = require('../../../packages/emails/src/sender');
+  setInterval(() => {
+    drainQueuedEmails({ db, apiKey: process.env.RESEND_API_KEY, baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com' })
+      .then((r) => { if (r.sent || r.failed) console.log(`emails: sent ${r.sent}, failed ${r.failed}`); })
+      .catch((e) => console.error('email drain failed:', e.message));
+  }, 60_000);
+  console.log('email drain active (1-minute tick)');
+} else {
+  console.log('email drain idle: no RESEND_API_KEY');
+}
 console.log('cron running (5-minute tick)');

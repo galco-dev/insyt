@@ -10,6 +10,7 @@
 //     magicLinks: { findByHash, markUsed, insertLink },   // packages/emails contract
 //   }
 //   crawler: { discoveryCrawl(url) }  — real one on Railway; stub in tests
+//   billing: { handleWebhook, store, webhookSecret }      // Stripe §10
 //   now: () => ms epoch
 
 const http = require('http');
@@ -32,7 +33,7 @@ function html(res, code, body) {
   res.end(body);
 }
 
-function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret' }) {
+function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null }) {
   async function handleCrawlRequest(res, urlRaw) {
     let target;
     try { target = new URL(urlRaw.startsWith('http') ? urlRaw : `https://${urlRaw}`); } catch {
@@ -42,11 +43,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
       return json(res, 400, { error: 'That does not look like a website address.' });
     }
     const domain = target.hostname;
-    if (store.crawlCountForDomain(domain, now() - 3_600_000) >= LIMITS.perHour
-      || store.crawlCountForDomain(domain, now() - 86_400_000) >= LIMITS.perDay) {
+    if (await store.crawlCountForDomain(domain, now() - 3_600_000) >= LIMITS.perHour
+      || await store.crawlCountForDomain(domain, now() - 86_400_000) >= LIMITS.perDay) {
       return json(res, 429, { error: 'This site was checked very recently — try again in a little while.' });
     }
-    const id = store.createCrawl({ url: target.href, domain, status: 'running', created_at: now() });
+    const id = await store.createCrawl({ url: target.href, domain, status: 'running', created_at: now() });
     // Fire and record; progress endpoint reflects state.
     crawler.discoveryCrawl(target.href)
       .then((result) => store.patchCrawl(id, { status: result.status, result, strip: findingsStrip(result) }))
@@ -62,6 +63,20 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
       if (req.method === 'GET' && path === '/healthz') return json(res, 200, { ok: true });
       if (req.method === 'GET' && path === '/') return html(res, 200, landingPage());
 
+      // Stripe webhooks — §10. Signature verified before anything is parsed.
+      if (req.method === 'POST' && path === '/api/stripe/webhook' && billing) {
+        let raw = '';
+        req.on('data', (c) => { raw += c; });
+        await new Promise((r) => req.on('end', r));
+        const sig = req.headers['stripe-signature'] || '';
+        const parts = Object.fromEntries(sig.split(',').map((p) => p.split('=')));
+        const expected = require('crypto').createHmac('sha256', billing.webhookSecret)
+          .update(`${parts.t}.${raw}`).digest('hex');
+        if (!parts.v1 || parts.v1 !== expected) return json(res, 400, { error: 'bad signature' });
+        const result = await billing.handleWebhook(JSON.parse(raw), billing.store);
+        return json(res, 200, { received: true, handled: result.handled });
+      }
+
       if (req.method === 'POST' && path === '/api/crawl') {
         let body = '';
         req.on('data', (c) => { body += c; });
@@ -73,7 +88,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
       }
 
       if (req.method === 'GET' && path.startsWith('/api/crawl/')) {
-        const c = store.getCrawl(path.split('/')[3]);
+        const c = await store.getCrawl(path.split('/')[3]);
         if (!c) return json(res, 404, { error: 'unknown crawl' });
         return json(res, 200, { status: c.status, strip: c.strip || null });
       }
@@ -147,7 +162,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
       }
 
       if (req.method === 'GET' && path.startsWith('/r/')) {
-        const rep = store.getReportHtml(path.slice(3));
+        const rep = await store.getReportHtml(path.slice(3));
         if (!rep) return html(res, 404, '<p style="font-family:sans-serif">Report not found.</p>');
         return html(res, 200, rep.html_web);
       }
