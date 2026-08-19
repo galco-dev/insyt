@@ -31,9 +31,9 @@ const TOOLS = [
       if (!p.campaign_id || !Array.isArray(p.terms) || p.terms.length === 0) return 'campaign_id and terms[] required';
       if (p.terms.length > 200) return 'guardrail: more than 200 negative terms in one run';
       const badMatch = p.terms.find((t) => !['exact', 'phrase'].includes(t.match_type));
-      if (badMatch) return `guardrail: match type \"${badMatch.match_type}\" not allowed — exact and phrase only`;
+      if (badMatch) return `guardrail: match type "${badMatch.match_type}" not allowed — exact and phrase only`;
       const converting = p.terms.find((t) => ctx.convertingTerms && ctx.convertingTerms.has(t.text));
-      if (converting) return `guardrail: \"${converting.text}\" has conversions — refusing to negative a converting term`;
+      if (converting) return `guardrail: "${converting.text}" has conversions — refusing to negative a converting term`;
       return null;
     },
   },

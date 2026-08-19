@@ -1,0 +1,76 @@
+// Narration stage — build-doc §2.2, §8 (narration step).
+// Sonnet writes `title` and `explanation` per finding plus the envelope's
+// narrative slots. BINDING RULES enforced here, not hoped for:
+//   1. The model NEVER sees `payload` (register safety — it cannot leak
+//      locked detail it never received).
+//   2. The model may repeat numbers verbatim, never derive new ones — every
+//      number token in its output must already appear in its input.
+// The model client is injected: async generate({system, prompt}) -> string.
+
+const SYSTEM_PROMPT = [
+  'You write short plain-language findings for small-business owners about their Google ads and visit tracking.',
+  'Register rules, absolute: no marketing-tool jargon. Never say container, snippet, property, conversion action, or measurement ID.',
+  'Say "your tracking", "your ads", "customer actions". One or two sentences per field. Warm, direct, concrete.',
+  'You may repeat numbers from the data exactly as given. NEVER compute, estimate, round, or combine numbers yourself.',
+].join(' ');
+
+/** What the model is allowed to see: the finding minus payload. */
+function narrationInput(finding) {
+  const { payload, ...safe } = finding;
+  return safe;
+}
+
+/** Every number in `text` must appear in the input object. */
+function numbersAreGrounded(text, input) {
+  const source = JSON.stringify(input);
+  const sourceNumbers = new Set((source.match(/\d[\d,.]*/g) || []).map((n) => n.replace(/[,.]$/, '').replace(/,/g, '')));
+  // Also allow each grounded number's thousands-separated rendering.
+  const numbers = (text.match(/\d[\d,.]*/g) || []).map((n) => n.replace(/[,.]$/, '').replace(/,/g, ''));
+  return numbers.every((n) => sourceNumbers.has(n)
+    // "1249.00"-style decimals ground on their integer part too
+    || (n.includes('.') && sourceNumbers.has(n.split('.')[0])));
+}
+
+/**
+ * Narrate one finding. Returns { title, explanation } or throws after
+ * `retries` ungrounded attempts (caller degrades: engine-side fallback copy).
+ */
+async function narrateFinding(finding, generate, retries = 2) {
+  const input = narrationInput(finding);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const raw = await generate({
+      system: SYSTEM_PROMPT,
+      prompt: [
+        'Write a JSON object {"title": "...", "explanation": "..."} for this finding.',
+        'title: under 10 words, the concrete problem. explanation: 1-2 sentences, what it means for their money.',
+        attempt > 0 ? 'Your previous attempt used a number not present in the data. Only repeat numbers exactly as they appear.' : '',
+        JSON.stringify(input),
+      ].filter(Boolean).join('\n'),
+    });
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { continue; }
+    if (!parsed || typeof parsed.title !== 'string' || typeof parsed.explanation !== 'string') continue;
+    if (numbersAreGrounded(parsed.title + ' ' + parsed.explanation, input)) return parsed;
+  }
+  throw new Error(`narration ungrounded after ${retries + 1} attempts: ${finding.rule_id}`);
+}
+
+/** Narrate the envelope slots from engine-computed aggregates only. */
+async function narrateSlots({ counts, totals, previousWeek }, generate) {
+  const input = { counts, totals, previous_week: previousWeek || null };
+  const raw = await generate({
+    system: SYSTEM_PROMPT,
+    prompt: [
+      'Write a JSON object {"exec_summary": "...", "since_last_week": "..."} for this week\'s report.',
+      'exec_summary: 1-2 sentences, lead with the most important thing. since_last_week: 1 sentence; if previous_week is null say this is the first look.',
+      JSON.stringify(input),
+    ].join('\n'),
+  });
+  const parsed = JSON.parse(raw);
+  if (!numbersAreGrounded(parsed.exec_summary + ' ' + parsed.since_last_week, input)) {
+    throw new Error('slot narration ungrounded');
+  }
+  return parsed;
+}
+
+module.exports = { narrationInput, numbersAreGrounded, narrateFinding, narrateSlots, SYSTEM_PROMPT };
