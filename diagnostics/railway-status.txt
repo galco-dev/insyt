@@ -2,14 +2,682 @@ project insyt: d6255fed-897f-4f9d-a600-08c2c62aca74
 environments: production(273a616e-7005-433f-894f-230d1ff5cda2)
 services: worker · redis · cron · poller · web
 instance worker@production: start="npm run start:worker" build="npm ci && npx playwright install chromium --with-deps" source=null
-instance redis@production: start="redis-server --requirepass 9fc17049d72b265eed548ecda9b547384e9f5befa6ba7278 --appendonly yes --dir /data" build=null source={"repo":null,"image":"redis:7-alpine"}
+instance redis@production: start="redis-server --requirepass 22dd7355f3d43af466b000c0258df7556e5a621fcda0e4f0 --appendonly yes --dir /data" build=null source={"repo":null,"image":"redis:7-alpine"}
 instance cron@production: start="npm run start:cron" build="npm ci" source=null
 instance poller@production: start="npm run start:poller" build="npm ci && npx playwright install chromium --with-deps" source=null
 instance web@production: start="npm run start:web" build="npm ci" source=null
 
 ===== ALL project deployments (latest 20) =====
+2026-08-19T14:56:41.051Z  CRASHED   cron@production    (eb225a7b-9aab-4d2d-b2eb-a894afbc7020)
+2026-08-19T14:56:36.269Z  CRASHED   poller@production    (8bfed597-182f-4c20-9469-a5848af01462)
+2026-08-19T14:56:35.195Z  CRASHED   worker@production    (cdcc6adf-21c3-42b3-b9ae-a73be88986d8)
+2026-08-19T14:56:34.146Z  CRASHED   web@production  web-production-55c64.up.railway.app  (da98981f-3f9a-4878-b938-821ad5a61d70)
 2026-08-19T13:45:29.641Z  SUCCESS   redis@production    (3535d7a8-0452-4116-99cb-284d443f5ddd)
 2026-08-19T13:45:00.156Z  REMOVED   redis@production    (683dd09c-023b-4a5a-916d-a2028766e95b)
+
+----- logs: cron (CRASHED) -----
+--- build ---
+install mise packages: node
+mkdir -p /app/node_modules/.cache
+
+Building dependency tree...
+mkdir -p /app/node_modules/.cache
+copy package-lock.json
+
+Reading state information...
+
+copy package-lock.json
+copy package.json
+copy package.json
+npm install
+copy /mise/shims
+copy /mise/installs
+copy /usr/local/bin/mise
+copy /etc/mise/config.toml
+copy /root/.local/state/mise
+The following NEW packages will be installed:
+
+  libatomic1
+
+0 upgraded, 1 newly installed, 0 to remove and 9 not upgraded.
+Need to get 9308 B of archives.
+After this operation, 46.1 kB of additional disk space will be used.
+Get:1 http://deb.debian.org/debian trixie/main amd64 libatomic1 amd64 14.2.0-19 [9308 B]
+
+npm warn config production Use `--omit=dev` instead.
+
+debconf: unable to initialize frontend: Dialog
+debconf: (TERM is not set, so the dialog frontend is not usable.)
+debconf: falling back to frontend: Readline
+
+debconf: unable to initialize frontend: Readline
+debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/share/perl/5.40.1 /usr/lib/x86_64-linux-gnu/perl5/5.40 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.40 /usr/share/perl/5.40 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 8, <STDIN> line 1.)
+debconf: falling back to frontend: Teletype
+
+debconf: unable to initialize frontend: Teletype
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Noninteractive
+
+
+added 2 packages, and audited 3 packages in 569ms
+
+
+found 0 vulnerabilities
+
+Fetched 9308 B in 0s (421 kB/s)
+
+Selecting previously unselected package libatomic1:amd64.
+(Reading database ... 
+(Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%
+(Reading database ... 100%(Reading database ... 6213 files and directories currently installed.)
+
+Preparing to unpack .../libatomic1_14.2.0-19_amd64.deb ...
+
+Unpacking libatomic1:amd64 (14.2.0-19) ...
+
+npm install
+Setting up libatomic1:amd64 (14.2.0-19) ...
+
+copy / /app
+Processing triggers for libc-bin (2.41-12+deb13u3) ...
+
+copy / /app
+copy .
+install apt packages: libatomic1
+copy .
+npm ci
+npm warn config production Use `--omit=dev` instead.
+
+
+added 2 packages, and audited 3 packages in 604ms
+
+
+found 0 vulnerabilities
+
+npm ci
+copy /app/node_modules
+copy /root/.cache
+copy /app
+copy /app/node_modules
+copy /app
+[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+exporting to docker image format
+scheduling build on Metal builder "builder-geiqef"
+exporting to docker image format
+containerimage.digest: sha256:e887c2af37e8efa6bd548ddb0293a8ec8326894810f6b0f3c65335684e9d8f18
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6ZTg4N2MyYWYzN2U4ZWZhNmJkNTQ4ZGRiMDI5M2E4ZWM4MzI2ODk0ODEwZjZiMGYzYzY1MzM1Njg0ZTlkOGYxOCIsInNpemUiOjIzODUsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNDo1NzoyOVoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:9fa25910a34847a98b490961be97c7b6f787d7e5e2a8e503a8267b403b45162b
+image push
+--- deploy ---
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+Starting Container
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+
+cron service: supply store/queue/sweep wiring before running standalone
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+npm warn config production Use `--omit=dev` instead.
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:cron
+> node apps/cron/src/service.js
+
+cron service: supply store/queue/sweep wiring before running standalone
+
+----- logs: poller (CRASHED) -----
+--- build ---
+Setting up mesa-libgallium:amd64 (25.0.7-2+deb13u1) ...
+
+Setting up libgbm1:amd64 (25.0.7-2+deb13u1) ...
+
+Setting up x11-xkb-utils (7.7+9) ...
+
+Setting up libgl1-mesa-dri:amd64 (25.0.7-2+deb13u1) ...
+
+Setting up xserver-common (2:21.1.16-1.3+deb13u3) ...
+
+Setting up libglx-mesa0:amd64 (25.0.7-2+deb13u1) ...
+
+Setting up libglx0:amd64 (1.7.0-1+b2) ...
+
+Setting up libgl1:amd64 (1.7.0-1+b2) ...
+
+Setting up xvfb (2:21.1.16-1.3+deb13u3) ...
+
+Processing triggers for libc-bin (2.41-12+deb13u3) ...
+
+Downloading Chrome for Testing 151.0.7922.34 (playwright chromium v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-linux64.zip
+
+|                                                                                |   0% of 184.3 MiB
+
+|■■■■■■■■                                                                        |  10% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■                                                                |  20% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 184.3 MiB
+
+Chrome for Testing 151.0.7922.34 (playwright chromium v1234) downloaded to /root/.cache/ms-playwright/chromium-1234
+
+Downloading FFmpeg (playwright ffmpeg v1011) from https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1011/ffmpeg-linux.zip
+
+|                                                                                |   0% of 2.3 MiB
+
+|■■■■■■■■                                                                        |  10% of 2.3 MiB
+|■■■■■■■■■■■■■■■■                                                                |  20% of 2.3 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 2.3 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 2.3 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 2.3 MiB
+
+FFmpeg (playwright ffmpeg v1011) downloaded to /root/.cache/ms-playwright/ffmpeg-1011
+
+Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-headless-shell-linux64.zip
+
+|                                                                                |   0% of 114.7 MiB
+
+|■■■■■■■■                                                                        |  10% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■                                                                |  20% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 114.7 MiB
+
+Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /root/.cache/ms-playwright/chromium_headless_shell-1234
+
+npm ci && npx playwright install chromium --with-deps
+copy /root/.cache
+copy /app/node_modules
+copy /app/node_modules
+copy /root/.cache
+copy /app
+copy /app
+[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+exporting to docker image format
+exporting to docker image format
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6NGQyNzhhMmVjNjNkYjNjN2VhN2Y1NGIyZjUxMzViMWQ0NzllMzg2ZTMyMzU4YjhmMmU1YjU4NGU5YjkwZWQ2MSIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNDo1ODowMFoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:3465e3e80798b9ce84563bdfd5ffa6dfaa1eb8bb5f10586ef8faf72e8233c887
+containerimage.digest: sha256:4d278a2ec63db3c7ea7f54b2f5135b1d479e386e32358b8f2e5b584e9b90ed61
+image push
+image push
+--- deploy ---
+Starting Container
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+> node apps/poller/src/service.js
+
+poller service: supply store/handlers wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:poller
+
+----- logs: worker (CRASHED) -----
+--- build ---
+Setting up xserver-common (2:21.1.16-1.3+deb13u3) ...
+
+Setting up libglx-mesa0:amd64 (25.0.7-2+deb13u1) ...
+
+Setting up libglx0:amd64 (1.7.0-1+b2) ...
+
+Setting up libgl1:amd64 (1.7.0-1+b2) ...
+
+Setting up xvfb (2:21.1.16-1.3+deb13u3) ...
+
+Processing triggers for libc-bin (2.41-12+deb13u3) ...
+
+Downloading Chrome for Testing 151.0.7922.34 (playwright chromium v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-linux64.zip
+
+|                                                                                |   0% of 184.3 MiB
+
+|■■■■■■■■                                                                        |  10% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■                                                                |  20% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 184.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 184.3 MiB
+
+Chrome for Testing 151.0.7922.34 (playwright chromium v1234) downloaded to /root/.cache/ms-playwright/chromium-1234
+
+Downloading FFmpeg (playwright ffmpeg v1011) from https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1011/ffmpeg-linux.zip
+
+|                                                                                |   0% of 2.3 MiB
+
+|■■■■■■■■                                                                        |  10% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■                                                                |  20% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 2.3 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 2.3 MiB
+
+FFmpeg (playwright ffmpeg v1011) downloaded to /root/.cache/ms-playwright/ffmpeg-1011
+
+Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-headless-shell-linux64.zip
+
+|                                                                                |   0% of 114.7 MiB
+
+|■■■■■■■■                                                                        |  10% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■                                                                |  20% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 114.7 MiB
+
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 114.7 MiB
+
+Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /root/.cache/ms-playwright/chromium_headless_shell-1234
+
+npm ci && npx playwright install chromium --with-deps
+copy /app/node_modules
+copy /app/node_modules
+copy /root/.cache
+copy /root/.cache
+copy /app
+copy /app
+[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+exporting to docker image format
+exporting to docker image format
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6Y2Q3NjlhODlhYjhkYTY4M2JkOTQ3MjMxYWIyZGY2NzIxY2VkNTRmNGI2Y2JjZmY1ZGM3MGRkNzQyZTYzNTMwZSIsInNpemUiOjIzOTEsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNDo1Nzo0NloifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:f25d993cf63acb9b7dfcb9ac93ec3209b7d799d6db39d077fe152604469e89cc
+containerimage.digest: sha256:cd769a89ab8da683bd947231ab2df6721ced54f4b6cbcff5dc70dd742e63530e
+image push
+image push
+--- deploy ---
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:worker
+> node apps/worker/src/service.js
+
+worker service: supply clients/store wiring before running standalone
+
+----- logs: web (CRASHED) -----
+--- build ---
+install mise packages: node
+mkdir -p /app/node_modules/.cache
+The following NEW packages will be installed:
+
+  libatomic1
+
+0 upgraded, 1 newly installed, 0 to remove and 9 not upgraded.
+Need to get 9308 B of archives.
+After this operation, 46.1 kB of additional disk space will be used.
+Get:1 http://deb.debian.org/debian trixie/main amd64 libatomic1 amd64 14.2.0-19 [9308 B]
+
+debconf: unable to initialize frontend: Dialog
+debconf: (TERM is not set, so the dialog frontend is not usable.)
+debconf: falling back to frontend: Readline
+
+debconf: unable to initialize frontend: Readline
+debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/share/perl/5.40.1 /usr/lib/x86_64-linux-gnu/perl5/5.40 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.40 /usr/share/perl/5.40 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 8, <STDIN> line 1.)
+debconf: falling back to frontend: Teletype
+
+debconf: unable to initialize frontend: Teletype
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Noninteractive
+
+mkdir -p /app/node_modules/.cache
+copy package-lock.json
+copy package-lock.json
+copy package.json
+copy /mise/shims
+copy /mise/installs
+copy /usr/local/bin/mise
+copy /etc/mise/config.toml
+copy /root/.local/state/mise
+copy /root/.local/state/mise
+copy package.json
+npm install
+Fetched 9308 B in 0s (392 kB/s)
+
+Selecting previously unselected package libatomic1:amd64.
+(Reading database ... 
+(Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%(Reading database ... 6213 files and directories currently installed.)
+
+Preparing to unpack .../libatomic1_14.2.0-19_amd64.deb ...
+
+Unpacking libatomic1:amd64 (14.2.0-19) ...
+
+Setting up libatomic1:amd64 (14.2.0-19) ...
+
+Processing triggers for libc-bin (2.41-12+deb13u3) ...
+
+npm warn config production Use `--omit=dev` instead.
+
+install apt packages: libatomic1
+
+added 2 packages, and audited 3 packages in 596ms
+
+
+found 0 vulnerabilities
+
+npm install
+copy / /app
+copy / /app
+copy .
+copy .
+npm ci
+npm warn config production Use `--omit=dev` instead.
+
+
+added 2 packages, and audited 3 packages in 702ms
+
+
+found 0 vulnerabilities
+
+npm ci
+copy /app/node_modules
+copy /root/.cache
+copy /app
+copy /app/node_modules
+copy /app
+[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+[railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+exporting to docker image format
+exporting to docker image format
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6MTBjMGJlYTgyN2NlNjdlZGY4MjQwZjJjOTAxZDI0YTA2ZTg0YThjMGY1MGEwY2Q1MmQ1MTlhZTMwMTUyNzczZiIsInNpemUiOjIzODUsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wOC0xOVQxNDo1NzoxMloifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:4c3de3c4340c1320915e717855ca3f475cd0eeb69591e71a95651e95b7044bcc
+containerimage.digest: sha256:10c0bea827ce67edf8240f2c901d24a06e84a8c0f50a0cd52d519ae30152773f
+image push
+--- deploy ---
+    at Object.<anonymous> (/app/apps/web/src/main.js:56:21)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Object..js (node:internal/modules/cjs/loader:1913:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/app/apps/web/src/main.js' ]
+}
+
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:web
+> node apps/web/src/main.js
+
+Node.js v22.23.2
+node:internal/modules/cjs/loader:1433
+  throw err;
+  ^
+
+Error: Cannot find module 'bullmq'
+Require stack:
+- /app/apps/web/src/main.js
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    at Function._load (node:internal/modules/cjs/loader:1216:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Module.require (node:internal/modules/cjs/loader:1527:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (/app/apps/web/src/main.js:56:21)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Object..js (node:internal/modules/cjs/loader:1913:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/app/apps/web/src/main.js' ]
+}
+
+npm warn config production Use `--omit=dev` instead.
+
+> insyt@0.1.0 start:web
+> node apps/web/src/main.js
+
+node:internal/modules/cjs/loader:1433
+  throw err;
+  ^
+
+Error: Cannot find module 'bullmq'
+Require stack:
+- /app/apps/web/src/main.js
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    at Function._load (node:internal/modules/cjs/loader:1216:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Module.require (node:internal/modules/cjs/loader:1527:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (/app/apps/web/src/main.js:56:21)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Object..js (node:internal/modules/cjs/loader:1913:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/app/apps/web/src/main.js' ]
+}
+
+Node.js v22.23.2
 
 ----- logs: redis (SUCCESS) -----
 --- deploy ---
