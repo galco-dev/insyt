@@ -1,7 +1,8 @@
 name: railway
 # Provision + deploy the four Insyt services (deploy/README.md).
-# Triggers: manual, or pushing diagnostics/deploy-request.txt (lets Claude
-# trigger deploys via a file commit). Needs the RAILWAY_TOKEN repo secret.
+# Triggers: manual, or pushing diagnostics/deploy-request.txt. The deploy job
+# writes the full CLI transcript to diagnostics/deploy-log.txt and commits it
+# back so the outcome is readable via the repo.
 on:
   workflow_dispatch:
     inputs:
@@ -12,6 +13,9 @@ on:
   push:
     branches: [main]
     paths: ['diagnostics/deploy-request.txt']
+
+permissions:
+  contents: write
 
 jobs:
   provision:
@@ -36,21 +40,18 @@ jobs:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
         run: |
-          echo '## Provision' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
           set -o pipefail
-          node scripts/railway/provision.js 2>&1 | tee -a $GITHUB_STEP_SUMMARY
-          rc=$?
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          exit $rc
+          node scripts/railway/provision.js 2>&1 | tee provision-out.txt
+      - name: Keep provision output for deploy job
+        uses: actions/upload-artifact@v4
+        with:
+          name: provision-out
+          path: provision-out.txt
 
   deploy:
     needs: provision
     if: ${{ github.event_name == 'push' || inputs.deploy }}
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [web, worker, poller, cron]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,25 +59,40 @@ jobs:
           node-version: 22
       - name: Install Railway CLI
         run: npm i -g @railway/cli
-      - name: Deploy ${{ matrix.service }}
+      - name: Deploy all services (sequential, transcripted)
         env:
-          # Account/workspace tokens must be RAILWAY_API_TOKEN for the CLI;
-          # RAILWAY_TOKEN is only for project-scoped tokens.
+          # Account/workspace tokens must be RAILWAY_API_TOKEN for the CLI.
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          set -euo pipefail
-          PROJECT_ID=$(node -e "
-            fetch('https://backboard.railway.com/graphql/v2', {
-              method: 'POST',
-              headers: { authorization: 'Bearer ' + process.env.RAILWAY_API_TOKEN, 'content-type': 'application/json' },
-              body: JSON.stringify({ query: 'query { projects { edges { node { id name } } } }' }),
-            }).then(r => r.json()).then(b => {
-              const edges = (b.data && b.data.projects && b.data.projects.edges) || [];
-              const p = edges.map(e => e.node).find(p => p.name === 'insyt');
-              if (!p) { console.error('project insyt not found: ' + JSON.stringify(b).slice(0,300)); process.exit(1); }
-              console.log(p.id);
-            });
-          ")
-          echo "project: $PROJECT_ID"
-          railway link --project "$PROJECT_ID" --environment production --service ${{ matrix.service }}
-          railway up --service ${{ matrix.service }} --detach
+          set -o pipefail
+          {
+            echo "deploy transcript $(date -u +%FT%TZ)"
+            railway --version || true
+            PROJECT_ID=$(node -e "
+              fetch('https://backboard.railway.com/graphql/v2', {
+                method: 'POST',
+                headers: { authorization: 'Bearer ' + process.env.RAILWAY_API_TOKEN, 'content-type': 'application/json' },
+                body: JSON.stringify({ query: 'query { projects { edges { node { id name } } } }' }),
+              }).then(r => r.json()).then(b => {
+                const p = ((b.data||{}).projects||{edges:[]}).edges.map(e => e.node).find(p => p.name === 'insyt');
+                if (!p) { console.error('project insyt not found'); process.exit(1); }
+                console.log(p.id);
+              });
+            ")
+            echo "project: $PROJECT_ID"
+            for SVC in web worker poller cron; do
+              echo; echo "===== $SVC ====="
+              railway link --project "$PROJECT_ID" --environment production --service "$SVC" 2>&1 || echo "LINK FAILED rc=$?"
+              railway status 2>&1 || true
+              railway up --service "$SVC" --detach --verbose 2>&1 || echo "UP FAILED rc=$?"
+            done
+          } | tee diagnostics/deploy-log.txt
+      - name: Commit transcript
+        if: always()
+        run: |
+          git config user.name 'railway-deploy-bot'
+          git config user.email 'noreply@tryinsyt.com'
+          git add diagnostics/deploy-log.txt
+          git commit -m 'diagnostics: deploy transcript [skip ci]' || echo 'no change'
+          git pull --rebase origin main || true
+          git push
