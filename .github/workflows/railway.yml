@@ -1,9 +1,7 @@
 name: railway
 # Provision + deploy the four Insyt services (deploy/README.md).
-# Manual trigger only. Needs the RAILWAY_TOKEN repo secret; other secrets
-# (SUPABASE_SERVICE_KEY, ANTHROPIC_API_KEY, …) are passed through when set.
-# Step output is mirrored into the run summary (visible on the run page) so
-# failures can be diagnosed without opening the raw logs.
+# Triggers: manual, or pushing diagnostics/deploy-request.txt (lets Claude
+# trigger deploys via a file commit). Needs the RAILWAY_TOKEN repo secret.
 on:
   workflow_dispatch:
     inputs:
@@ -11,6 +9,9 @@ on:
         description: "Also deploy code to the services (railway up)"
         type: boolean
         default: true
+  push:
+    branches: [main]
+    paths: ['diagnostics/deploy-request.txt']
 
 jobs:
   provision:
@@ -20,14 +21,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Preflight diagnostics (token + API schema)
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          echo '## Preflight' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          node scripts/railway/preflight.js 2>&1 | tee -a $GITHUB_STEP_SUMMARY || true
-          echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Provision project, services, redis, variables
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -53,16 +46,37 @@ jobs:
 
   deploy:
     needs: provision
-    if: ${{ inputs.deploy }}
+    if: ${{ github.event_name == 'push' || inputs.deploy }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
         service: [web, worker, poller, cron]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Install Railway CLI
         run: npm i -g @railway/cli
       - name: Deploy ${{ matrix.service }}
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service ${{ matrix.service }} --project insyt --detach 2>&1 | tee -a $GITHUB_STEP_SUMMARY || railway up --service ${{ matrix.service }} --detach 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+          # Account/workspace tokens must be RAILWAY_API_TOKEN for the CLI;
+          # RAILWAY_TOKEN is only for project-scoped tokens.
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          PROJECT_ID=$(node -e "
+            fetch('https://backboard.railway.com/graphql/v2', {
+              method: 'POST',
+              headers: { authorization: 'Bearer ' + process.env.RAILWAY_API_TOKEN, 'content-type': 'application/json' },
+              body: JSON.stringify({ query: 'query { projects { edges { node { id name } } } }' }),
+            }).then(r => r.json()).then(b => {
+              const edges = (b.data && b.data.projects && b.data.projects.edges) || [];
+              const p = edges.map(e => e.node).find(p => p.name === 'insyt');
+              if (!p) { console.error('project insyt not found: ' + JSON.stringify(b).slice(0,300)); process.exit(1); }
+              console.log(p.id);
+            });
+          ")
+          echo "project: $PROJECT_ID"
+          railway link --project "$PROJECT_ID" --environment production --service ${{ matrix.service }}
+          railway up --service ${{ matrix.service }} --detach
