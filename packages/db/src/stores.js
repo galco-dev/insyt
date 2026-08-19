@@ -93,7 +93,7 @@ function billingStore(db) {
     scheduleEmail: async (templateId, tenantId, vars) => {
       await db.insert('emails', [{
         tenant_id: tenantId, template_id: templateId, to_email: vars.to_email || '',
-        stream: 'transactional', status: 'queued', payload: vars || {},
+        stream: 'transactional', status: 'queued',
       }], { returning: false });
     },
     tenantIdByCustomer: async (customerId) => {
@@ -149,7 +149,7 @@ function dashStore(db) {
       const [sub, auto, conn] = await Promise.all([
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,size_band,price_usd,status&limit=1`, { single: true }),
         db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }),
-        db.select('google_connections', `select=status&limit=1`, { single: true }).catch(() => null),
+        db.select('google_connections', `select=status&user_id=in.(select id from users)&limit=1`, { single: true }).catch(() => null),
       ]);
       return {
         plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check — no plan yet',
@@ -213,4 +213,22 @@ function dashStore(db) {
   };
 }
 
-module.exports = { workerStore, webStore, executorStore, billingStore, opsStore, dashStore };
+// ---------------------------------------------------------------- auth (Supabase session bridge)
+function authStore(db) {
+  return {
+    /** users by google sub → tenant; first login creates tenant + user. */
+    findOrCreateTenantByGoogle: async ({ sub, email, name }) => {
+      const existing = await db.select('users', `google_sub=eq.${q(sub)}&select=tenant_id&limit=1`, { single: true });
+      if (existing) {
+        await db.update('users', `google_sub=eq.${q(sub)}`, { last_seen_at: new Date().toISOString() }).catch(() => {});
+        return existing.tenant_id;
+      }
+      const [tenant] = await db.insert('tenants', [{ status: 'active' }]);
+      await db.insert('users', [{ tenant_id: tenant.id, google_sub: sub, email, name: name || null }], { returning: false });
+      await db.insert('ledger', [{ tenant_id: tenant.id, event: 'connection_changed', actor: 'system', summary_text: 'Account created with Google sign-in.' }], { returning: false }).catch(() => {});
+      return tenant.id;
+    },
+  };
+}
+
+module.exports = { workerStore, webStore, executorStore, billingStore, opsStore, dashStore, authStore };

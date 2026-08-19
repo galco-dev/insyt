@@ -1,8 +1,10 @@
 // Railway `web` service bootstrap — wires createApp to the real stores.
 // Requires SUPABASE_URL + SUPABASE_SERVICE_KEY (deploy/README.md).
 
+require('../../../packages/shared/src/sentry').init({ service: 'web' });
+
 const { createClient } = require('../../../packages/db/src/postgrest');
-const { webStore, opsStore, dashStore, billingStore } = require('../../../packages/db/src/stores');
+const { webStore, opsStore, dashStore, billingStore, authStore } = require('../../../packages/db/src/stores');
 const { discoveryCrawl } = require('../../../packages/crawler/src/crawl');
 const { handleWebhook } = require('../../../packages/billing/src/webhooks');
 const { createApp } = require('./server');
@@ -75,6 +77,20 @@ const app = createApp({
   billing: process.env.STRIPE_WEBHOOK_SECRET
     ? { handleWebhook, store: billingStore(db), webhookSecret: process.env.STRIPE_WEBHOOK_SECRET }
     : null,
+  authBridge: {
+    // Verify a Supabase access token by asking Supabase who it belongs to.
+    verifySupabaseToken: async (token) => {
+      const res = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: process.env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      const u = await res.json();
+      const google = (u.identities || []).find((i) => i.provider === 'google');
+      if (!google) return null;
+      return { sub: google.id, email: u.email, name: u.user_metadata && u.user_metadata.full_name };
+    },
+    findOrCreateTenantByGoogle: (identity) => authStore(db).findOrCreateTenantByGoogle(identity),
+  },
 });
 
 const port = process.env.PORT || 3000;

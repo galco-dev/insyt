@@ -10,7 +10,6 @@
 //     magicLinks: { findByHash, markUsed, insertLink },   // packages/emails contract
 //   }
 //   crawler: { discoveryCrawl(url) }  — real one on Railway; stub in tests
-//   billing: { handleWebhook, store, webhookSecret }      // Stripe §10
 //   now: () => ms epoch
 
 const http = require('http');
@@ -33,7 +32,7 @@ function html(res, code, body) {
   res.end(body);
 }
 
-function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null }) {
+function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null }) {
   async function handleCrawlRequest(res, urlRaw) {
     let target;
     try { target = new URL(urlRaw.startsWith('http') ? urlRaw : `https://${urlRaw}`); } catch {
@@ -95,6 +94,28 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
 
       if (req.method === 'GET' && path.startsWith('/check/')) {
         return html(res, 200, progressPage(path.split('/')[2]));
+      }
+
+      // Supabase Auth session bridge: the client finishes Google sign-in with
+      // Supabase, then posts its access token here; we verify it against
+      // Supabase, find-or-create the tenant, and set the app session cookie.
+      if (req.method === 'POST' && path === '/api/session' && authBridge) {
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        await new Promise((r) => req.on('end', r));
+        let parsed; try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
+        if (!parsed.access_token) return json(res, 400, { error: 'access_token required' });
+        const identity = await authBridge.verifySupabaseToken(parsed.access_token);
+        if (!identity) return json(res, 401, { error: 'That sign-in could not be verified.' });
+        const tenantId = await authBridge.findOrCreateTenantByGoogle(identity);
+        const session = issueSession({ tenantId, secret: sessionSecret, now: now() });
+        res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': cookieFor(session) });
+        return res.end(JSON.stringify({ ok: true }));
+      }
+
+      // Report-stream List-Unsubscribe target (§17).
+      if (req.method === 'GET' && path === '/m/unsubscribe') {
+        return html(res, 200, '<p style="font-family:sans-serif">You are unsubscribed from weekly report emails. Alerts about breakage still reach you — those protect your money. Manage everything in Settings.</p>');
       }
 
       // Magic-link redemption: single-use, purpose-routed (§12).
@@ -162,7 +183,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
       }
 
       if (req.method === 'GET' && path.startsWith('/r/')) {
-        const rep = await store.getReportHtml(path.slice(3));
+        const rep = store.getReportHtml(path.slice(3));
         if (!rep) return html(res, 404, '<p style="font-family:sans-serif">Report not found.</p>');
         return html(res, 200, rep.html_web);
       }

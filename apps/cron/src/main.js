@@ -1,3 +1,5 @@
+require('../../../packages/shared/src/sentry').init({ service: 'cron' });
+
 // Railway `cron` service bootstrap — the real clock over Supabase + BullMQ.
 // Token sweep is a no-op until the Google OAuth client exists (it logs the
 // connections it WOULD validate, so the ledger of intent is visible).

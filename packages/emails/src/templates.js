@@ -93,6 +93,10 @@ const TEMPLATES = [
     () => ['The guide walks you to the right panel with pictures — one paste, save, done. We verify it from our side.'],
     (v) => ({ label: 'Open the picture guide', url: v.guide_url })),
 
+  T('tracking_disappeared', 'transactional', () => 'Your tracking disappeared from your site',
+    () => ['Your tracking was working and has now vanished — this usually happens after a site edit or theme change. Until it is back, visits and enquiries are going uncounted.'],
+    (v) => ({ label: 'Reinstall in one tap', url: v.guide_url })),
+
   T('tag_verified', 'transactional', () => '✓ Your tracking is live',
     (v) => [`We checked ${v.pages_checked} pages on your site — your tracking is installed, firing, and recording visits. Nothing more to do.`],
     null),
