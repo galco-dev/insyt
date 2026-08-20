@@ -251,6 +251,153 @@ function dashStore(db) {
   };
 }
 
+// ---------------------------------------------------------------- agency (master §13)
+// Binding: no auto-apply, no auto-publish. Every mutation logs to
+// agency_audit_log with the acting seat — the agency's own dispute record.
+function agencyStore(db) {
+  const { healthScore } = require('../../rules/src/engine');
+  const log = async (agencyId, seatId, event, detail) => {
+    await db.insert('agency_audit_log', [{ agency_id: agencyId, seat_id: seatId, event, detail: detail || {} }], { returning: false }).catch(() => {});
+  };
+  return {
+    // Resolve the acting seat from the platform session's tenant id.
+    seatByTenant: async (tenantId) => db.select('agency_seats',
+      `tenant_id=eq.${q(tenantId)}&status=eq.active&select=id,agency_id,role,name,email&limit=1`, { single: true }),
+    agency: async (agencyId) => db.select('agencies', `id=eq.${q(agencyId)}&select=*`, { single: true }),
+
+    // Portfolio grid: every managed account with health, pending count and
+    // last-report age, computed from one query per table (no N+1).
+    portfolio: async (agencyId) => {
+      const accounts = await db.select('agency_accounts',
+        `agency_id=eq.${q(agencyId)}&status=eq.active&select=id,tenant_id,display_name,brief_only,report_register,seat:agency_seats(name)`);
+      if (!accounts.length) return [];
+      const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      const [findings, changes, reports] = await Promise.all([
+        db.select('findings', `tenant_id=in.(${ids})&status=in.(open,approved,suspect)&select=tenant_id,severity,status`),
+        db.select('changes', `tenant_id=in.(${ids})&status=eq.proposed&select=tenant_id`),
+        db.select('reports', `tenant_id=in.(${ids})&select=tenant_id,created_at,review_status&order=created_at.desc&limit=500`),
+      ]);
+      const by = (rows) => rows.reduce((m, r) => ((m[r.tenant_id] = m[r.tenant_id] || []).push(r), m), {});
+      const f = by(findings); const c = by(changes); const r = by(reports);
+      return accounts.map((a) => {
+        const own = f[a.tenant_id] || [];
+        const latest = (r[a.tenant_id] || [])[0];
+        return {
+          id: a.id,
+          tenant_id: a.tenant_id,
+          name: a.display_name,
+          manager: a.seat ? a.seat.name : null,
+          brief_only: a.brief_only,
+          register: a.report_register,
+          health: healthScore(own),
+          open_findings: own.length,
+          critical: own.filter((x) => x.severity === 'critical').length,
+          pending_changes: (c[a.tenant_id] || []).length,
+          reports_awaiting_review: (r[a.tenant_id] || []).filter((x) => x.review_status === 'pending').length,
+          last_report_at: latest ? latest.created_at : null,
+        };
+      }).sort((x, y) => (y.critical - x.critical) || (y.pending_changes - x.pending_changes) || (x.health - y.health));
+    },
+
+    // Triage queue: proposed changes across every managed account, one
+    // stream, biggest money first.
+    triage: async (agencyId) => {
+      const accounts = await db.select('agency_accounts',
+        `agency_id=eq.${q(agencyId)}&status=eq.active&select=tenant_id,display_name,brief_only`);
+      if (!accounts.length) return [];
+      const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
+      const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      const rows = await db.select('changes',
+        `tenant_id=in.(${ids})&status=eq.proposed&select=id,tenant_id,before,after,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer)&order=created_at.asc&limit=200`);
+      return rows.map((r) => ({
+        id: r.id,
+        account: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].display_name : r.tenant_id,
+        brief_only: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].brief_only : false,
+        title: r.finding ? r.finding.title : 'Proposed change',
+        explanation: r.finding ? r.finding.explanation : '',
+        severity: r.finding ? r.finding.severity : 'info',
+        rule_id: r.finding ? r.finding.rule_id : null,
+        layer: r.finding ? r.finding.layer : null,
+        money_monthly_usd: r.finding ? r.finding.money_impact_monthly_usd : null,
+        before: r.before || null,
+        after: r.after || null,
+      })).sort((a, b) => (b.money_monthly_usd || 0) - (a.money_monthly_usd || 0));
+    },
+    approveChange: async (agencyId, seatId, changeId) => {
+      await db.update('changes', `id=eq.${q(changeId)}`, { status: 'approved' });
+      await log(agencyId, seatId, 'change_approved', { change_id: changeId });
+    },
+    dismissChange: async (agencyId, seatId, changeId, reason) => {
+      await db.update('changes', `id=eq.${q(changeId)}`, { status: 'failed' });
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&select=finding_id`, { single: true });
+      if (ch) await db.update('findings', `id=eq.${q(ch.finding_id)}`, { status: 'dismissed' });
+      await log(agencyId, seatId, 'change_dismissed', { change_id: changeId, reason: reason || null });
+    },
+
+    // Review queue: nothing reaches a client without a seat's approval.
+    reviewQueue: async (agencyId) => {
+      const accounts = await db.select('agency_accounts',
+        `agency_id=eq.${q(agencyId)}&status=eq.active&select=tenant_id,display_name`);
+      if (!accounts.length) return [];
+      const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a.display_name]));
+      const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      const rows = await db.select('reports',
+        `tenant_id=in.(${ids})&review_status=eq.pending&select=id,tenant_id,type,created_at&order=created_at.asc`);
+      return rows.map((r) => ({ id: r.id, account: nameByTenant[r.tenant_id], type: r.type, created_at: r.created_at }));
+    },
+    approveReport: async (agencyId, seatId, reportId) => {
+      await db.update('reports', `id=eq.${q(reportId)}`, { review_status: 'approved', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
+      await log(agencyId, seatId, 'report_approved', { report_id: reportId });
+    },
+    rejectReport: async (agencyId, seatId, reportId, reason) => {
+      await db.update('reports', `id=eq.${q(reportId)}`, { review_status: 'rejected', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
+      await log(agencyId, seatId, 'report_rejected', { report_id: reportId, reason: reason || null });
+    },
+
+    brandKit: async (agencyId) => db.select('brand_kits',
+      `agency_id=eq.${q(agencyId)}&select=*&order=version.desc&limit=1`, { single: true }),
+    saveBrandKit: async (agencyId, seatId, kit) => {
+      const latest = await db.select('brand_kits', `agency_id=eq.${q(agencyId)}&select=version&order=version.desc&limit=1`, { single: true });
+      const version = latest ? latest.version + 1 : 1;
+      await db.insert('brand_kits', [{
+        agency_id: agencyId, version,
+        display_name: kit.display_name || null,
+        logo_light_url: kit.logo_light_url || null, logo_dark_url: kit.logo_dark_url || null,
+        color_primary: kit.color_primary || null, color_accent: kit.color_accent || null,
+        footer_text: kit.footer_text || null,
+      }], { returning: false });
+      await log(agencyId, seatId, 'brand_kit_saved', { version });
+      return { version };
+    },
+
+    seats: async (agencyId) => db.select('agency_seats',
+      `agency_id=eq.${q(agencyId)}&select=id,email,name,role,status,created_at&order=created_at.asc`),
+    addSeat: async (agencyId, seatId, { email, name, role }) => {
+      const [row] = await db.insert('agency_seats', [{ agency_id: agencyId, email, name: name || null, role: role || 'am' }]);
+      await log(agencyId, seatId, 'seat_invited', { email, role: role || 'am' });
+      return row;
+    },
+    updateSeat: async (agencyId, seatId, targetSeatId, patch) => {
+      const allowed = {};
+      if (patch.role) allowed.role = patch.role;
+      if (patch.status) allowed.status = patch.status;
+      await db.update('agency_seats', `id=eq.${q(targetSeatId)}&agency_id=eq.${q(agencyId)}`, allowed);
+      await log(agencyId, seatId, 'seat_updated', { seat_id: targetSeatId, ...allowed });
+    },
+
+    credits: async (agencyId) => {
+      const [bal, events] = await Promise.all([
+        db.select('agency_credit_balance', `agency_id=eq.${q(agencyId)}`, { single: true }),
+        db.select('audit_credit_events', `agency_id=eq.${q(agencyId)}&select=delta,reason,created_at&order=created_at.desc&limit=50`),
+      ]);
+      return { balance: bal ? bal.balance : 0, events: events || [] };
+    },
+
+    auditLog: async (agencyId) => db.select('agency_audit_log',
+      `agency_id=eq.${q(agencyId)}&select=event,detail,created_at,seat:agency_seats(name,email)&order=created_at.desc&limit=100`),
+  };
+}
+
 // ---------------------------------------------------------------- auth (Supabase session bridge)
 function authStore(db) {
   return {
@@ -269,4 +416,4 @@ function authStore(db) {
   };
 }
 
-module.exports = { workerStore, webStore, executorStore, billingStore, opsStore, dashStore, authStore };
+module.exports = { workerStore, webStore, executorStore, billingStore, opsStore, dashStore, agencyStore, authStore };
