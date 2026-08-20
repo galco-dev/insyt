@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import {
   LayoutGrid, ListChecks, FileCheck2, Palette, Users, ArrowRight, Undo2, Copy, Check, X, Zap,
+  Building2, Plus, Pause, Play, Trash2,
 } from 'lucide-react';
 import { api, isDemo, demoHref } from '../lib/api.js';
 import { RouterProvider, useRouter, Link } from '../lib/router.jsx';
@@ -16,6 +17,7 @@ const NAV = [
   { to: '/app/agency', label: 'Portfolio', icon: LayoutGrid },
   { to: '/app/agency/triage', label: 'Triage', icon: ListChecks },
   { to: '/app/agency/review', label: 'Review', icon: FileCheck2 },
+  { to: '/app/agency/accounts', label: 'Accounts', icon: Building2 },
   { to: '/app/agency/brand', label: 'Brand', icon: Palette },
   { to: '/app/agency/seats', label: 'Seats', icon: Users },
 ];
@@ -249,6 +251,138 @@ function Review() {
   );
 }
 
+// ---------------------------------------------------------------- accounts + billing
+
+const ACC_STATUS = {
+  active: { label: 'active', cls: 'bg-success-tint text-success' },
+  pending: { label: 'awaiting Google connection', cls: 'bg-info-tint text-info' },
+  paused: { label: 'paused — not checked, not billed', cls: 'bg-neutral-100 text-neutral-900' },
+};
+
+function AccountRow({ a, onAction }) {
+  const [busy, setBusy] = useState(false);
+  const [gone, setGone] = useState(false);
+  const [status, setStatus] = useState(a.status);
+  async function act(kind) {
+    setBusy(true);
+    try {
+      await api(`/api/agency/accounts/${a.id}/${kind}`, { method: 'POST', body: {} });
+      if (kind === 'remove') setGone(true);
+      else setStatus(kind === 'pause' ? 'paused' : 'active');
+      onAction();
+    } catch { /* row unchanged */ }
+    setBusy(false);
+  }
+  if (gone) {
+    return (
+      <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
+        <Check size={15} className="text-success" aria-hidden />
+        {a.display_name} removed — billing stops at the end of this cycle; its history and ledger stay readable.
+      </Card>
+    );
+  }
+  const st = ACC_STATUS[status] || ACC_STATUS.active;
+  return (
+    <Card className="flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-body font-semibold">{a.display_name}</span>
+          <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', st.cls)}>{st.label}</span>
+        </div>
+        <div className="mt-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900">
+          {a.seat ? a.seat.name : 'Unassigned'} · {a.report_register}{a.brief_only ? ' · brief-only' : ''} · added {new Date(a.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+        </div>
+      </div>
+      <div className="flex shrink-0 gap-2">
+        {status === 'paused'
+          ? <Button variant="secondary" onClick={() => act('resume')} disabled={busy} className="!px-3 !py-2"><Play size={13} aria-hidden /> Resume</Button>
+          : <Button variant="secondary" onClick={() => act('pause')} disabled={busy} className="!px-3 !py-2"><Pause size={13} aria-hidden /> Pause</Button>}
+        <Button variant="ghost" onClick={() => act('remove')} disabled={busy} className="!py-2"><Trash2 size={13} aria-hidden /> Remove</Button>
+      </div>
+    </Card>
+  );
+}
+
+function Accounts() {
+  const { data, error } = useAgency('/api/agency/accounts');
+  const [bill, setBill] = useState(null);
+  const [name, setName] = useState('');
+  const [added, setAdded] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const refreshBilling = () => api('/api/agency/billing').then(setBill).catch(() => {});
+  useEffect(() => { refreshBilling(); }, []);
+  if (error) return <ErrorNote message={error.message} />;
+  if (!data) return <Spinner label="Loading accounts" />;
+
+  async function add() {
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      const r = await api('/api/agency/accounts', { method: 'POST', body: { display_name: name.trim() } });
+      setAdded((xs) => [...xs, r.account || { id: `new-${xs.length}`, display_name: name.trim(), status: 'pending', created_at: new Date().toISOString() }]);
+      setName('');
+      refreshBilling();
+    } catch { /* keep form */ }
+    setBusy(false);
+  }
+
+  const rows = [...(data.accounts || []), ...added];
+
+  return (
+    <div>
+      <MonoLabel>Accounts</MonoLabel>
+      <h1 className="mt-1 text-h3 tracking-tight">Start with one. Add the rest when it earns it.</h1>
+
+      {bill && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <Card className="p-4">
+            <MonoLabel>This cycle</MonoLabel>
+            <div className="mt-1 text-h3">${bill.total.toLocaleString()}<span className="text-small text-neutral-900">/mo</span></div>
+            <div className="mt-1 text-small text-neutral-900">{bill.accounts} billable × ${bill.rate} (band {bill.band}) + ${bill.platformFee} platform</div>
+          </Card>
+          <Card className="p-4">
+            <MonoLabel>Add an account today</MonoLabel>
+            <div className="mt-1 text-h3">${bill.add_today_prorated}</div>
+            <div className="mt-1 text-small text-neutral-900">prorated for the {bill.cycle.daysRemaining} days left in this cycle, then it joins the normal invoice</div>
+          </Card>
+          <Card className="p-4">
+            <MonoLabel>Band position</MonoLabel>
+            <div className="mt-1 text-h3">${bill.rate}<span className="text-small text-neutral-900">/account</span></div>
+            <div className="mt-1 text-small text-neutral-900">
+              {bill.accounts <= 10 ? `From account 11 every account drops to $39 — automatically.` : bill.accounts <= 30 ? `From account 31 every account drops to $35 — automatically.` : 'Best rate — applied to the whole portfolio.'}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      <div className="mt-5 flex max-w-m2 overflow-hidden rounded border border-neutral-500 bg-white focus-within:border-accent">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="Client name — e.g. Harbor Clinic"
+          className="w-full bg-transparent px-4 py-3 text-small outline-none placeholder:text-neutral-800"
+          aria-label="New account name"
+        />
+        <button type="button" onClick={add} disabled={busy} className="flex items-center gap-1.5 whitespace-nowrap bg-accent px-4 text-small font-medium text-white disabled:opacity-40">
+          <Plus size={14} aria-hidden /> Add account
+        </button>
+      </div>
+      <p className="mt-2 max-w-[72ch] text-tiny text-neutral-900">
+        A new account starts as "awaiting Google connection" — connect its Ads/GA4/GTM access (or send the client an access request) and the first audit runs the same day. Pause an account any time: paused accounts keep their full history but are not checked and not billed.
+      </p>
+
+      <div className="mt-5 flex flex-col gap-2">
+        {rows.map((a) => <AccountRow key={a.id} a={a} onAction={refreshBilling} />)}
+      </div>
+
+      <p className="mt-6 max-w-[76ch] border-t border-neutral-200 pt-4 text-tiny text-neutral-900">
+        What we bill you is the whole money story here. The platform never asks what you charge your clients, never stores your client fees, and takes no share of them — your commercial relationship with your clients is yours alone.
+      </p>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- brand kit
 
 function Brand() {
@@ -285,7 +419,9 @@ function Brand() {
       <div>
         <MonoLabel>Brand kit {kit.version ? `· v${kit.version}` : ''}</MonoLabel>
         <h1 className="mt-1 text-h3 tracking-tight">Your reports, your name on them</h1>
-        <p className="mt-1 text-small text-neutral-900">Versioned — a rebrand never alters reports already in client hands.</p>
+        <p className="mt-1 text-small text-neutral-900">
+          The kit applies to everything your clients see: the report web view, the PDF, and (Top tier) the portal on your own domain. This console stays Insyt-branded — it&apos;s your back office. Versioned: a rebrand never alters reports already in client hands.
+        </p>
         <div className="mt-5 flex flex-col gap-4">
           {field('Report display name', 'display_name')}
           <div className="grid grid-cols-2 gap-4">
@@ -369,6 +505,7 @@ function AgencyRoutes() {
   let screen = <Portfolio />;
   if (path === '/app/agency/triage') screen = <Triage />;
   if (path === '/app/agency/review') screen = <Review />;
+  if (path === '/app/agency/accounts') screen = <Accounts />;
   if (path === '/app/agency/brand') screen = <Brand />;
   if (path === '/app/agency/seats') screen = <Seats />;
 
