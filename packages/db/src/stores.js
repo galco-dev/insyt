@@ -256,6 +256,7 @@ function dashStore(db) {
 // agency_audit_log with the acting seat — the agency's own dispute record.
 function agencyStore(db) {
   const { healthScore } = require('../../rules/src/engine');
+  const { pace, sortPacing, targetStatus } = require('../../pacing/src/pacing');
   const log = async (agencyId, seatId, event, detail) => {
     await db.insert('agency_audit_log', [{ agency_id: agencyId, seat_id: seatId, event, detail: detail || {} }], { returning: false }).catch(() => {});
   };
@@ -308,9 +309,11 @@ function agencyStore(db) {
       const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
       const rows = await db.select('changes',
-        `tenant_id=in.(${ids})&status=eq.proposed&select=id,tenant_id,before,after,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name)&order=created_at.asc&limit=200`);
+        `tenant_id=in.(${ids})&status=eq.proposed&select=id,tenant_id,before,after,snoozed_until,snooze_reason,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name)&order=created_at.asc&limit=200`);
       return rows.map((r) => ({
         id: r.id,
+        snoozed_until: r.snoozed_until || null,
+        snooze_reason: r.snooze_reason || null,
         account: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].display_name : r.tenant_id,
         account_tenant: r.tenant_id,
         brief_only: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].brief_only : false,
@@ -348,6 +351,89 @@ function agencyStore(db) {
         bidding: c.bidding,
       }));
     },
+    // ---- P0: budget pacing + performance targets (agency's OWN operating
+    // targets — never client fees; that principle is binding).
+    pacing: async (agencyId, nowIso) => {
+      const now = nowIso || new Date().toISOString();
+      const monthStart = `${now.slice(0, 8)}01`;
+      const sevenAgo = new Date(Date.parse(now) - 7 * 86_400_000).toISOString().slice(0, 10);
+      const accounts = await db.select('agency_accounts',
+        `agency_id=eq.${q(agencyId)}&status=eq.active&select=id,tenant_id,display_name`);
+      if (!accounts.length) return [];
+      const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      const [targets, spend] = await Promise.all([
+        db.select('account_targets', `tenant_id=in.(${ids})&select=*`),
+        db.select('spend_daily', `tenant_id=in.(${ids})&date=gte.${q(monthStart)}&select=tenant_id,date,spend_usd,conversions,conversion_value_usd`),
+      ]);
+      const tByTenant = Object.fromEntries((targets || []).map((t) => [t.tenant_id, t]));
+      const rows = accounts.map((a) => {
+        const days = (spend || []).filter((s) => s.tenant_id === a.tenant_id);
+        const sum = (k, from) => days.filter((s) => !from || s.date >= from).reduce((n, s) => n + Number(s[k] || 0), 0);
+        const t = tByTenant[a.tenant_id] || {};
+        return {
+          account_id: a.id,
+          account: a.display_name,
+          targets: { monthly_budget_usd: t.monthly_budget_usd || null, cpa_target_usd: t.cpa_target_usd || null, roas_target: t.roas_target || null },
+          pacing: pace({ monthlyBudgetUsd: Number(t.monthly_budget_usd) || null, mtdSpendUsd: sum('spend_usd'), last7SpendUsd: sum('spend_usd', sevenAgo), nowIso: now }),
+          performance: targetStatus({
+            cpaTargetUsd: t.cpa_target_usd != null ? Number(t.cpa_target_usd) : null,
+            roasTarget: t.roas_target != null ? Number(t.roas_target) : null,
+            spendUsd: sum('spend_usd'), conversions: sum('conversions'), conversionValueUsd: sum('conversion_value_usd'),
+          }),
+        };
+      });
+      return sortPacing(rows);
+    },
+    setTargets: async (agencyId, seatId, accountId, patch) => {
+      const acc = await db.select('agency_accounts',
+        `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}&select=tenant_id`, { single: true });
+      if (!acc) return null;
+      const row = {
+        tenant_id: acc.tenant_id,
+        monthly_budget_usd: patch.monthly_budget_usd != null ? patch.monthly_budget_usd : null,
+        cpa_target_usd: patch.cpa_target_usd != null ? patch.cpa_target_usd : null,
+        roas_target: patch.roas_target != null ? patch.roas_target : null,
+        set_by: seatId, updated_at: new Date().toISOString(),
+      };
+      await db.upsert('account_targets', [row], 'tenant_id');
+      await log(agencyId, seatId, 'targets_set', { account_id: accountId, ...patch });
+      return row;
+    },
+
+    // ---- P0: alert stream (daily digest renders from the same rows).
+    alertsFor: async (agencyId) => {
+      const accounts = await db.select('agency_accounts',
+        `agency_id=eq.${q(agencyId)}&status=in.(pending,active)&select=tenant_id,display_name`);
+      if (!accounts.length) return [];
+      const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a.display_name]));
+      const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      const rows = await db.select('alerts',
+        `tenant_id=in.(${ids})&select=id,tenant_id,severity,kind,title,detail,campaign_ref,created_at,acked_at,acked_seat:agency_seats(name)&order=created_at.desc&limit=100`);
+      return rows.map((r) => ({ ...r, account: nameByTenant[r.tenant_id] }));
+    },
+    ackAlert: async (agencyId, seatId, alertId) => {
+      await db.update('alerts', `id=eq.${q(alertId)}`, { acked_by: seatId, acked_at: new Date().toISOString() });
+      await log(agencyId, seatId, 'alert_acked', { alert_id: alertId });
+    },
+
+    // ---- P0: triage snooze + batch approval. Batch logs every id
+    // individually — the audit trail never compresses.
+    snoozeChange: async (agencyId, seatId, changeId, days, reason) => {
+      const until = new Date(Date.now() + (days || 7) * 86_400_000).toISOString();
+      await db.update('changes', `id=eq.${q(changeId)}`, { snoozed_until: until, snoozed_by: seatId, snooze_reason: reason || null });
+      await log(agencyId, seatId, 'change_snoozed', { change_id: changeId, days: days || 7, reason: reason || null });
+      return { until };
+    },
+    approveBatch: async (agencyId, seatId, changeIds) => {
+      let n = 0;
+      for (const id of changeIds || []) {
+        await db.update('changes', `id=eq.${q(id)}`, { status: 'approved' });
+        await log(agencyId, seatId, 'change_approved', { change_id: id, batch: true });
+        n += 1;
+      }
+      return { approved: n };
+    },
+
     approveChange: async (agencyId, seatId, changeId) => {
       await db.update('changes', `id=eq.${q(changeId)}`, { status: 'approved' });
       await log(agencyId, seatId, 'change_approved', { change_id: changeId });
