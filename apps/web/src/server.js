@@ -202,10 +202,12 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
         const sub = path.slice('/api/app'.length) || '/';
         if (req.method === 'GET') {
           if (sub === '/home') {
-            const [health, pending, cumulative, reports] = await Promise.all([
+            const [health, pending, cumulative, reports, streak, plan] = await Promise.all([
               dashStore.healthLatest(t), dashStore.pendingApprovals(t), dashStore.cumulative(t), dashStore.reports(t),
+              dashStore.approvalStreak ? dashStore.approvalStreak(t) : 0,
+              dashStore.planPosition ? dashStore.planPosition(t) : null,
             ]);
-            return json(res, 200, { health, pending, cumulative, reports });
+            return json(res, 200, { health, pending, cumulative, reports, streak, plan });
           }
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t) });
           if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t) });
