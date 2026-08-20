@@ -126,8 +126,40 @@ function dashStore(db) {
   const { healthScore } = require('../../rules/src/engine');
   return {
     healthLatest: async (tenantId) => {
-      const open = await db.select('findings', `tenant_id=eq.${q(tenantId)}&status=in.(open,approved,suspect)&select=severity,status`);
-      return { score: healthScore(open), trend: [] };
+      const [open, past] = await Promise.all([
+        db.select('findings', `tenant_id=eq.${q(tenantId)}&status=in.(open,approved,suspect)&select=severity,status`),
+        db.select('reports', `tenant_id=eq.${q(tenantId)}&select=created_at,findings_snapshot&order=created_at.desc&limit=8`).catch(() => []),
+      ]);
+      // Trend = health recomputed from each report's frozen snapshot, oldest first,
+      // so the sparkline always agrees with the numbers those reports showed.
+      const trend = (past || []).slice().reverse()
+        .map((r) => ({ at: r.created_at, score: healthScore(r.findings_snapshot || []) }));
+      return { score: healthScore(open), trend };
+    },
+    // Leading run of yes-answers (approved/applied) in the most recent changes,
+    // broken by a dismissal. Feeds the Autopilot graduation prompt (§12).
+    approvalStreak: async (tenantId) => {
+      const rows = await db.select('changes',
+        `tenant_id=eq.${q(tenantId)}&status=in.(approved,applied,failed)&select=status&order=created_at.desc&limit=25`).catch(() => []);
+      let streak = 0;
+      for (const r of rows || []) {
+        if (r.status === 'approved' || r.status === 'applied') streak += 1;
+        else break;
+      }
+      return streak;
+    },
+    // Standing plan/size-band position for the dashboard header (§5 "standing state").
+    planPosition: async (tenantId) => {
+      const [sub, tenant] = await Promise.all([
+        db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status&limit=1`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band`, { single: true }).catch(() => null),
+      ]);
+      const labels = { core: 'Core', autopilot: 'Autopilot', scale: 'Scale' };
+      return {
+        tier: sub ? sub.tier : null,
+        label: sub ? (labels[sub.tier] || sub.tier) : 'Free check',
+        band: (tenant && tenant.size_band) || '4k',
+      };
     },
     pendingApprovals: async (tenantId) => {
       const rows = await db.select('changes',

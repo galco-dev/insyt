@@ -25,10 +25,20 @@ const reports = [
 
 const DEMO = {
   'GET /api/app/home': {
-    health: { score: 58, trend: [] },
+    health: {
+      score: 58,
+      trend: [
+        { at: '2026-07-27T07:00:00Z', score: 41 },
+        { at: '2026-08-03T07:00:00Z', score: 44 },
+        { at: '2026-08-10T07:00:00Z', score: 52 },
+        { at: '2026-08-17T07:00:00Z', score: 58 },
+      ],
+    },
     pending,
     cumulative: { fixes: 6, waste_removed_usd: 730 },
     reports,
+    streak: 11,
+    plan: { tier: 'core', label: 'Core', band: '4k' },
   },
   'GET /api/app/approvals': { pending },
   'GET /api/app/ledger': { entries: ledger },
