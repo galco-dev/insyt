@@ -17,10 +17,15 @@ const BLOCKLIST = [
 // Only these trees hold customer-facing copy.
 const COPY_GLOBS = ['apps/web/copy', 'apps/worker/templates', 'packages/emails', 'apps/web/client/src'];
 
+// Agency surfaces invert the register (master §4.3): full technical
+// vocabulary internally, so the blocklist does not apply there.
+const EXEMPT = [path.join('apps', 'web', 'client', 'src', 'agency')];
+
 function* walk(dir) {
   if (!fs.existsSync(dir)) return;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, entry.name);
+    if (EXEMPT.some((e) => p.includes(e))) continue;
     if (entry.isDirectory()) yield* walk(p);
     else if (/\.(json|html|txt|mdx?|tsx?|jsx?)$/.test(entry.name)) yield p;
   }
