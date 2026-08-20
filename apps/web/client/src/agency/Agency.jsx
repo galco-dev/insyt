@@ -3,11 +3,11 @@
 // tree is exempt from the customer jargon lint). Binding rule everywhere:
 // no auto-apply, no auto-publish — every action is an explicit seat click.
 
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState, createContext } from 'react';
 import clsx from 'clsx';
 import {
   LayoutGrid, ListChecks, FileCheck2, Palette, Users, ArrowRight, Undo2, Copy, Check, X, Zap,
-  Building2, Plus, Pause, Play, Trash2,
+  Building2, Plus, Pause, Play, Trash2, Search,
 } from 'lucide-react';
 import { api, isDemo, demoHref } from '../lib/api.js';
 import { RouterProvider, useRouter, Link } from '../lib/router.jsx';
@@ -31,6 +31,132 @@ function useAgency(path) {
   return { data, error };
 }
 
+// ---------------------------------------------------------------- scope
+// The scope bar is a LENS, not navigation: Account > Campaign narrows every
+// screen in place (the stream stays money-sorted). Default is always
+// All accounts — the cross-portfolio stream is the product. Scope rides in
+// the URL so an account view is bookmarkable for the weekly client call.
+
+const ScopeContext = createContext({ scope: { account: null, campaign: null }, setScope: () => {}, accounts: [], campaigns: [] });
+const useScope = () => useContext(ScopeContext);
+
+function readScopeFromUrl() {
+  const p = new URLSearchParams(window.location.search);
+  return { account: p.get('account') || null, campaign: p.get('campaign') || null };
+}
+
+function writeScopeToUrl(scope) {
+  const p = new URLSearchParams(window.location.search);
+  ['account', 'campaign'].forEach((k) => (scope[k] ? p.set(k, scope[k]) : p.delete(k)));
+  const qs = p.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+}
+
+function ScopeBar() {
+  const { scope, setScope, accounts, campaigns } = useScope();
+  const [q, setQ] = useState('');
+
+  const accountName = (id) => (accounts.find((a) => a.id === id) || {}).display_name;
+  const accountCampaigns = scope.account ? campaigns.filter((c) => c.account_id === scope.account) : [];
+
+  const results = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return [];
+    const acc = accounts
+      .filter((a) => a.display_name.toLowerCase().includes(needle))
+      .map((a) => ({ kind: 'account', label: a.display_name, sub: 'account', account: a.id, campaign: null }));
+    const camp = campaigns
+      .filter((c) => c.name.toLowerCase().includes(needle) || c.google_campaign_id === needle)
+      .map((c) => ({ kind: 'campaign', label: c.name, sub: `${c.account} · #${c.google_campaign_id}`, account: c.account_id, campaign: c.google_campaign_id }));
+    return [...acc, ...camp].slice(0, 8);
+  }, [q, accounts, campaigns]);
+
+  const pick = (r) => { setScope({ account: r.account, campaign: r.campaign }); setQ(''); };
+
+  return (
+    <div className="border-b border-neutral-200 bg-neutral-50">
+      <div className="mx-auto flex max-w-xl2 flex-wrap items-center gap-2 px-5 py-2">
+        <select
+          value={scope.account || ''}
+          onChange={(e) => setScope({ account: e.target.value || null, campaign: null })}
+          className="rounded border border-neutral-400 bg-white px-2.5 py-1.5 text-small outline-none focus:border-accent"
+          aria-label="Account scope"
+        >
+          <option value="">All accounts</option>
+          {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
+        </select>
+        <span className="text-neutral-800" aria-hidden>›</span>
+        <select
+          value={scope.campaign || ''}
+          onChange={(e) => setScope({ account: scope.account, campaign: e.target.value || null })}
+          disabled={!scope.account}
+          className="rounded border border-neutral-400 bg-white px-2.5 py-1.5 text-small outline-none focus:border-accent disabled:opacity-50"
+          aria-label="Campaign scope"
+        >
+          <option value="">{scope.account ? 'All campaigns' : 'Pick an account first'}</option>
+          {accountCampaigns.map((c) => (
+            <option key={c.google_campaign_id} value={c.google_campaign_id}>
+              {c.name} · #{c.google_campaign_id}{c.status === 'paused' ? ' (paused)' : ''}
+            </option>
+          ))}
+        </select>
+        {(scope.account || scope.campaign) && (
+          <button type="button" onClick={() => setScope({ account: null, campaign: null })} className="text-small text-neutral-900 underline underline-offset-2">
+            Clear
+          </button>
+        )}
+        <div className="relative ml-auto min-w-[220px] flex-1 sm:max-w-[320px]">
+          <div className="flex items-center gap-2 rounded border border-neutral-400 bg-white px-2.5 py-1.5">
+            <Search size={13} className="shrink-0 text-neutral-800" aria-hidden />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Find account or campaign — name or ID"
+              className="w-full bg-transparent text-small outline-none placeholder:text-neutral-800"
+              aria-label="Search accounts and campaigns"
+            />
+          </div>
+          {results.length > 0 && (
+            <div className="absolute inset-x-0 top-full z-40 mt-1 overflow-hidden rounded border border-neutral-300 bg-white shadow-lg">
+              {results.map((r, i) => (
+                <button
+                  key={`${r.kind}-${r.account}-${r.campaign}-${i}`}
+                  type="button"
+                  onClick={() => pick(r)}
+                  className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-small hover:bg-neutral-50"
+                >
+                  <span className="truncate font-medium">{r.label}</span>
+                  <span className="shrink-0 font-mono text-tiny text-neutral-900">{r.sub}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {(scope.account || scope.campaign) && (
+        <div className="mx-auto max-w-xl2 px-5 pb-2 font-mono text-tiny uppercase tracking-wide text-neutral-900">
+          Scoped to {accountName(scope.account) || 'account'}
+          {scope.campaign && ` › ${(campaigns.find((c) => c.google_campaign_id === scope.campaign) || {}).name || scope.campaign} · #${scope.campaign}`}
+          {' — every tab shows only this'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Filter helper shared by scoped screens: account scope matches by display
+// name (items carry account names), campaign scope splits campaign-specific
+// from account-wide items (tracking findings affect every campaign).
+function applyScope(items, scope, accounts) {
+  const name = scope.account ? (accounts.find((a) => a.id === scope.account) || {}).display_name : null;
+  const inAccount = name ? items.filter((i) => i.account === name) : items;
+  if (!scope.campaign) return { items: inAccount, accountWide: null };
+  return {
+    items: inAccount.filter((i) => i.campaign_ref === scope.campaign),
+    accountWide: inAccount.filter((i) => !i.campaign_ref),
+  };
+}
+
 // ---------------------------------------------------------------- portfolio
 
 function HealthPill({ score }) {
@@ -41,9 +167,11 @@ function HealthPill({ score }) {
 function Portfolio() {
   const { data, error } = useAgency('/api/agency/portfolio');
   const { data: credits } = useAgency('/api/agency/credits');
+  const { scope, accounts: scopeAccounts } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading portfolio" />;
-  const accounts = data.accounts || [];
+  const scopedName = scope.account ? ((scopeAccounts.find((a) => a.id === scope.account) || {}).display_name || null) : null;
+  const accounts = (data.accounts || []).filter((a) => !scopedName || a.name === scopedName);
   const attention = accounts.filter((a) => a.critical > 0 || a.pending_changes > 0).length;
 
   return (
@@ -51,7 +179,7 @@ function Portfolio() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <MonoLabel>Portfolio</MonoLabel>
-          <h1 className="mt-1 text-h3 tracking-tight">{accounts.length} accounts · {attention} need attention</h1>
+          <h1 className="mt-1 text-h3 tracking-tight">{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'} · {attention} {attention === 1 ? 'needs' : 'need'} attention</h1>
         </div>
         {credits && (
           <div className="flex items-center gap-2 rounded border border-neutral-300 bg-white px-3 py-2 text-small">
@@ -144,6 +272,11 @@ function TriageItem({ item, index, onDone }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
           <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">{item.account}</span>
+          {item.campaign_name && (
+            <span className="rounded bg-info-tint px-2 py-0.5 font-mono text-tiny text-info" title={item.campaign_ref ? `Campaign #${item.campaign_ref}` : undefined}>
+              {item.campaign_name}
+            </span>
+          )}
           <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">{item.rule_id} · L{item.layer}</span>
         </div>
         {item.money_monthly_usd && <span className="text-small font-semibold">~${item.money_monthly_usd}/mo</span>}
@@ -171,21 +304,41 @@ function TriageItem({ item, index, onDone }) {
 function Triage() {
   const { data, error } = useAgency('/api/agency/triage');
   const [, force] = useState(0);
+  const { scope, accounts } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading triage queue" />;
-  const queue = data.queue || [];
+  const { items: queue, accountWide } = applyScope(data.queue || [], scope, accounts);
+  const scopedTitle = scope.campaign
+    ? `${queue.length} for this campaign, biggest money first`
+    : `${queue.length} proposed changes, biggest money first`;
   return (
     <div>
       <MonoLabel>Triage</MonoLabel>
-      <h1 className="mt-1 text-h3 tracking-tight">{queue.length} proposed changes, biggest money first</h1>
+      <h1 className="mt-1 text-h3 tracking-tight">{scopedTitle}</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
         Every change ships both ways: Apply (our executor runs it through the staged workspace → diff → publish → verify path) or Copy fix brief for manual execution. Nothing is ever auto-applied. Every decision here lands in the per-seat audit log.
       </p>
       {queue.length === 0 ? (
-        <div className="mt-5"><EmptyState title="Queue is clear" body="New findings from the weekly runs land here across every account." /></div>
+        <div className="mt-5">
+          <EmptyState
+            title={scope.account ? 'Nothing in this scope' : 'Queue is clear'}
+            body={scope.account ? 'No proposed changes match the current scope — clear it to see the full stream.' : 'New findings from the weekly runs land here across every account.'}
+          />
+        </div>
       ) : (
         <div className="mt-5 flex flex-col gap-3">
           {queue.map((item, i) => <TriageItem key={item.id} item={item} index={i} onDone={() => force((n) => n + 1)} />)}
+        </div>
+      )}
+      {accountWide && accountWide.length > 0 && (
+        <div className="mt-8">
+          <MonoLabel>Account-wide — affects this campaign too</MonoLabel>
+          <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
+            Tracking and account-level issues aren&apos;t tied to one campaign, but they distort this campaign&apos;s data all the same.
+          </p>
+          <div className="mt-3 flex flex-col gap-3">
+            {accountWide.map((item, i) => <TriageItem key={item.id} item={item} index={i} onDone={() => force((n) => n + 1)} />)}
+          </div>
         </div>
       )}
     </div>
@@ -232,9 +385,11 @@ function ReviewItem({ r }) {
 
 function Review() {
   const { data, error } = useAgency('/api/agency/review');
+  const { scope, accounts } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading review queue" />;
-  const queue = data.queue || [];
+  // Reports are account-level renders — campaign scope narrows to the account.
+  const { items: queue } = applyScope(data.queue || [], { account: scope.account, campaign: null }, accounts);
   return (
     <div>
       <MonoLabel>Report review</MonoLabel>
@@ -501,6 +656,18 @@ function Seats() {
 function AgencyRoutes() {
   const { path } = useRouter();
   const { data: me, error } = useAgency('/api/agency/me');
+  const { data: accData } = useAgency('/api/agency/accounts');
+  const { data: campData } = useAgency('/api/agency/campaigns');
+  const [scope, setScopeState] = useState(readScopeFromUrl);
+  const setScope = (next) => { setScopeState(next); writeScopeToUrl(next); };
+  // Tab links replace the URL without query params — re-stamp the scope so a
+  // scoped view stays bookmarkable wherever you navigate.
+  useEffect(() => { writeScopeToUrl(scope); }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scopeValue = useMemo(() => ({
+    scope, setScope,
+    accounts: (accData && accData.accounts) || [],
+    campaigns: (campData && campData.campaigns) || [],
+  }), [scope, accData, campData]);
 
   let screen = <Portfolio />;
   if (path === '/app/agency/triage') screen = <Triage />;
@@ -528,6 +695,7 @@ function AgencyRoutes() {
   }
 
   return (
+    <ScopeContext.Provider value={scopeValue}>
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-neutral-300 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-xl2 items-center justify-between px-5 py-3.5">
@@ -556,12 +724,14 @@ function AgencyRoutes() {
           })}
         </nav>
       </header>
+      <ScopeBar />
       <main className="mx-auto max-w-xl2 px-5 pb-24 pt-8">{screen}</main>
       <footer className="mx-auto max-w-xl2 px-5 pb-10 text-tiny text-neutral-900">
         <Undo2 size={12} className="mr-1 inline" aria-hidden />
         No auto-apply, ever. Changes land on client accounts under your name — every one waits for a seat&apos;s explicit approval, and every applied change keeps a one-tap rollback.
       </footer>
     </div>
+    </ScopeContext.Provider>
   );
 }
 
