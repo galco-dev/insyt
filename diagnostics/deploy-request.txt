@@ -1,1 +1,1 @@
-deploy: agency P0s — budget pacing tab, alert stream, batch approve + snooze in triage, per-account targets (2026-08-20)
+deploy retry: agency P0s — budget pacing tab, alert stream, batch approve + snooze in triage, per-account targets (2026-08-20, attempt 2 after Railway upstream pause)
