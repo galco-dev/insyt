@@ -34,6 +34,10 @@ function fakeAgencyStore() {
     updateSeat: async (ag, seat, target, patch) => actions.push(['seat_up', target, patch.role]),
     credits: async () => ({ balance: 4, events: [] }),
     auditLog: async () => [{ event: 'change_approved' }],
+    accountsList: async () => [{ id: 'a1', display_name: 'Glow Studio', status: 'active' }, { id: 'a2', display_name: 'New Client', status: 'pending' }],
+    addAccount: async (ag, seat, { display_name }) => { actions.push(['acc_add', display_name]); return { id: 'a9', display_name, status: 'pending' }; },
+    setAccountStatus: async (ag, seat, id, status) => actions.push(['acc_status', id, status]),
+    billing: async () => ({ accounts: 2, rate: 45, band: '1–10', accountsSum: 90, platformFee: 249, total: 339, tier: 'mid', cycle: { daysRemaining: 16, daysInPeriod: 31 }, add_today_prorated: 23.23 }),
   };
 }
 
@@ -86,6 +90,37 @@ test('agency: role gates — readonly cannot write, am can approve, admin manage
     assert.strictEqual(add.status, 200);
     assert.strictEqual((await post('tn-admin', '/api/agency/seats/s2', { role: 'admin' })).status, 200);
     assert.deepStrictEqual(ags.actions.at(-1), ['seat_up', 's2', 'admin']);
+  });
+});
+
+test('agency: account lifecycle — reads for all, add/pause/resume/remove admin-only, billing estimate', async () => {
+  const ags = fakeAgencyStore();
+  await withApp({ store: baseStore(), crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {
+    const post = (tenant, path, body) => fetch(`${base}${path}`, {
+      method: 'POST', headers: { cookie: cookie(tenant), 'content-type': 'application/json' }, body: JSON.stringify(body || {}),
+    });
+
+    const list = await (await fetch(`${base}/api/agency/accounts`, { headers: { cookie: cookie('tn-am') } })).json();
+    assert.strictEqual(list.accounts.length, 2);
+
+    const bill = await (await fetch(`${base}/api/agency/billing`, { headers: { cookie: cookie('tn-ro') } })).json();
+    assert.strictEqual(bill.total, 339);
+    assert.strictEqual(bill.add_today_prorated, 23.23);
+
+    // AM cannot manage the roster; admin can.
+    assert.strictEqual((await post('tn-am', '/api/agency/accounts', { display_name: 'X' })).status, 403);
+    assert.strictEqual((await post('tn-admin', '/api/agency/accounts', {})).status, 400);
+    const add = await post('tn-admin', '/api/agency/accounts', { display_name: 'Harbor Clinic' });
+    assert.strictEqual(add.status, 200);
+    assert.deepStrictEqual(ags.actions.at(-1), ['acc_add', 'Harbor Clinic']);
+
+    assert.strictEqual((await post('tn-admin', '/api/agency/accounts/a1/pause')).status, 200);
+    assert.deepStrictEqual(ags.actions.at(-1), ['acc_status', 'a1', 'paused']);
+    assert.strictEqual((await post('tn-admin', '/api/agency/accounts/a1/resume')).status, 200);
+    assert.deepStrictEqual(ags.actions.at(-1), ['acc_status', 'a1', 'active']);
+    assert.strictEqual((await post('tn-admin', '/api/agency/accounts/a1/remove')).status, 200);
+    assert.deepStrictEqual(ags.actions.at(-1), ['acc_status', 'a1', 'removed']);
+    assert.strictEqual((await post('tn-am', '/api/agency/accounts/a1/pause')).status, 403);
   });
 });
 
