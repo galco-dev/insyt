@@ -65,6 +65,25 @@ export const AGENCY_DEMO = {
       { delta: 2, reason: 'purchase', created_at: '2026-08-15T09:30:00Z' },
     ],
   },
+  'GET /api/agency/accounts': {
+    accounts: [
+      { id: 'a1', display_name: 'Glow Studio', status: 'active', report_register: 'simple', brief_only: false, seat: { name: 'Mo Haddad' }, created_at: '2026-07-02T09:00:00Z' },
+      { id: 'a2', display_name: 'Marina Dental', status: 'active', report_register: 'simple', brief_only: false, seat: { name: 'Mo Haddad' }, created_at: '2026-07-02T09:10:00Z' },
+      { id: 'a3', display_name: 'Falcon Movers', status: 'active', report_register: 'technical', brief_only: true, seat: { name: 'Ana Barros' }, created_at: '2026-07-05T11:00:00Z' },
+      { id: 'a4', display_name: 'Oasis Fitness', status: 'active', report_register: 'simple', brief_only: false, seat: { name: 'Rita Kim' }, created_at: '2026-07-09T14:00:00Z' },
+      { id: 'a5', display_name: 'Palm Interiors', status: 'active', report_register: 'simple', brief_only: false, seat: { name: 'Rita Kim' }, created_at: '2026-07-15T10:00:00Z' },
+      { id: 'a6', display_name: 'Desert Rose Spa', status: 'active', report_register: 'simple', brief_only: false, seat: { name: 'Mo Haddad' }, created_at: '2026-07-21T09:00:00Z' },
+      { id: 'a7', display_name: 'Bluewater Yachts', status: 'active', report_register: 'technical', brief_only: true, seat: { name: 'Ana Barros' }, created_at: '2026-08-01T09:00:00Z' },
+      { id: 'a8', display_name: 'Cedar Kitchen', status: 'active', report_register: 'simple', brief_only: false, seat: { name: 'Rita Kim' }, created_at: '2026-08-04T09:00:00Z' },
+      { id: 'a9', display_name: 'Harbor Clinic', status: 'pending', report_register: 'simple', brief_only: false, seat: null, created_at: '2026-08-19T16:00:00Z' },
+      { id: 'a10', display_name: 'Old Town Motors', status: 'paused', report_register: 'simple', brief_only: false, seat: { name: 'Ana Barros' }, created_at: '2026-07-03T09:00:00Z' },
+    ],
+  },
+  'GET /api/agency/billing': {
+    accounts: 9, rate: 45, band: '1–10', accountsSum: 405, platformFee: 249, total: 654, tier: 'mid',
+    cycle: { start: '2026-08-05', end: '2026-09-05', daysInPeriod: 31, daysRemaining: 16 },
+    add_today_prorated: 23.23,
+  },
   'GET /api/agency/log': {
     entries: [
       { event: 'change_approved', detail: { change_id: 'chg-09' }, created_at: '2026-08-19T08:41:00Z', seat: { name: 'Mo Haddad' } },
