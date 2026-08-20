@@ -1,1 +1,1 @@
-deploy request 2026-08-20T07:00Z — mobile CRO: sticky glass app header + safe-area bottom nav (App.jsx) + report unlock bar safe-area (Report.jsx)
+deploy request 2026-08-20T11:30Z — dashboard gaps (trend sparkline, streak graduation, plan band) + funnel polish (?url= handoff, keyboard attrs, OAuth 3-step, unlock risk-reversal, annual toggle, micro-interactions, OG/favicon)
