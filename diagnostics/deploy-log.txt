@@ -1,4 +1,4 @@
-deploy transcript 2026-08-20T16:53:18Z
+deploy transcript 2026-08-20T17:08:03Z
 railway 5.41.2
 
 
@@ -30,23 +30,19 @@ All resources
 ===== web =====
 Indexing...
 Uploading...
-Deploys have been paused due to an upstream issue
-UP FAILED rc=1
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=bf5e5ea6-5f05-42fe-bd9d-de5ef1664323&
 
 ===== worker =====
 Indexing...
 Uploading...
-Deploys have been paused due to an upstream issue
-UP FAILED rc=1
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=bb24cdf9-6ff9-4d64-9025-f73238bc0f96&
 
 ===== poller =====
 Indexing...
 Uploading...
-Deploys have been paused due to an upstream issue
-UP FAILED rc=1
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=12620320-57c2-431f-9d09-e17f7bef90f3&
 
 ===== cron =====
 Indexing...
 Uploading...
-Deploys have been paused due to an upstream issue
-UP FAILED rc=1
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=53dd0943-809a-45c6-b3e5-95969af28cae&
