@@ -16,6 +16,7 @@ export default function Plan() {
   const [error, setError] = useState(null);
   const [note, setNote] = useState(null);
   const [busyTier, setBusyTier] = useState(null);
+  const [cadence, setCadence] = useState('annual'); // annual = 2 months free
 
   useEffect(() => { api('/api/app/plan').then((d) => setPlan(d.plan)).catch((e) => setError(e.message)); }, []);
 
@@ -25,7 +26,7 @@ export default function Plan() {
   async function subscribe(tier) {
     setBusyTier(tier); setNote(null);
     try {
-      const r = await api('/api/checkout/subscribe', { method: 'POST', body: { tier } });
+      const r = await api('/api/checkout/subscribe', { method: 'POST', body: { tier, cadence } });
       if (r.url) { window.location.href = r.url; return; }
       setNote(isDemo() ? 'Demo mode — checkout opens here once payments are connected.' : 'Payments are almost ready — try again shortly.');
     } catch (e) { setNote(e.message); }
@@ -40,7 +41,21 @@ export default function Plan() {
         The audit found the problems. A plan keeps finding them — and fixes what you approve, week after week.
       </p>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      <div className="mt-6 inline-flex rounded border border-neutral-500 bg-white p-0.5" role="group" aria-label="Billing period">
+        {[['annual', 'Annual — 2 months free'], ['monthly', 'Monthly']].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setCadence(value)}
+            aria-pressed={cadence === value}
+            className={`rounded px-4 py-2 text-small font-medium ${cadence === value ? 'bg-accent text-white' : 'text-neutral-900'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
         {plan.tiers.map((t) => (
           <Card key={t.tier} className={t.selected ? 'border-accent p-6 ring-1 ring-accent' : 'p-6'}>
             {t.selected && <MonoLabel className="!text-accent">Recommended for you</MonoLabel>}
@@ -48,6 +63,11 @@ export default function Plan() {
             <div className="mt-1 flex items-baseline gap-1">
               <span className="text-h3">${t.price_usd}</span>
               <span className="text-small text-neutral-900">/month</span>
+            </div>
+            <div className="mt-0.5 text-tiny text-neutral-900">
+              {cadence === 'annual'
+                ? `Billed $${(t.price_usd * 10).toLocaleString()} a year — you save $${(t.price_usd * 2).toLocaleString()}`
+                : 'Billed monthly. Switch to annual any time for 2 months free.'}
             </div>
             <ul className="mt-4 flex flex-col gap-2">
               {(TIER_LINES[t.tier] || []).map((line) => (

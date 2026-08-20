@@ -31,12 +31,26 @@ export default function Start() {
   const [strip, setStrip] = useState(null);
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
+  const autoRef = useRef(false);
 
   useEffect(() => () => clearInterval(pollRef.current), []);
 
-  async function begin() {
+  // Arriving from the marketing site's hero paste box (?url=…): start the
+  // check immediately — the visitor already typed their address once.
+  useEffect(() => {
+    if (autoRef.current) return;
+    const fromHero = new URLSearchParams(window.location.search).get('url');
+    if (fromHero && fromHero.trim()) {
+      autoRef.current = true;
+      setUrl(fromHero.trim());
+      setTimeout(() => begin(fromHero.trim()), 0);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function begin(given) {
+    const target = (typeof given === 'string' ? given : url).trim();
     setError(null);
-    if (!url.trim()) { setError('Type your website address — like glowstudio.ae'); return; }
+    if (!target) { setError('Type your website address — like glowstudio.ae'); return; }
     setState('crawling'); setStage(0);
     const stageTimer = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 2600);
 
@@ -45,7 +59,7 @@ export default function Start() {
       return;
     }
     try {
-      const { id } = await api('/api/crawl', { method: 'POST', body: { url: url.trim() } });
+      const { id } = await api('/api/crawl', { method: 'POST', body: { url: target } });
       pollRef.current = setInterval(async () => {
         try {
           const c = await api(`/api/crawl/${id}`);
@@ -84,6 +98,13 @@ export default function Start() {
               placeholder="yourwebsite.com"
               className="w-full bg-transparent px-4 py-3.5 text-body outline-none placeholder:text-neutral-800"
               aria-label="Your website address"
+              type="text"
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="url"
+              autoFocus
             />
             <button type="button" onClick={begin} className="flex items-center gap-2 whitespace-nowrap bg-accent px-5 text-small font-medium text-white">
               <Search size={15} aria-hidden /> Check my site
@@ -101,7 +122,7 @@ export default function Start() {
         <Card className="mx-auto mt-8 max-w-s2 p-6">
           <div className="flex items-center gap-3">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-400 border-t-accent" aria-hidden />
-            <div className="text-body font-medium">{STAGES[stage]}</div>
+            <div className="text-body font-medium" aria-live="polite">{STAGES[stage]}</div>
           </div>
           <div className="mt-4 h-1 overflow-hidden rounded-full bg-neutral-200">
             <div className="h-full bg-accent transition-all duration-1000" style={{ width: `${((stage + 1) / STAGES.length) * 90}%` }} />
@@ -136,10 +157,22 @@ export default function Start() {
                 Nothing ever changes without your approval.
               </p>
             </div>
+            <ol className="mt-4 flex flex-col gap-2 border-t border-neutral-200 pt-4">
+              {[
+                'You pick your Google account — one tap.',
+                'We read everything, look-only. Nothing changes.',
+                'Your full report is ready in about ten minutes.',
+              ].map((step, i) => (
+                <li key={step} className="flex items-start gap-2.5 text-small text-neutral-900">
+                  <span className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-neutral-100 font-mono text-tiny" aria-hidden>{i + 1}</span>
+                  {step}
+                </li>
+              ))}
+            </ol>
             <Button href={isDemo() ? '/app/confirm?demo=1' : '/auth/google/start?step=discovery'} className="mt-4 w-full">
               Continue with Google — run my free check
             </Button>
-            <p className="mt-2 text-center text-tiny text-neutral-900">Takes one tap. You choose the account.</p>
+            <p className="mt-2 text-center text-tiny text-neutral-900">You choose the account. Disconnect any time.</p>
           </Card>
         </div>
       )}
