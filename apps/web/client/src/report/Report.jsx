@@ -187,7 +187,7 @@ function UnlockBar({ visible }) {
     setBusy(false);
   }
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-300 bg-white/95 backdrop-blur">
+    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-300 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
       <div className="mx-auto flex max-w-l2 flex-col items-start gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-body font-semibold">{audit.unlock.line}</div>
