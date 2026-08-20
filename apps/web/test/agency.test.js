@@ -45,6 +45,18 @@ function fakeAgencyStore() {
     ackAlert: async (ag, seat, id) => actions.push(['ack', ag, seat, id]),
     snoozeChange: async (ag, seat, id, days, reason) => { actions.push(['snooze', id, days, reason]); return { until: '2026-08-27T00:00:00Z' }; },
     approveBatch: async (ag, seat, ids) => { ids.forEach((id) => actions.push(['approve', ag, seat, id])); return { approved: ids.length }; },
+    draftsFor: async () => [{ id: 'd1', account: 'Glow Studio', template: 'brand', status: 'draft', spec: { name: 'Brand — Glow Studio' } }],
+    createDraft: async (ag, seat, { account_id, template }) => {
+      if (account_id === 'a-missing') return null;
+      actions.push(['draft_new', account_id, template]);
+      return { id: 'd9', account_id, template, status: 'draft', spec: { name: 'Brand — Glow Studio', settings: { start_paused: true } } };
+    },
+    draftAction: async (ag, seat, id, action) => {
+      if (id === 'd-missing') return null;
+      if (id === 'd-enabled' && action === 'approve') return { error: 'Cannot approve a enabled draft.' };
+      actions.push(['draft', id, action]);
+      return { status: action === 'approve' ? 'created_paused' : action === 'enable' ? 'enabled' : 'dismissed' };
+    },
   };
 }
 
@@ -166,6 +178,35 @@ test('agency: P0s — pacing/alerts reads, targets + snooze + ack writes, batch 
     const batch = await post('tn-am', '/api/agency/approve-batch', { ids: ['chg1', 'chg2', 'chg3'] });
     assert.strictEqual((await batch.json()).approved, 3);
     assert.deepStrictEqual(ags.actions.slice(-3).map((a) => a[3]), ['chg1', 'chg2', 'chg3']);
+  });
+});
+
+test('agency: campaign drafts — create/approve(paused)/enable are separate explicit actions', async () => {
+  const ags = fakeAgencyStore();
+  await withApp({ store: baseStore(), crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {
+    const post = (tenant, path, body) => fetch(`${base}${path}`, {
+      method: 'POST', headers: { cookie: cookie(tenant), 'content-type': 'application/json' }, body: JSON.stringify(body || {}),
+    });
+
+    const list = await (await fetch(`${base}/api/agency/drafts`, { headers: { cookie: cookie('tn-ro') } })).json();
+    assert.strictEqual(list.drafts[0].template, 'brand');
+
+    // readonly cannot create; am can; unknown account 404s; missing fields 400.
+    assert.strictEqual((await post('tn-ro', '/api/agency/drafts', { account_id: 'a1', template: 'brand' })).status, 403);
+    assert.strictEqual((await post('tn-am', '/api/agency/drafts', {})).status, 400);
+    assert.strictEqual((await post('tn-am', '/api/agency/drafts', { account_id: 'a-missing', template: 'brand' })).status, 404);
+    const created = await post('tn-am', '/api/agency/drafts', { account_id: 'a1', template: 'brand' });
+    assert.strictEqual(created.status, 200);
+    assert.strictEqual((await created.json()).draft.spec.settings.start_paused, true);
+    assert.deepStrictEqual(ags.actions.at(-1), ['draft_new', 'a1', 'brand']);
+
+    // approve → created_paused; enable is its own second click; bad transitions 409.
+    const ap = await post('tn-am', '/api/agency/drafts/d1/approve');
+    assert.strictEqual((await ap.json()).status, 'created_paused');
+    const en = await post('tn-am', '/api/agency/drafts/d1/enable');
+    assert.strictEqual((await en.json()).status, 'enabled');
+    assert.strictEqual((await post('tn-am', '/api/agency/drafts/d-missing/approve')).status, 404);
+    assert.strictEqual((await post('tn-am', '/api/agency/drafts/d-enabled/approve')).status, 409);
   });
 });
 

@@ -258,6 +258,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/campaigns') return json(res, 200, { campaigns: await agencyStore.campaignsFor(ag) });
           if (sub === '/pacing') return json(res, 200, { accounts: await agencyStore.pacing(ag, new Date(now()).toISOString()) });
           if (sub === '/alerts') return json(res, 200, { alerts: await agencyStore.alertsFor(ag) });
+          if (sub === '/drafts') return json(res, 200, { drafts: await agencyStore.draftsFor(ag) });
         }
         if (req.method === 'POST') {
           if (!canWrite) return json(res, 403, { error: 'Read-only seat.' });
@@ -283,6 +284,21 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             return json(res, 200, { ok: true });
           }
           if (/^\/alerts\/[^/]+\/ack$/.test(sub)) { await agencyStore.ackAlert(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (sub === '/drafts') {
+            if (!parsed.account_id || !parsed.template) return json(res, 400, { error: 'account_id and template required' });
+            const row = await agencyStore.createDraft(ag, seat.id, parsed);
+            if (!row) return json(res, 404, { error: 'Unknown account.' });
+            return json(res, 200, { ok: true, draft: row });
+          }
+          {
+            const m = /^\/drafts\/([^/]+)\/(approve|enable|dismiss)$/.exec(sub);
+            if (m) {
+              const r = await agencyStore.draftAction(ag, seat.id, m[1], m[2]);
+              if (!r) return json(res, 404, { error: 'Unknown draft.' });
+              if (r.error) return json(res, 409, { error: r.error });
+              return json(res, 200, { ok: true, status: r.status });
+            }
+          }
           if (/^\/report\/[^/]+\/approve$/.test(sub)) { await agencyStore.approveReport(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }
           if (/^\/report\/[^/]+\/reject$/.test(sub)) { await agencyStore.rejectReport(ag, seat.id, sub.split('/')[2], parsed.reason); return json(res, 200, { ok: true }); }
           if (sub === '/brand') { const r = await agencyStore.saveBrandKit(ag, seat.id, parsed); return json(res, 200, { ok: true, version: r.version }); }
