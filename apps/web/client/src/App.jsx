@@ -52,7 +52,7 @@ function Frame({ children, withNav }) {
   const { path } = useRouter();
   return (
     <div className="min-h-screen">
-      <header className="border-b border-neutral-300 bg-white">
+      <header className="sticky top-0 z-30 border-b border-neutral-300 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-l2 items-center justify-between px-5 py-4">
           <Link to="/app" className="text-h5 font-semibold tracking-tight">Insyt</Link>
           {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
@@ -60,7 +60,7 @@ function Frame({ children, withNav }) {
       </header>
       <div className={withNav ? 'pb-20' : ''}>{children}</div>
       {withNav && (
-        <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-300 bg-white" aria-label="Main">
+        <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-300 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur" aria-label="Main">
           <div className="mx-auto flex max-w-l2 items-stretch justify-between px-2">
             {NAV.map(({ to, label, icon: IconEl }) => {
               const active = path === to;
