@@ -395,6 +395,42 @@ function agencyStore(db) {
 
     auditLog: async (agencyId) => db.select('agency_audit_log',
       `agency_id=eq.${q(agencyId)}&select=event,detail,created_at,seat:agency_seats(name,email)&order=created_at.desc&limit=100`),
+
+    // ---- account lifecycle + platform billing.
+    // Billing principle (binding): we bill the agency for the platform, per
+    // billable account (pending or active). Paused/removed accounts never
+    // bill. The platform never stores or computes what the agency charges
+    // its own clients.
+    accountsList: async (agencyId) => db.select('agency_accounts',
+      `agency_id=eq.${q(agencyId)}&status=in.(pending,active,paused)&select=id,tenant_id,display_name,status,brief_only,report_register,created_at,seat:agency_seats(name)&order=created_at.asc`),
+    addAccount: async (agencyId, seatId, { display_name }) => {
+      const [tenant] = await db.insert('tenants', [{ status: 'active', business_name: display_name }]);
+      const [row] = await db.insert('agency_accounts',
+        [{ agency_id: agencyId, tenant_id: tenant.id, display_name, status: 'pending' }]);
+      await log(agencyId, seatId, 'account_added', { account_id: row.id, display_name });
+      return row;
+    },
+    setAccountStatus: async (agencyId, seatId, accountId, status) => {
+      await db.update('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}`, { status });
+      await log(agencyId, seatId, `account_${status}`, { account_id: accountId });
+    },
+    billing: async (agencyId, nowIso) => {
+      const { monthlyCharge, prorateAdd, cycleFor } = require('../../billing/src/agency-pricing');
+      const now = nowIso || new Date().toISOString();
+      const [ag, billable] = await Promise.all([
+        db.select('agencies', `id=eq.${q(agencyId)}&select=platform_tier,billing_anchor,created_at`, { single: true }),
+        db.select('agency_accounts', `agency_id=eq.${q(agencyId)}&status=in.(pending,active)&select=id`),
+      ]);
+      const n = (billable || []).length;
+      const tier = (ag && ag.platform_tier) || 'base';
+      const cycle = cycleFor((ag && (ag.billing_anchor || ag.created_at)) || now, now);
+      return {
+        ...monthlyCharge(n, tier),
+        tier,
+        cycle,
+        add_today_prorated: prorateAdd({ countAfterAdd: n + 1, daysRemaining: cycle.daysRemaining, daysInPeriod: cycle.daysInPeriod }),
+      };
+    },
   };
 }
 
