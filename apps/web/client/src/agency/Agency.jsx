@@ -7,7 +7,7 @@ import React, { useContext, useEffect, useMemo, useState, createContext } from '
 import clsx from 'clsx';
 import {
   LayoutGrid, ListChecks, FileCheck2, Palette, Users, ArrowRight, Undo2, Copy, Check, X, Zap,
-  Building2, Plus, Pause, Play, Trash2, Search,
+  Building2, Plus, Pause, Play, Trash2, Search, Gauge, Bell, Clock,
 } from 'lucide-react';
 import { api, isDemo, demoHref } from '../lib/api.js';
 import { RouterProvider, useRouter, Link } from '../lib/router.jsx';
@@ -16,6 +16,8 @@ import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp } f
 const NAV = [
   { to: '/app/agency', label: 'Portfolio', icon: LayoutGrid },
   { to: '/app/agency/triage', label: 'Triage', icon: ListChecks },
+  { to: '/app/agency/pacing', label: 'Pacing', icon: Gauge },
+  { to: '/app/agency/alerts', label: 'Alerts', icon: Bell },
   { to: '/app/agency/review', label: 'Review', icon: FileCheck2 },
   { to: '/app/agency/accounts', label: 'Accounts', icon: Building2 },
   { to: '/app/agency/brand', label: 'Brand', icon: Palette },
@@ -167,12 +169,14 @@ function HealthPill({ score }) {
 function Portfolio() {
   const { data, error } = useAgency('/api/agency/portfolio');
   const { data: credits } = useAgency('/api/agency/credits');
+  const { data: pacingData } = useAgency('/api/agency/pacing');
   const { scope, accounts: scopeAccounts } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading portfolio" />;
   const scopedName = scope.account ? ((scopeAccounts.find((a) => a.id === scope.account) || {}).display_name || null) : null;
   const accounts = (data.accounts || []).filter((a) => !scopedName || a.name === scopedName);
   const attention = accounts.filter((a) => a.critical > 0 || a.pending_changes > 0).length;
+  const paceById = Object.fromEntries(((pacingData && pacingData.accounts) || []).map((r) => [r.account_id, r]));
 
   return (
     <div>
@@ -208,6 +212,17 @@ function Portfolio() {
               <span><strong className={a.pending_changes ? 'text-warning' : 'text-accent'}>{a.pending_changes}</strong> pending</span>
               {a.reports_awaiting_review > 0 && <span className="text-info">{a.reports_awaiting_review} report to review</span>}
             </div>
+            {paceById[a.id] && (paceById[a.id].performance.status !== 'no_target' || paceById[a.id].pacing.status !== 'on_pace') && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {paceById[a.id].pacing.status !== 'on_pace' && (
+                  <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', (PACE_STATUS[paceById[a.id].pacing.status] || {}).cls)}>
+                    {(PACE_STATUS[paceById[a.id].pacing.status] || {}).label}
+                    {paceById[a.id].pacing.deltaPct != null && paceById[a.id].pacing.status !== 'no_budget' ? ` ${paceById[a.id].pacing.deltaPct > 0 ? '+' : ''}${paceById[a.id].pacing.deltaPct}%` : ''}
+                  </span>
+                )}
+                <PerfChip perf={paceById[a.id].performance} />
+              </div>
+            )}
             <div className="flex items-center justify-between border-t border-neutral-200 pt-2.5 text-tiny text-neutral-900">
               <span>Last report {a.last_report_at ? new Date(a.last_report_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</span>
               <Link to={demoHref('/app/agency/triage')} className="inline-flex items-center gap-1 underline underline-offset-2">
@@ -233,9 +248,12 @@ function DiffLine({ label, value }) {
   );
 }
 
-function TriageItem({ item, index, onDone }) {
-  const [state, setState] = useState(null); // null | approved | dismissed | copied
+function TriageItem({ item, index, onDone, selected = false, onSelect = null, forcedState = null }) {
+  const [ownState, setState] = useState(null); // null | approved | dismissed | snoozing | snoozed | copied
+  const [snoozeReason, setSnoozeReason] = useState('');
+  const [snoozedUntil, setSnoozedUntil] = useState(null);
   const [busy, setBusy] = useState(false);
+  const state = forcedState || ownState;
 
   async function act(kind) {
     setBusy(true);
@@ -244,6 +262,16 @@ function TriageItem({ item, index, onDone }) {
       setState(kind === 'approve' ? 'approved' : 'dismissed');
       onDone();
     } catch (e) { setState(null); }
+    setBusy(false);
+  }
+  async function snooze(days) {
+    setBusy(true);
+    try {
+      const r = await api(`/api/agency/snooze/${item.id}`, { method: 'POST', body: { days, reason: snoozeReason.trim() || null } });
+      setSnoozedUntil(r.until || new Date(Date.now() + days * 86_400_000).toISOString());
+      setState('snoozed');
+      onDone();
+    } catch { setState(null); }
     setBusy(false);
   }
   function copyBrief() {
@@ -266,11 +294,28 @@ function TriageItem({ item, index, onDone }) {
       </Card>
     );
   }
+  if (state === 'snoozed') {
+    return (
+      <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
+        <Clock size={15} aria-hidden />
+        {item.account}: snoozed until {snoozedUntil ? new Date(snoozedUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'later'} — it returns to the queue by itself · logged
+      </Card>
+    );
+  }
 
   return (
     <Card accent={SEV[item.severity] || 'info'} className="rise p-4" style={{ '--rise-i': Math.min(index, 8) }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
+          {onSelect && !item.brief_only && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onSelect(item.id)}
+              className="size-4 accent-[#0B1F2A]"
+              aria-label={`Select ${item.title} for batch approval`}
+            />
+          )}
           <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">{item.account}</span>
           {item.campaign_name && (
             <span className="rounded bg-info-tint px-2 py-0.5 font-mono text-tiny text-info" title={item.campaign_ref ? `Campaign #${item.campaign_ref}` : undefined}>
@@ -295,8 +340,27 @@ function TriageItem({ item, index, onDone }) {
           <Copy size={13} aria-hidden /> {state === 'copied' ? 'Copied' : 'Copy fix brief'}
         </Button>
         <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy} className="!py-2">Dismiss with reason</Button>
+        {state !== 'snoozing' && (
+          <Button variant="ghost" onClick={() => setState('snoozing')} disabled={busy} className="!py-2">
+            <Clock size={13} aria-hidden /> Snooze
+          </Button>
+        )}
         {item.brief_only && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">brief-only account — Apply disabled</span>}
       </div>
+      {state === 'snoozing' && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded bg-neutral-50 p-3">
+          <input
+            value={snoozeReason}
+            onChange={(e) => setSnoozeReason(e.target.value)}
+            placeholder="Reason (lands in the audit trail)"
+            className="min-w-[220px] flex-1 rounded border border-neutral-400 bg-white px-3 py-2 text-small outline-none focus:border-accent"
+            aria-label="Snooze reason"
+          />
+          <Button variant="secondary" onClick={() => snooze(7)} disabled={busy} className="!px-3 !py-2">7 days</Button>
+          <Button variant="secondary" onClick={() => snooze(30)} disabled={busy} className="!px-3 !py-2">30 days</Button>
+          <Button variant="ghost" onClick={() => { setState(null); setSnoozeReason(''); }} className="!py-2">Cancel</Button>
+        </div>
+      )}
     </Card>
   );
 }
@@ -304,10 +368,42 @@ function TriageItem({ item, index, onDone }) {
 function Triage() {
   const { data, error } = useAgency('/api/agency/triage');
   const [, force] = useState(0);
+  const [sel, setSel] = useState({});
+  const [batched, setBatched] = useState(() => new Set());
+  const [showSnoozed, setShowSnoozed] = useState(false);
+  const [busy, setBusy] = useState(false);
   const { scope, accounts } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading triage queue" />;
-  const { items: queue, accountWide } = applyScope(data.queue || [], scope, accounts);
+
+  const nowMs = Date.now();
+  const isSnoozed = (i) => i.snoozed_until && Date.parse(i.snoozed_until) > nowMs;
+  const scoped = applyScope((data.queue || []).filter((i) => !isSnoozed(i)), scope, accounts);
+  const snoozed = applyScope((data.queue || []).filter(isSnoozed), scope, accounts);
+  const snoozedAll = [...snoozed.items, ...(snoozed.accountWide || [])];
+  const { items: queue, accountWide } = scoped;
+
+  const toggle = (id) => setSel((s) => ({ ...s, [id]: !s[id] }));
+  const selIds = Object.keys(sel).filter((id) => sel[id] && !batched.has(id));
+  const allItems = [...queue, ...(accountWide || [])];
+  const selMoney = selIds.reduce((n, id) => n + ((allItems.find((i) => i.id === id) || {}).money_monthly_usd || 0), 0);
+
+  async function approveSelected() {
+    setBusy(true);
+    try {
+      await api('/api/agency/approve-batch', { method: 'POST', body: { ids: selIds } });
+      setBatched((b) => new Set([...b, ...selIds]));
+      setSel({});
+    } catch { /* keep selection */ }
+    setBusy(false);
+  }
+
+  const itemProps = (item, i) => ({
+    item, index: i, onDone: () => force((n) => n + 1),
+    selected: !!sel[item.id], onSelect: toggle,
+    forcedState: batched.has(item.id) ? 'approved' : null,
+  });
+
   const scopedTitle = scope.campaign
     ? `${queue.length} for this campaign, biggest money first`
     : `${queue.length} proposed changes, biggest money first`;
@@ -316,8 +412,15 @@ function Triage() {
       <MonoLabel>Triage</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{scopedTitle}</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        Every change ships both ways: Apply (our executor runs it through the staged workspace → diff → publish → verify path) or Copy fix brief for manual execution. Nothing is ever auto-applied. Every decision here lands in the per-seat audit log.
+        Every change ships both ways: Apply (our executor runs it through the staged workspace → diff → publish → verify path) or Copy fix brief for manual execution. Nothing is ever auto-applied. Tick several and approve them in one go — each still lands individually in the per-seat audit log. Snooze parks an item with a reason; it comes back by itself.
       </p>
+      {selIds.length > 0 && (
+        <div className="sticky top-[105px] z-20 mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-500 bg-white px-4 py-2.5 shadow-sm">
+          <span className="text-small font-semibold">{selIds.length} selected{selMoney ? ` · ~$${selMoney}/mo total` : ''}</span>
+          <Button onClick={approveSelected} disabled={busy} className="!px-4 !py-2">Approve {selIds.length} selected</Button>
+          <button type="button" onClick={() => setSel({})} className="text-small text-neutral-900 underline underline-offset-2">Clear</button>
+        </div>
+      )}
       {queue.length === 0 ? (
         <div className="mt-5">
           <EmptyState
@@ -327,7 +430,7 @@ function Triage() {
         </div>
       ) : (
         <div className="mt-5 flex flex-col gap-3">
-          {queue.map((item, i) => <TriageItem key={item.id} item={item} index={i} onDone={() => force((n) => n + 1)} />)}
+          {queue.map((item, i) => <TriageItem key={item.id} {...itemProps(item, i)} />)}
         </div>
       )}
       {accountWide && accountWide.length > 0 && (
@@ -337,8 +440,226 @@ function Triage() {
             Tracking and account-level issues aren&apos;t tied to one campaign, but they distort this campaign&apos;s data all the same.
           </p>
           <div className="mt-3 flex flex-col gap-3">
-            {accountWide.map((item, i) => <TriageItem key={item.id} item={item} index={i} onDone={() => force((n) => n + 1)} />)}
+            {accountWide.map((item, i) => <TriageItem key={item.id} {...itemProps(item, i)} />)}
           </div>
+        </div>
+      )}
+      {snoozedAll.length > 0 && (
+        <div className="mt-8 border-t border-neutral-200 pt-4">
+          <button type="button" onClick={() => setShowSnoozed((s) => !s)} className="flex items-center gap-2 font-mono text-tiny uppercase tracking-wide text-neutral-900">
+            <Clock size={13} aria-hidden /> Snoozed ({snoozedAll.length}) {showSnoozed ? '— hide' : '— show'}
+          </button>
+          {showSnoozed && (
+            <div className="mt-3 flex flex-col gap-2">
+              {snoozedAll.map((item) => (
+                <Card key={item.id} className="flex flex-wrap items-baseline justify-between gap-2 p-3.5 text-small text-neutral-900">
+                  <span><strong>{item.account}</strong> · {item.title}</span>
+                  <span className="font-mono text-tiny">
+                    returns {new Date(item.snoozed_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    {item.snooze_reason ? ` — “${item.snooze_reason}”` : ''}
+                  </span>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- pacing
+// The daily agency ritual — "is anything going to blow its budget?" — as one
+// sorted list. Targets here are the agency's own operating targets for the
+// work (budget/CPA/ROAS); what they charge the client never enters the
+// platform (binding).
+
+const PACE_STATUS = {
+  over: { label: 'over pace', cls: 'bg-critical-tint text-critical' },
+  at_risk: { label: 'accelerating', cls: 'bg-warning-tint text-warning' },
+  under: { label: 'under pace', cls: 'bg-info-tint text-info' },
+  no_budget: { label: 'no budget set', cls: 'bg-neutral-100 text-neutral-900' },
+  on_pace: { label: 'on pace', cls: 'bg-success-tint text-success' },
+};
+
+function PerfChip({ perf }) {
+  if (!perf || perf.status === 'no_target') return null;
+  const hit = perf.status === 'hitting';
+  const label = perf.cpaTargetUsd != null
+    ? `CPA $${perf.cpa ?? '—'} vs $${perf.cpaTargetUsd} target`
+    : `ROAS ${perf.roas ?? '—'} vs ${perf.roasTarget} target`;
+  return (
+    <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', hit ? 'bg-success-tint text-success' : 'bg-critical-tint text-critical')}>
+      {label}
+    </span>
+  );
+}
+
+function TargetEditor({ row, onClose }) {
+  const [form, setForm] = useState({
+    monthly_budget_usd: row.targets.monthly_budget_usd || '',
+    cpa_target_usd: row.targets.cpa_target_usd || '',
+    roas_target: row.targets.roas_target || '',
+  });
+  const [busy, setBusy] = useState(false);
+  const num = (v) => (v === '' || v == null ? null : Number(v));
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`/api/agency/targets/${row.account_id}`, {
+        method: 'POST',
+        body: { monthly_budget_usd: num(form.monthly_budget_usd), cpa_target_usd: num(form.cpa_target_usd), roas_target: num(form.roas_target) },
+      });
+      onClose(true);
+    } catch { onClose(false); }
+    setBusy(false);
+  }
+  const field = (label, key, placeholder) => (
+    <label className="flex flex-col gap-1">
+      <MonoLabel>{label}</MonoLabel>
+      <input
+        type="number" min="0" step="0.01"
+        value={form[key]}
+        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+        placeholder={placeholder}
+        className="w-32 rounded border border-neutral-400 bg-white px-2.5 py-2 text-small outline-none focus:border-accent"
+      />
+    </label>
+  );
+  return (
+    <div className="mt-3 flex flex-wrap items-end gap-3 rounded bg-neutral-50 p-3">
+      {field('Monthly budget $', 'monthly_budget_usd', 'e.g. 3000')}
+      {field('CPA target $', 'cpa_target_usd', 'optional')}
+      {field('ROAS target', 'roas_target', 'optional')}
+      <Button onClick={save} disabled={busy} className="!px-4 !py-2">Save targets</Button>
+      <Button variant="ghost" onClick={() => onClose(false)} className="!py-2">Cancel</Button>
+    </div>
+  );
+}
+
+function PacingRow({ row, index }) {
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const p = row.pacing;
+  const st = PACE_STATUS[p.status] || PACE_STATUS.on_pace;
+  const spentPct = p.budget ? Math.min(100, Math.round((p.mtd / p.budget) * 100)) : 0;
+  const expectedPct = p.budget ? Math.min(100, Math.round((p.dayOfMonth / p.daysInMonth) * 100)) : 0;
+  const barTone = p.status === 'over' ? 'bg-critical' : p.status === 'at_risk' ? 'bg-warning' : p.status === 'under' ? 'bg-info' : 'bg-success';
+  return (
+    <Card accent={p.status === 'over' ? 'critical' : p.status === 'at_risk' ? 'warning' : undefined} className="rise p-4" style={{ '--rise-i': Math.min(index, 8) }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-body font-semibold">{row.account}</span>
+          <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', st.cls)}>{st.label}</span>
+          <PerfChip perf={row.performance} />
+          {saved && <span className="font-mono text-tiny text-success">targets saved</span>}
+        </div>
+        <button type="button" onClick={() => { setEditing((e) => !e); setSaved(false); }} className="text-small text-neutral-900 underline underline-offset-2">
+          {editing ? 'Close' : 'Edit targets'}
+        </button>
+      </div>
+      {p.budget ? (
+        <>
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-small text-neutral-900">
+            <span><strong className="text-accent">${p.mtd.toLocaleString()}</strong> of ${p.budget.toLocaleString()} spent</span>
+            <span>day {p.dayOfMonth} of {p.daysInMonth} — even pace would be ${Math.round(p.expectedToDate).toLocaleString()}</span>
+            <span>projected <strong className={p.status === 'over' || p.status === 'at_risk' ? 'text-critical' : 'text-accent'}>${Math.round(p.projected).toLocaleString()}</strong> ({p.deltaPct > 0 ? '+' : ''}{p.deltaPct}%)</span>
+          </div>
+          <div className="relative mt-2 h-2 rounded-full bg-neutral-100">
+            <div className={clsx('h-2 rounded-full', barTone)} style={{ width: `${spentPct}%` }} />
+            <div className="absolute top-[-3px] h-[14px] w-px bg-neutral-900" style={{ left: `${expectedPct}%` }} title="Where even pacing would be today" />
+          </div>
+        </>
+      ) : (
+        <p className="mt-3 text-small text-neutral-900">
+          ${p.mtd.toLocaleString()} spent this month with no budget target set — set one so pacing can watch this account.
+        </p>
+      )}
+      {editing && <TargetEditor row={row} onClose={(ok) => { setEditing(false); if (ok) setSaved(true); }} />}
+    </Card>
+  );
+}
+
+function Pacing() {
+  const { data, error } = useAgency('/api/agency/pacing');
+  const { scope } = useScope();
+  if (error) return <ErrorNote message={error.message} />;
+  if (!data) return <Spinner label="Loading pacing" />;
+  const rows = (data.accounts || []).filter((r) => !scope.account || r.account_id === scope.account);
+  const problems = rows.filter((r) => ['over', 'at_risk', 'under', 'no_budget'].includes(r.pacing.status)).length;
+  const day = rows[0] ? `day ${rows[0].pacing.dayOfMonth} of ${rows[0].pacing.daysInMonth}` : '';
+  return (
+    <div>
+      <MonoLabel>Budget pacing</MonoLabel>
+      <h1 className="mt-1 text-h3 tracking-tight">{problems === 0 ? 'Everything on pace' : `${problems} ${problems === 1 ? 'account needs' : 'accounts need'} a look`}{day ? ` · ${day}` : ''}</h1>
+      <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
+        Month-to-date spend against each account&apos;s budget, projected forward at the current run rate. The tick on each bar is where even pacing would be today. Problems sort first. Budgets and CPA/ROAS targets here are your operating targets — what you charge your clients never enters this platform.
+      </p>
+      <div className="mt-5 flex flex-col gap-3">
+        {rows.map((r, i) => <PacingRow key={r.account_id} row={r} index={i} />)}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- alerts
+
+function AlertRow({ a, index }) {
+  const [acked, setAcked] = useState(!!a.acked_at);
+  const [busy, setBusy] = useState(false);
+  async function ack() {
+    setBusy(true);
+    try { await api(`/api/agency/alerts/${a.id}/ack`, { method: 'POST', body: {} }); setAcked(true); } catch { /* keep */ }
+    setBusy(false);
+  }
+  return (
+    <Card accent={acked ? undefined : (SEV[a.severity] || 'info')} className={clsx('rise p-4', acked && 'opacity-70')} style={{ '--rise-i': Math.min(index, 8) }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">{a.account}</span>
+          {a.campaign_ref && <span className="rounded bg-info-tint px-2 py-0.5 font-mono text-tiny text-info">#{a.campaign_ref}</span>}
+          <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">{a.kind.replace(/_/g, ' ')}</span>
+        </div>
+        <span className="font-mono text-tiny text-neutral-900">
+          {new Date(a.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+      <h3 className="mt-2 text-h5">{a.title}</h3>
+      {a.detail && a.detail.note && <p className="mt-1 text-small text-neutral-900">{a.detail.note}</p>}
+      <div className="mt-3 flex items-center gap-2 border-t border-neutral-200 pt-3">
+        {acked ? (
+          <span className="flex items-center gap-1.5 text-small text-neutral-900">
+            <Check size={14} className="text-success" aria-hidden />
+            Acknowledged{a.acked_seat ? ` by ${a.acked_seat.name}` : ''}
+          </span>
+        ) : (
+          <Button variant="secondary" onClick={ack} disabled={busy} className="!px-4 !py-2">Acknowledge</Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function Alerts() {
+  const { data, error } = useAgency('/api/agency/alerts');
+  const { scope, accounts } = useScope();
+  if (error) return <ErrorNote message={error.message} />;
+  if (!data) return <Spinner label="Loading alerts" />;
+  const scoped = applyScope(data.alerts || [], scope, accounts);
+  const rows = scope.campaign ? [...scoped.items, ...(scoped.accountWide || [])] : scoped.items;
+  const open = rows.filter((a) => !a.acked_at).length;
+  return (
+    <div>
+      <MonoLabel>Alerts</MonoLabel>
+      <h1 className="mt-1 text-h3 tracking-tight">{open === 0 ? 'Nothing waiting on you' : `${open} unacknowledged`}</h1>
+      <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
+        Breakage and fast movers that can&apos;t wait for the weekly run: tags going dark, spend spikes, disapprovals, conversion flatlines. A daily digest of unacknowledged alerts emails every seat each morning — acknowledging here keeps it out of the digest. Alerts only ever notify; fixes still go through triage.
+      </p>
+      {rows.length === 0 ? (
+        <div className="mt-5"><EmptyState title="All quiet" body="Alerts land here the moment monitoring spots them." /></div>
+      ) : (
+        <div className="mt-5 flex flex-col gap-3">
+          {rows.map((a, i) => <AlertRow key={a.id} a={a} index={i} />)}
         </div>
       )}
     </div>
@@ -671,6 +992,8 @@ function AgencyRoutes() {
 
   let screen = <Portfolio />;
   if (path === '/app/agency/triage') screen = <Triage />;
+  if (path === '/app/agency/pacing') screen = <Pacing />;
+  if (path === '/app/agency/alerts') screen = <Alerts />;
   if (path === '/app/agency/review') screen = <Review />;
   if (path === '/app/agency/accounts') screen = <Accounts />;
   if (path === '/app/agency/brand') screen = <Brand />;
