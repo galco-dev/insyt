@@ -41,6 +41,33 @@ function workerStore(db) {
         html_email, html_web, findings_snapshot: findings_snapshot || [],
       }], { returning: false });
     },
+    // "Against your goals" report section — non-null only when targets are
+    // set for this tenant (agency accounts). Month-to-date actuals + pacing.
+    performanceFor: async (tenantId) => {
+      const t = await db.select('account_targets', `tenant_id=eq.${q(tenantId)}&select=*`, { single: true }).catch(() => null);
+      if (!t || (t.monthly_budget_usd == null && t.cpa_target_usd == null && t.roas_target == null)) return null;
+      const now = new Date();
+      const monthStart = `${now.toISOString().slice(0, 8)}01`;
+      const days = await db.select('spend_daily',
+        `tenant_id=eq.${q(tenantId)}&date=gte.${q(monthStart)}&select=spend_usd,conversions,conversion_value_usd`).catch(() => []);
+      const sum = (k) => (days || []).reduce((n, d) => n + Number(d[k] || 0), 0);
+      const { pace } = require('../../pacing/src/pacing');
+      const spend = sum('spend_usd');
+      return {
+        month_label: now.toLocaleDateString('en-GB', { month: 'long' }),
+        spend_usd: spend,
+        conversions: sum('conversions'),
+        conversion_value_usd: sum('conversion_value_usd'),
+        targets: {
+          monthly_budget_usd: t.monthly_budget_usd != null ? Number(t.monthly_budget_usd) : null,
+          cpa_target_usd: t.cpa_target_usd != null ? Number(t.cpa_target_usd) : null,
+          roas_target: t.roas_target != null ? Number(t.roas_target) : null,
+        },
+        pacing: t.monthly_budget_usd != null
+          ? pace({ monthlyBudgetUsd: Number(t.monthly_budget_usd), mtdSpendUsd: spend, nowIso: now.toISOString() })
+          : null,
+      };
+    },
   };
 }
 
@@ -309,7 +336,7 @@ function agencyStore(db) {
       const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
       const rows = await db.select('changes',
-        `tenant_id=in.(${ids})&status=eq.proposed&select=id,tenant_id,before,after,snoozed_until,snooze_reason,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name)&order=created_at.asc&limit=200`);
+        `tenant_id=in.(${ids})&status=eq.proposed&select=id,tenant_id,before,after,snoozed_until,snooze_reason,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name,payload)&order=created_at.asc&limit=200`);
       return rows.map((r) => ({
         id: r.id,
         snoozed_until: r.snoozed_until || null,
@@ -324,6 +351,7 @@ function agencyStore(db) {
         layer: r.finding ? r.finding.layer : null,
         campaign_ref: r.finding ? r.finding.campaign_ref : null,
         campaign_name: r.finding ? r.finding.campaign_name : null,
+        build_template: r.finding && r.finding.payload ? r.finding.payload.build_template || null : null,
         money_monthly_usd: r.finding ? r.finding.money_impact_monthly_usd : null,
         before: r.before || null,
         after: r.after || null,
@@ -351,6 +379,78 @@ function agencyStore(db) {
         bidding: c.bidding,
       }));
     },
+    // ---- Campaign creation (design doc): a build is the biggest possible
+    // "change". Drafts flow approve → created PAUSED → enable (second
+    // explicit click). Never created enabled. Every step seat-logged.
+    draftsFor: async (agencyId) => {
+      const accounts = await db.select('agency_accounts',
+        `agency_id=eq.${q(agencyId)}&status=in.(pending,active)&select=id,tenant_id,display_name`);
+      if (!accounts.length) return [];
+      const byTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
+      const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      const rows = await db.select('campaign_drafts',
+        `tenant_id=in.(${ids})&status=neq.dismissed&select=*&order=created_at.desc&limit=100`);
+      return rows.map((d) => ({
+        ...d,
+        account_id: byTenant[d.tenant_id] ? byTenant[d.tenant_id].id : null,
+        account: byTenant[d.tenant_id] ? byTenant[d.tenant_id].display_name : null,
+      }));
+    },
+    createDraft: async (agencyId, seatId, { account_id, template, inputs, source_finding }) => {
+      const { buildCampaignSpec } = require('../../campaigns/src/builder');
+      const acc = await db.select('agency_accounts',
+        `id=eq.${q(account_id)}&agency_id=eq.${q(agencyId)}&select=tenant_id,display_name`, { single: true });
+      if (!acc) return null;
+      const existing = await db.select('campaigns',
+        `tenant_id=eq.${q(acc.tenant_id)}&select=name`).catch(() => []);
+      const spec = buildCampaignSpec({
+        template,
+        business: (inputs && inputs.business) || acc.display_name,
+        services: (inputs && inputs.services) || [],
+        location: (inputs && inputs.location) || null,
+        budget_daily_usd: inputs && inputs.budget_daily_usd,
+        conversion_goal: (inputs && inputs.conversion_goal) || null,
+        existing_campaign_names: (existing || []).map((c) => c.name),
+      });
+      const [row] = await db.insert('campaign_drafts', [{
+        tenant_id: acc.tenant_id, agency_id: agencyId, created_by: seatId,
+        source_finding: source_finding || null, template: spec.template, spec,
+      }]);
+      await log(agencyId, seatId, 'draft_created', { draft_id: row.id, account_id, template: spec.template, name: spec.name });
+      return { ...row, account: acc.display_name, account_id };
+    },
+    draftAction: async (agencyId, seatId, draftId, action) => {
+      const d = await db.select('campaign_drafts',
+        `id=eq.${q(draftId)}&agency_id=eq.${q(agencyId)}&select=*`, { single: true });
+      if (!d) return null;
+      const allowed = { approve: ['draft'], enable: ['created_paused'], dismiss: ['draft', 'approved', 'created_paused'] };
+      if (!allowed[action] || !allowed[action].includes(d.status)) return { error: `Cannot ${action} a ${d.status} draft.` };
+      if (action === 'approve') {
+        // Executor path (credential-gated) creates the real campaign PAUSED;
+        // until then the draft is queued and the snapshot row is provisional.
+        const placeholder = `draft-${String(draftId).slice(0, 8)}`;
+        await db.update('campaign_drafts', `id=eq.${q(draftId)}`, { status: 'created_paused', google_campaign_id: placeholder, updated_at: new Date().toISOString() });
+        await db.insert('campaigns', [{
+          tenant_id: d.tenant_id, google_campaign_id: placeholder,
+          name: d.spec.name, status: 'paused', channel: d.spec.channel,
+          budget_daily_usd: d.spec.budget_daily_usd, bidding: d.spec.bidding,
+        }], { returning: false }).catch(() => {});
+        await log(agencyId, seatId, 'draft_approved_created_paused', { draft_id: draftId, name: d.spec.name });
+        return { status: 'created_paused' };
+      }
+      if (action === 'enable') {
+        await db.update('campaign_drafts', `id=eq.${q(draftId)}`, { status: 'enabled', updated_at: new Date().toISOString() });
+        if (d.google_campaign_id) {
+          await db.update('campaigns', `tenant_id=eq.${q(d.tenant_id)}&google_campaign_id=eq.${q(d.google_campaign_id)}`, { status: 'enabled' }).catch(() => {});
+        }
+        await log(agencyId, seatId, 'draft_enabled', { draft_id: draftId, name: d.spec.name });
+        return { status: 'enabled' };
+      }
+      await db.update('campaign_drafts', `id=eq.${q(draftId)}`, { status: 'dismissed', updated_at: new Date().toISOString() });
+      await log(agencyId, seatId, 'draft_dismissed', { draft_id: draftId, name: d.spec.name });
+      return { status: 'dismissed' };
+    },
+
     // ---- P0: budget pacing + performance targets (agency's OWN operating
     // targets — never client fees; that principle is binding).
     pacing: async (agencyId, nowIso) => {
