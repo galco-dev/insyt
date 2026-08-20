@@ -253,6 +253,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/seats') return json(res, 200, { seats: await agencyStore.seats(ag) });
           if (sub === '/credits') return json(res, 200, await agencyStore.credits(ag));
           if (sub === '/log') return json(res, 200, { entries: await agencyStore.auditLog(ag) });
+          if (sub === '/accounts') return json(res, 200, { accounts: await agencyStore.accountsList(ag) });
+          if (sub === '/billing') return json(res, 200, await agencyStore.billing(ag, new Date(now()).toISOString()));
         }
         if (req.method === 'POST') {
           if (!canWrite) return json(res, 403, { error: 'Read-only seat.' });
@@ -266,6 +268,21 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (/^\/report\/[^/]+\/approve$/.test(sub)) { await agencyStore.approveReport(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }
           if (/^\/report\/[^/]+\/reject$/.test(sub)) { await agencyStore.rejectReport(ag, seat.id, sub.split('/')[2], parsed.reason); return json(res, 200, { ok: true }); }
           if (sub === '/brand') { const r = await agencyStore.saveBrandKit(ag, seat.id, parsed); return json(res, 200, { ok: true, version: r.version }); }
+          if (sub === '/accounts') {
+            if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
+            if (!parsed.display_name) return json(res, 400, { error: 'display_name required' });
+            const row = await agencyStore.addAccount(ag, seat.id, parsed);
+            return json(res, 200, { ok: true, account: row });
+          }
+          {
+            const m = /^\/accounts\/([^/]+)\/(pause|resume|remove)$/.exec(sub);
+            if (m) {
+              if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
+              const status = m[2] === 'pause' ? 'paused' : m[2] === 'resume' ? 'active' : 'removed';
+              await agencyStore.setAccountStatus(ag, seat.id, m[1], status);
+              return json(res, 200, { ok: true });
+            }
+          }
           if (sub === '/seats') {
             if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
             const row = await agencyStore.addSeat(ag, seat.id, parsed);
