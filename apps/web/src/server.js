@@ -37,7 +37,7 @@ function html(res, code, body) {
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
-function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null, clientDir = null }) {
+function createApp({ store, crawler, now = Date.now, dashStore = null, agencyStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null, clientDir = null }) {
   // React client build (apps/web/client → public/app). When present, GET
   // /app* serves the SPA; the server-rendered screens remain the fallback
   // (tests, and any deploy that predates the client build).
@@ -228,6 +228,54 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, opsStore 
           if (sub.startsWith('/dismiss/')) { await dashStore.dismissChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
           if (sub.startsWith('/revert/')) { await dashStore.requestRevert(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
           if (sub === '/confirm') { await dashStore.confirmAssets(t); return json(res, 200, { ok: true }); }
+        }
+        return json(res, 404, { error: 'not found' });
+      }
+
+      // ---- agency console API (master §13). Binding: no auto-apply — every
+      // write here is an explicit seat action, logged with the seat.
+      if (path.startsWith('/api/agency') && agencyStore) {
+        const session = readSession(req.headers.cookie, sessionSecret, now());
+        if (!session) return json(res, 401, { error: 'Sign in first.' });
+        const seat = await agencyStore.seatByTenant(session.tenantId);
+        if (!seat) return json(res, 403, { error: 'This sign-in has no agency seat.' });
+        const ag = seat.agency_id;
+        const sub = path.slice('/api/agency'.length) || '/';
+        const canWrite = seat.role === 'admin' || seat.role === 'am';
+        const isAdmin = seat.role === 'admin';
+
+        if (req.method === 'GET') {
+          if (sub === '/me') return json(res, 200, { seat, agency: await agencyStore.agency(ag) });
+          if (sub === '/portfolio') return json(res, 200, { accounts: await agencyStore.portfolio(ag) });
+          if (sub === '/triage') return json(res, 200, { queue: await agencyStore.triage(ag) });
+          if (sub === '/review') return json(res, 200, { queue: await agencyStore.reviewQueue(ag) });
+          if (sub === '/brand') return json(res, 200, { kit: (await agencyStore.brandKit(ag)) || null });
+          if (sub === '/seats') return json(res, 200, { seats: await agencyStore.seats(ag) });
+          if (sub === '/credits') return json(res, 200, await agencyStore.credits(ag));
+          if (sub === '/log') return json(res, 200, { entries: await agencyStore.auditLog(ag) });
+        }
+        if (req.method === 'POST') {
+          if (!canWrite) return json(res, 403, { error: 'Read-only seat.' });
+          let body = '';
+          req.on('data', (c) => { body += c; });
+          await new Promise((r) => req.on('end', r));
+          let parsed; try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
+
+          if (sub.startsWith('/approve/')) { await agencyStore.approveChange(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (sub.startsWith('/dismiss/')) { await agencyStore.dismissChange(ag, seat.id, sub.split('/')[2], parsed.reason); return json(res, 200, { ok: true }); }
+          if (/^\/report\/[^/]+\/approve$/.test(sub)) { await agencyStore.approveReport(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (/^\/report\/[^/]+\/reject$/.test(sub)) { await agencyStore.rejectReport(ag, seat.id, sub.split('/')[2], parsed.reason); return json(res, 200, { ok: true }); }
+          if (sub === '/brand') { const r = await agencyStore.saveBrandKit(ag, seat.id, parsed); return json(res, 200, { ok: true, version: r.version }); }
+          if (sub === '/seats') {
+            if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
+            const row = await agencyStore.addSeat(ag, seat.id, parsed);
+            return json(res, 200, { ok: true, seat: row });
+          }
+          if (sub.startsWith('/seats/')) {
+            if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
+            await agencyStore.updateSeat(ag, seat.id, sub.split('/')[2], parsed);
+            return json(res, 200, { ok: true });
+          }
         }
         return json(res, 404, { error: 'not found' });
       }
