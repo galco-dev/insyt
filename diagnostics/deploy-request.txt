@@ -1,1 +1,1 @@
-deploy request 2026-08-19T21:30Z — F2+F4: React SPA (funnel spine + all dashboard screens), JSON API, SPA serving; web build now runs build:client
+deploy request 2026-08-20T07:00Z — mobile CRO: sticky glass app header + safe-area bottom nav (App.jsx) + report unlock bar safe-area (Report.jsx)
