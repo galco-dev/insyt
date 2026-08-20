@@ -1,4 +1,4 @@
-deploy transcript 2026-08-20T15:32:05Z
+deploy transcript 2026-08-20T16:23:14Z
 railway 5.41.2
 
 
@@ -24,25 +24,29 @@ All resources
       - cron: ● Online
       - poller: ● Online
     Databases
-      - redis: ● Online · Deploying (48s) · redis-volume
+      - redis: ● Online · redis-volume
 
 
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=b83deb47-492c-4e6b-952d-74ca080338be&
+Deploys have been paused due to an upstream issue
+UP FAILED rc=1
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=d449a292-a5b8-4d0b-b9bf-2e83e6458e24&
+Deploys have been paused due to an upstream issue
+UP FAILED rc=1
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=130c8a94-a8b2-45a3-83a9-5dd08ced6d77&
+Deploys have been paused due to an upstream issue
+UP FAILED rc=1
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=cb184756-ac12-4921-a836-61aabb2d4078&
+Deploys have been paused due to an upstream issue
+UP FAILED rc=1
