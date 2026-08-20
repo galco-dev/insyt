@@ -7,7 +7,7 @@ import React, { useContext, useEffect, useMemo, useState, createContext } from '
 import clsx from 'clsx';
 import {
   LayoutGrid, ListChecks, FileCheck2, Palette, Users, ArrowRight, Undo2, Copy, Check, X, Zap,
-  Building2, Plus, Pause, Play, Trash2, Search, Gauge, Bell, Clock,
+  Building2, Plus, Pause, Play, Trash2, Search, Gauge, Bell, Clock, Hammer,
 } from 'lucide-react';
 import { api, isDemo, demoHref } from '../lib/api.js';
 import { RouterProvider, useRouter, Link } from '../lib/router.jsx';
@@ -18,6 +18,7 @@ const NAV = [
   { to: '/app/agency/triage', label: 'Triage', icon: ListChecks },
   { to: '/app/agency/pacing', label: 'Pacing', icon: Gauge },
   { to: '/app/agency/alerts', label: 'Alerts', icon: Bell },
+  { to: '/app/agency/build', label: 'Build', icon: Hammer },
   { to: '/app/agency/review', label: 'Review', icon: FileCheck2 },
   { to: '/app/agency/accounts', label: 'Accounts', icon: Building2 },
   { to: '/app/agency/brand', label: 'Brand', icon: Palette },
@@ -39,23 +40,24 @@ function useAgency(path) {
 // All accounts — the cross-portfolio stream is the product. Scope rides in
 // the URL so an account view is bookmarkable for the weekly client call.
 
-const ScopeContext = createContext({ scope: { account: null, campaign: null }, setScope: () => {}, accounts: [], campaigns: [] });
+const ScopeContext = createContext({ scope: { account: null, campaign: null, mine: false }, setScope: () => {}, accounts: [], campaigns: [], mineNames: null, meName: null });
 const useScope = () => useContext(ScopeContext);
 
 function readScopeFromUrl() {
   const p = new URLSearchParams(window.location.search);
-  return { account: p.get('account') || null, campaign: p.get('campaign') || null };
+  return { account: p.get('account') || null, campaign: p.get('campaign') || null, mine: p.get('mine') === '1' };
 }
 
 function writeScopeToUrl(scope) {
   const p = new URLSearchParams(window.location.search);
   ['account', 'campaign'].forEach((k) => (scope[k] ? p.set(k, scope[k]) : p.delete(k)));
+  if (scope.mine) p.set('mine', '1'); else p.delete('mine');
   const qs = p.toString();
   window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
 }
 
 function ScopeBar() {
-  const { scope, setScope, accounts, campaigns } = useScope();
+  const { scope, setScope, accounts, campaigns, meName, mineNames } = useScope();
   const [q, setQ] = useState('');
 
   const accountName = (id) => (accounts.find((a) => a.id === id) || {}).display_name;
@@ -73,14 +75,14 @@ function ScopeBar() {
     return [...acc, ...camp].slice(0, 8);
   }, [q, accounts, campaigns]);
 
-  const pick = (r) => { setScope({ account: r.account, campaign: r.campaign }); setQ(''); };
+  const pick = (r) => { setScope({ ...scope, account: r.account, campaign: r.campaign }); setQ(''); };
 
   return (
     <div className="border-b border-neutral-200 bg-neutral-50">
       <div className="mx-auto flex max-w-xl2 flex-wrap items-center gap-2 px-5 py-2">
         <select
           value={scope.account || ''}
-          onChange={(e) => setScope({ account: e.target.value || null, campaign: null })}
+          onChange={(e) => setScope({ ...scope, account: e.target.value || null, campaign: null })}
           className="rounded border border-neutral-400 bg-white px-2.5 py-1.5 text-small outline-none focus:border-accent"
           aria-label="Account scope"
         >
@@ -90,7 +92,7 @@ function ScopeBar() {
         <span className="text-neutral-800" aria-hidden>›</span>
         <select
           value={scope.campaign || ''}
-          onChange={(e) => setScope({ account: scope.account, campaign: e.target.value || null })}
+          onChange={(e) => setScope({ ...scope, campaign: e.target.value || null })}
           disabled={!scope.account}
           className="rounded border border-neutral-400 bg-white px-2.5 py-1.5 text-small outline-none focus:border-accent disabled:opacity-50"
           aria-label="Campaign scope"
@@ -102,9 +104,20 @@ function ScopeBar() {
             </option>
           ))}
         </select>
-        {(scope.account || scope.campaign) && (
-          <button type="button" onClick={() => setScope({ account: null, campaign: null })} className="text-small text-neutral-900 underline underline-offset-2">
+        {(scope.account || scope.campaign || scope.mine) && (
+          <button type="button" onClick={() => setScope({ account: null, campaign: null, mine: false })} className="text-small text-neutral-900 underline underline-offset-2">
             Clear
+          </button>
+        )}
+        {meName && mineNames && mineNames.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setScope({ ...scope, mine: !scope.mine })}
+            className={clsx('rounded-full border px-3 py-1 font-mono text-tiny',
+              scope.mine ? 'border-accent bg-accent text-white' : 'border-neutral-400 bg-white text-neutral-900')}
+            title={`Only accounts managed by ${meName}`}
+          >
+            My accounts ({mineNames.size})
           </button>
         )}
         <div className="relative ml-auto min-w-[220px] flex-1 sm:max-w-[320px]">
@@ -149,9 +162,10 @@ function ScopeBar() {
 // Filter helper shared by scoped screens: account scope matches by display
 // name (items carry account names), campaign scope splits campaign-specific
 // from account-wide items (tracking findings affect every campaign).
-function applyScope(items, scope, accounts) {
+function applyScope(items, scope, accounts, mineNames = null) {
   const name = scope.account ? (accounts.find((a) => a.id === scope.account) || {}).display_name : null;
-  const inAccount = name ? items.filter((i) => i.account === name) : items;
+  let inAccount = name ? items.filter((i) => i.account === name) : items;
+  if (scope.mine && mineNames) inAccount = inAccount.filter((i) => mineNames.has(i.account));
   if (!scope.campaign) return { items: inAccount, accountWide: null };
   return {
     items: inAccount.filter((i) => i.campaign_ref === scope.campaign),
@@ -170,11 +184,12 @@ function Portfolio() {
   const { data, error } = useAgency('/api/agency/portfolio');
   const { data: credits } = useAgency('/api/agency/credits');
   const { data: pacingData } = useAgency('/api/agency/pacing');
-  const { scope, accounts: scopeAccounts } = useScope();
+  const { scope, accounts: scopeAccounts, mineNames } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading portfolio" />;
   const scopedName = scope.account ? ((scopeAccounts.find((a) => a.id === scope.account) || {}).display_name || null) : null;
-  const accounts = (data.accounts || []).filter((a) => !scopedName || a.name === scopedName);
+  const accounts = (data.accounts || []).filter((a) => (!scopedName || a.name === scopedName)
+    && (!scope.mine || !mineNames || mineNames.has(a.name)));
   const attention = accounts.filter((a) => a.critical > 0 || a.pending_changes > 0).length;
   const paceById = Object.fromEntries(((pacingData && pacingData.accounts) || []).map((r) => [r.account_id, r]));
 
@@ -333,7 +348,14 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
         <DiffLine label="After" value={item.after} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-3">
-        {!item.brief_only && (
+        {item.build_template ? (
+          <Link
+            to={demoHref(`/app/agency/build?template=${item.build_template}&for=${encodeURIComponent(item.account)}`)}
+            className="inline-flex items-center gap-1.5 rounded bg-accent px-4 py-2 text-small font-medium text-white"
+          >
+            <Hammer size={13} aria-hidden /> Build it
+          </Link>
+        ) : !item.brief_only && (
           <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Apply</Button>
         )}
         <Button variant="secondary" onClick={copyBrief} className="!px-4 !py-2">
@@ -372,14 +394,14 @@ function Triage() {
   const [batched, setBatched] = useState(() => new Set());
   const [showSnoozed, setShowSnoozed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const { scope, accounts } = useScope();
+  const { scope, accounts, mineNames } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading triage queue" />;
 
   const nowMs = Date.now();
   const isSnoozed = (i) => i.snoozed_until && Date.parse(i.snoozed_until) > nowMs;
-  const scoped = applyScope((data.queue || []).filter((i) => !isSnoozed(i)), scope, accounts);
-  const snoozed = applyScope((data.queue || []).filter(isSnoozed), scope, accounts);
+  const scoped = applyScope((data.queue || []).filter((i) => !isSnoozed(i)), scope, accounts, mineNames);
+  const snoozed = applyScope((data.queue || []).filter(isSnoozed), scope, accounts, mineNames);
   const snoozedAll = [...snoozed.items, ...(snoozed.accountWide || [])];
   const { items: queue, accountWide } = scoped;
 
@@ -582,10 +604,11 @@ function PacingRow({ row, index }) {
 
 function Pacing() {
   const { data, error } = useAgency('/api/agency/pacing');
-  const { scope } = useScope();
+  const { scope, mineNames } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading pacing" />;
-  const rows = (data.accounts || []).filter((r) => !scope.account || r.account_id === scope.account);
+  const rows = (data.accounts || []).filter((r) => (!scope.account || r.account_id === scope.account)
+    && (!scope.mine || !mineNames || mineNames.has(r.account)));
   const problems = rows.filter((r) => ['over', 'at_risk', 'under', 'no_budget'].includes(r.pacing.status)).length;
   const day = rows[0] ? `day ${rows[0].pacing.dayOfMonth} of ${rows[0].pacing.daysInMonth}` : '';
   return (
@@ -642,10 +665,10 @@ function AlertRow({ a, index }) {
 
 function Alerts() {
   const { data, error } = useAgency('/api/agency/alerts');
-  const { scope, accounts } = useScope();
+  const { scope, accounts, mineNames } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading alerts" />;
-  const scoped = applyScope(data.alerts || [], scope, accounts);
+  const scoped = applyScope(data.alerts || [], scope, accounts, mineNames);
   const rows = scope.campaign ? [...scoped.items, ...(scoped.accountWide || [])] : scoped.items;
   const open = rows.filter((a) => !a.acked_at).length;
   return (
@@ -660,6 +683,199 @@ function Alerts() {
       ) : (
         <div className="mt-5 flex flex-col gap-3">
           {rows.map((a, i) => <AlertRow key={a.id} a={a} index={i} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- build
+// Campaign creation = the biggest possible "change" (before: nothing →
+// after: this spec), through the same explicit-approval pipeline as every
+// fix. Invariants: created PAUSED, enabling is a second explicit click,
+// every step lands in the per-seat audit log. The builder refuses to draft
+// onto broken measurement.
+
+function briefFromSpec(spec) {
+  const lines = [
+    `CAMPAIGN BUILD BRIEF — ${spec.name}`,
+    `Channel: ${spec.channel} · Budget: $${spec.budget_daily_usd}/day · Bidding: ${spec.bidding}${spec.conversion_goal ? ` → ${spec.conversion_goal}` : ''}`,
+    `Settings: geo ${spec.settings.geo} · networks ${(spec.settings.networks || []).join('+')} · CREATE PAUSED`,
+  ];
+  for (const ag of spec.ad_groups || []) {
+    lines.push('', `AD GROUP: ${ag.name}${ag.audience ? ` · audience ${ag.audience}` : ''}`);
+    if ((ag.keywords || []).length) lines.push(`  Keywords: ${ag.keywords.map((k) => k.text).join(', ')}`);
+    if ((ag.negatives || []).length) lines.push(`  Negatives: ${ag.negatives.join(', ')}`);
+    lines.push(`  RSA headlines (${ag.rsa.headlines.length}): ${ag.rsa.headlines.join(' | ')}`);
+    lines.push(`  RSA descriptions (${ag.rsa.descriptions.length}): ${ag.rsa.descriptions.join(' | ')}`);
+  }
+  if ((spec.tracking_checks || []).length) lines.push('', `Pre-flight: ${spec.tracking_checks.join(' · ')}`);
+  return lines.join('\n');
+}
+
+const DRAFT_STATUS = {
+  draft: { label: 'draft', cls: 'bg-neutral-100 text-neutral-900' },
+  created_paused: { label: 'created — paused', cls: 'bg-info-tint text-info' },
+  enabled: { label: 'enabled', cls: 'bg-success-tint text-success' },
+};
+
+function DraftCard({ d, index }) {
+  const [status, setStatus] = useState(d.status);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const spec = d.spec || {};
+
+  async function act(action) {
+    setBusy(true);
+    try {
+      const r = await api(`/api/agency/drafts/${d.id}/${action}`, { method: 'POST', body: {} });
+      setStatus(r.status || (action === 'approve' ? 'created_paused' : action === 'enable' ? 'enabled' : 'dismissed'));
+    } catch { /* keep */ }
+    setBusy(false);
+  }
+  function copyBrief() {
+    if (navigator.clipboard) navigator.clipboard.writeText(briefFromSpec(spec)).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  }
+
+  if (status === 'dismissed') {
+    return <Card className="p-4 text-small text-neutral-900">{d.account}: draft dismissed · logged</Card>;
+  }
+  const st = DRAFT_STATUS[status] || DRAFT_STATUS.draft;
+  const groups = spec.ad_groups || [];
+  return (
+    <Card accent={status === 'created_paused' ? 'info' : undefined} className="rise p-4" style={{ '--rise-i': Math.min(index, 8) }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">{d.account}</span>
+          <span className="text-body font-semibold">{spec.name}</span>
+          <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', st.cls)}>{st.label}</span>
+        </div>
+        <span className="font-mono text-tiny text-neutral-900">${spec.budget_daily_usd}/day · {spec.bidding}</span>
+      </div>
+      <div className="mt-2 text-small text-neutral-900">
+        {spec.channel} · {groups.length} ad group{groups.length === 1 ? '' : 's'} · {groups.reduce((n, g) => n + ((g.keywords || []).length), 0)} keywords · goal {spec.conversion_goal || '—'}
+        {' · '}
+        <button type="button" onClick={() => setOpen((o) => !o)} className="underline underline-offset-2">{open ? 'hide spec' : 'view full spec'}</button>
+      </div>
+      {open && (
+        <pre className="mt-2 overflow-x-auto rounded bg-neutral-50 p-3 font-mono text-tiny leading-relaxed text-neutral-900">{briefFromSpec(spec)}</pre>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-3">
+        {status === 'draft' && (
+          <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Create in Google Ads — paused</Button>
+        )}
+        {status === 'created_paused' && (
+          <Button onClick={() => act('enable')} disabled={busy} className="!px-4 !py-2"><Play size={13} aria-hidden /> Enable — starts spending</Button>
+        )}
+        <Button variant="secondary" onClick={copyBrief} className="!px-4 !py-2">
+          <Copy size={13} aria-hidden /> {copied ? 'Copied' : 'Copy build brief'}
+        </Button>
+        {status !== 'enabled' && (
+          <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy} className="!py-2">Dismiss</Button>
+        )}
+        {status === 'created_paused' && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">paused — spends nothing until enabled</span>}
+        {status === 'enabled' && <span className="font-mono text-tiny uppercase tracking-wide text-success">live · one-tap pause any time</span>}
+      </div>
+    </Card>
+  );
+}
+
+function Build() {
+  const { data, error } = useAgency('/api/agency/drafts');
+  const { scope, accounts } = useScope();
+  const params = new URLSearchParams(window.location.search);
+  const forName = params.get('for');
+  const prefillAccount = forName
+    ? ((accounts.find((a) => a.display_name === forName) || {}).id || '')
+    : (scope.account || '');
+  const [form, setForm] = useState({
+    account_id: prefillAccount,
+    template: params.get('template') || 'generic',
+    services: '',
+    location: '',
+    budget_daily_usd: '',
+  });
+  const [created, setCreated] = useState([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (prefillAccount && !form.account_id) setForm((f) => ({ ...f, account_id: prefillAccount })); }, [prefillAccount]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (error) return <ErrorNote message={error.message} />;
+  if (!data) return <Spinner label="Loading drafts" />;
+
+  async function create() {
+    if (!form.account_id) return;
+    setBusy(true);
+    try {
+      const r = await api('/api/agency/drafts', {
+        method: 'POST',
+        body: {
+          account_id: form.account_id,
+          template: form.template,
+          inputs: {
+            services: form.services.split(',').map((s) => s.trim()).filter(Boolean),
+            location: form.location.trim() || null,
+            budget_daily_usd: form.budget_daily_usd ? Number(form.budget_daily_usd) : undefined,
+          },
+        },
+      });
+      if (r.draft) setCreated((xs) => [r.draft, ...xs]);
+    } catch { /* keep form */ }
+    setBusy(false);
+  }
+
+  const rows = [...created, ...(data.drafts || [])].filter((d) => !scope.account || d.account_id === scope.account);
+  const sel = 'rounded border border-neutral-400 bg-white px-2.5 py-2 text-small outline-none focus:border-accent';
+
+  return (
+    <div>
+      <MonoLabel>Campaign builder</MonoLabel>
+      <h1 className="mt-1 text-h3 tracking-tight">Drafted from the account&apos;s own data. Born paused.</h1>
+      <p className="mt-1 max-w-[74ch] text-small text-neutral-900">
+        A build is the biggest change we can propose, so it ships through the same pipeline as every fix: draft → you approve → created in Google Ads <strong>paused</strong> → you enable, as a second explicit click. The builder refuses to draft onto broken measurement — tracking findings clear first. Every step logs to the per-seat audit trail. Brief-only workflow? Copy the build brief instead.
+      </p>
+
+      <div className="mt-5 flex flex-wrap items-end gap-3 rounded border border-neutral-300 bg-white p-4">
+        <label className="flex flex-col gap-1">
+          <MonoLabel>Account</MonoLabel>
+          <select value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} className={sel} aria-label="Account for the new campaign">
+            <option value="">Pick an account</option>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <MonoLabel>Template</MonoLabel>
+          <select value={form.template} onChange={(e) => setForm({ ...form, template: e.target.value })} className={sel} aria-label="Campaign template">
+            <option value="brand">Brand — own-name searches</option>
+            <option value="generic">Generic — service searches</option>
+            <option value="remarketing">Remarketing — past visitors</option>
+          </select>
+        </label>
+        {form.template === 'generic' && (
+          <label className="flex min-w-[220px] flex-1 flex-col gap-1">
+            <MonoLabel>Services (comma-separated)</MonoLabel>
+            <input value={form.services} onChange={(e) => setForm({ ...form, services: e.target.value })} placeholder="Gel nails, Lash lifts" className={sel} />
+          </label>
+        )}
+        <label className="flex flex-col gap-1">
+          <MonoLabel>Location</MonoLabel>
+          <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Dubai" className={clsx(sel, 'w-28')} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <MonoLabel>Budget $/day</MonoLabel>
+          <input type="number" min="1" value={form.budget_daily_usd} onChange={(e) => setForm({ ...form, budget_daily_usd: e.target.value })} placeholder="10" className={clsx(sel, 'w-24')} />
+        </label>
+        <Button onClick={create} disabled={busy || !form.account_id} className="!px-4 !py-2.5">
+          <Hammer size={14} aria-hidden /> Draft it
+        </Button>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="mt-5"><EmptyState title="No drafts yet" body="Draft one above, or hit Build on any coverage-gap finding in Triage — it lands here pre-filled." /></div>
+      ) : (
+        <div className="mt-5 flex flex-col gap-3">
+          {rows.map((d, i) => <DraftCard key={d.id} d={d} index={i} />)}
         </div>
       )}
     </div>
@@ -706,11 +922,11 @@ function ReviewItem({ r }) {
 
 function Review() {
   const { data, error } = useAgency('/api/agency/review');
-  const { scope, accounts } = useScope();
+  const { scope, accounts, mineNames } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading review queue" />;
   // Reports are account-level renders — campaign scope narrows to the account.
-  const { items: queue } = applyScope(data.queue || [], { account: scope.account, campaign: null }, accounts);
+  const { items: queue } = applyScope(data.queue || [], { account: scope.account, campaign: null, mine: scope.mine }, accounts, mineNames);
   return (
     <div>
       <MonoLabel>Report review</MonoLabel>
@@ -984,16 +1200,23 @@ function AgencyRoutes() {
   // Tab links replace the URL without query params — re-stamp the scope so a
   // scoped view stays bookmarkable wherever you navigate.
   useEffect(() => { writeScopeToUrl(scope); }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
-  const scopeValue = useMemo(() => ({
-    scope, setScope,
-    accounts: (accData && accData.accounts) || [],
-    campaigns: (campData && campData.campaigns) || [],
-  }), [scope, accData, campData]);
+  const scopeValue = useMemo(() => {
+    const accounts = (accData && accData.accounts) || [];
+    const meName = me && me.seat ? me.seat.name : null;
+    const mineNames = meName
+      ? new Set(accounts.filter((a) => a.seat && a.seat.name === meName).map((a) => a.display_name))
+      : null;
+    return {
+      scope, setScope, accounts, meName, mineNames,
+      campaigns: (campData && campData.campaigns) || [],
+    };
+  }, [scope, accData, campData, me]);
 
   let screen = <Portfolio />;
   if (path === '/app/agency/triage') screen = <Triage />;
   if (path === '/app/agency/pacing') screen = <Pacing />;
   if (path === '/app/agency/alerts') screen = <Alerts />;
+  if (path === '/app/agency/build') screen = <Build />;
   if (path === '/app/agency/review') screen = <Review />;
   if (path === '/app/agency/accounts') screen = <Accounts />;
   if (path === '/app/agency/brand') screen = <Brand />;
