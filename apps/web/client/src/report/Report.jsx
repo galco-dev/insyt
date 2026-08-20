@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { CheckCircle2, AlertTriangle, Lock, ArrowRight, Undo2, Eye } from 'lucide-react';
-import { audit } from './data.js';
+import { audit, } from './data.js';
 import { api, isDemo } from '../lib/api.js';
 import {
   COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState,
@@ -52,10 +52,13 @@ export function HealthDial({ score, label }) {
 
 // ---------------------------------------------------------------- finding card
 
-function FindingCard({ f, locked }) {
+function FindingCard({ f, locked, index = 0 }) {
   const m = severityMeta[f.severity] || severityMeta.info;
   return (
-    <div className={clsx('rounded border border-neutral-300 bg-white border-l-[3px]', COLOR[m.color].borderL)}>
+    <div
+      className={clsx('rise rounded border border-neutral-300 bg-white border-l-[3px]', COLOR[m.color].borderL)}
+      style={{ '--rise-i': Math.min(index, 8) }}
+    >
       <div className="p-5">
         <div className="flex items-center justify-between gap-3">
           <SeverityBadge severity={severityMeta[f.severity] ? f.severity : 'info'} />
@@ -238,7 +241,7 @@ function RealReport({ reportId }) {
         <div className="mt-8"><EmptyState title="Nothing needed your attention" body="We checked everything on schedule. The next report lands in a week." /></div>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
-          {findings.map((f) => <FindingCard key={f.title} f={f} locked={locked} />)}
+          {findings.map((f, i) => <FindingCard key={f.title} f={f} locked={locked} index={i} />)}
         </div>
       )}
       <UnlockBar visible={locked} />
@@ -285,7 +288,7 @@ export default function Report({ reportId = null }) {
         {/* findings */}
         <SectionHead kicker="What we found" title="Seven findings, biggest money first" />
         <div className="flex flex-col gap-3">
-          {audit.findings.map((f) => <FindingCard key={f.title} f={f} locked={locked} />)}
+          {audit.findings.map((f, i) => <FindingCard key={f.title} f={f} locked={locked} index={i} />)}
         </div>
 
         {/* search terms */}
