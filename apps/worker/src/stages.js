@@ -16,12 +16,14 @@ const l2 = require('../../../packages/rules/src/layer2-ga4');
 const l3 = require('../../../packages/rules/src/layer3-fire');
 const l4 = require('../../../packages/rules/src/layer4-ads');
 const l5 = require('../../../packages/rules/src/layer5-live');
+const l4rsa = require('../../../packages/rules/src/layer4-rsa');
+const l5urls = require('../../../packages/rules/src/layer5-urls');
 const { computeVolumeDrops } = require('../../../packages/rules/src/layer3-fire');
 const { assembleEnvelope } = require('../../../packages/report/src/envelope');
 const { narrateFinding, narrateSlots } = require('../../../packages/report/src/narration');
 const { renderReport } = require('../../../packages/report/src/render');
 
-const ALL_RULES = [...l1.rules, ...l2.rules, ...l3.rules, ...l4.rules, ...l5.rules];
+const ALL_RULES = [...l1.rules, ...l2.rules, ...l3.rules, ...l4.rules, ...l4rsa.rules, ...l5.rules, ...l5urls.rules];
 
 function buildStages({ google, crawler, model, store }) {
   return [
@@ -113,6 +115,11 @@ function buildStages({ google, crawler, model, store }) {
           findings: ctx.findings,
           ledgerCumulative: await store.ledgerCumulative(ctx.run.tenant_id),
           narrativeSlots: ctx.narrativeSlots,
+          // "Against your goals" section — present only when the (agency)
+          // account has targets set; store.performanceFor is optional.
+          performance: store.performanceFor
+            ? await store.performanceFor(ctx.run.tenant_id).catch(() => null)
+            : null,
         });
         return {
           envelope,
@@ -145,6 +152,8 @@ function stageDataPresent(rule, ctx) {
   if (rule.layer === 2) return !!ctx.ga4;
   if (rule.layer === 3) return !!ctx.ga4Data && !!ctx.gtm;
   if (rule.layer === 4) return !!ctx.ads;
+  // url.* rules ride on the verification crawl's URL sweep, not the witness.
+  if (rule.rule_id && rule.rule_id.startsWith('url.')) return !!ctx.urlHealth;
   if (rule.layer === 5) return !!ctx.witness;
   return false;
 }
