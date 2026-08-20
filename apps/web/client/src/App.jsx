@@ -19,6 +19,7 @@ import Reports from './screens/Reports.jsx';
 import Journey from './screens/Journey.jsx';
 import Settings from './screens/Settings.jsx';
 import Report from './report/Report.jsx';
+import Agency from './agency/Agency.jsx';
 
 const NAV = [
   { to: '/app', label: 'Home', icon: HomeIcon },
@@ -89,12 +90,16 @@ function Routes() {
   const { path } = useRouter();
   const [authed, setAuthed] = useState(null); // null = checking
 
-  const needsSession = !PUBLIC.has(path);
+  const isAgency = path.startsWith('/app/agency');
+  const needsSession = !PUBLIC.has(path) && !isAgency;
 
   useEffect(() => {
     if (!needsSession || isDemo()) { setAuthed(true); return; }
     api('/api/app/journey').then(() => setAuthed(true)).catch((e) => setAuthed(e.status !== 401));
   }, [path, needsSession]);
+
+  // Agency console owns its shell and auth (seat check via /api/agency/me).
+  if (isAgency) return <Agency />;
 
   if (path === '/app/start') return <Frame><Start /></Frame>;
   if (path === '/app/report') return <Frame><Report /></Frame>;

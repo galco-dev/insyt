@@ -2,6 +2,8 @@
 // the real dashStore payloads, so screens are reviewable before credentials
 // exist. Same fictional business as the sample report (Glow Studio).
 
+import { AGENCY_DEMO } from '../agency/demo.js';
+
 const pending = [
   { id: 'chg-1', title: '$430 a month goes to searches that never book', money_line: 'about $430 a month' },
   { id: 'chg-2', title: 'One campaign is missing 38% of its chances', money_line: 'about $520 a month' },
@@ -92,6 +94,7 @@ const DEMO = {
 export function demoData(path, method) {
   const key = `${method} ${path.split('?')[0]}`;
   if (DEMO[key] !== undefined) return DEMO[key];
+  if (AGENCY_DEMO[key] !== undefined) return AGENCY_DEMO[key];
   if (method === 'POST' && path.startsWith('/api/checkout/')) {
     return { url: null, demo: true };
   }

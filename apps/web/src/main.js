@@ -4,7 +4,7 @@
 require('../../../packages/shared/src/sentry').init({ service: 'web' });
 
 const { createClient } = require('../../../packages/db/src/postgrest');
-const { webStore, opsStore, dashStore, billingStore, authStore } = require('../../../packages/db/src/stores');
+const { webStore, opsStore, dashStore, agencyStore, billingStore, authStore } = require('../../../packages/db/src/stores');
 const { discoveryCrawl } = require('../../../packages/crawler/src/crawl');
 const { handleWebhook } = require('../../../packages/billing/src/webhooks');
 const { createApp } = require('./server');
@@ -115,6 +115,7 @@ const app = createApp({
   crawler: { discoveryCrawl },
   opsStore: opsStore(db),
   dashStore: dashStore(db),
+  agencyStore: agencyStore(db),
   queue,
   opsToken: process.env.OPS_TOKEN || null,
   sessionSecret: required('SESSION_SECRET'),
