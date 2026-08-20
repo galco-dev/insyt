@@ -163,7 +163,7 @@ export const audit = {
   unlock: {
     price: '$20',
     line: 'Unlock the full report — every row, every fix, ready to approve.',
-    sub: '$20, credited to your first month if you subscribe. The fixes themselves wait for your approval — nothing changes until you say so.',
+    sub: '$20, credited to your first month if you subscribe — and refunded in full if the report tells you nothing useful. Nothing changes until you say so.',
   },
 };
 
