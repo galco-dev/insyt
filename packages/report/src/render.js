@@ -86,6 +86,8 @@ function findingCard(finding, unlocked) {
     </td></tr></table>`;
 }
 
+const { renderPerformanceSection } = require('./performance');
+
 function renderReport(envelope, { unlocked = false, healthScore = null, mode = 'web', links = {} } = {}) {
   const cards = envelope.findings
     .filter((f) => f.status !== 'dismissed' && f.status !== 'resolved')
@@ -111,6 +113,7 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
     ${healthScore != null ? healthScoreBlock(healthScore) : ''}
     ${envelope.narrative_slots.exec_summary ? `<div style="font-family:${TOKENS.font};font-size:15px;color:#333;text-align:center;padding:0 8px 16px 8px;">${esc(envelope.narrative_slots.exec_summary)}</div>` : ''}
     ${moneyHeadline(envelope)}
+    ${envelope.performance ? renderPerformanceSection(envelope.performance, TOKENS) : ''}
     ${degraded}
     ${unlockCta}
     ${cards}

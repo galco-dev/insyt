@@ -8,6 +8,9 @@ const pending = [
   { id: 'chg-1', title: '$430 a month goes to searches that never book', money_line: 'about $430 a month' },
   { id: 'chg-2', title: 'One campaign is missing 38% of its chances', money_line: 'about $520 a month' },
   { id: 'chg-3', title: 'A 30-second page view is being counted like a booking', money_line: 'about $290 a month' },
+  // Creation-as-finding: a new ad arrives through the same approve flow as
+  // every fix. It is created switched off; turning it on is a second yes.
+  { id: 'chg-4', title: 'People searching “Glow Studio” see competitors — your own-name ad is drafted and ready', money_line: 'about $8 a day, and it starts switched off' },
 ];
 
 const ledger = [
