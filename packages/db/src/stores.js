@@ -308,20 +308,45 @@ function agencyStore(db) {
       const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
       const rows = await db.select('changes',
-        `tenant_id=in.(${ids})&status=eq.proposed&select=id,tenant_id,before,after,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer)&order=created_at.asc&limit=200`);
+        `tenant_id=in.(${ids})&status=eq.proposed&select=id,tenant_id,before,after,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name)&order=created_at.asc&limit=200`);
       return rows.map((r) => ({
         id: r.id,
         account: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].display_name : r.tenant_id,
+        account_tenant: r.tenant_id,
         brief_only: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].brief_only : false,
         title: r.finding ? r.finding.title : 'Proposed change',
         explanation: r.finding ? r.finding.explanation : '',
         severity: r.finding ? r.finding.severity : 'info',
         rule_id: r.finding ? r.finding.rule_id : null,
         layer: r.finding ? r.finding.layer : null,
+        campaign_ref: r.finding ? r.finding.campaign_ref : null,
+        campaign_name: r.finding ? r.finding.campaign_name : null,
         money_monthly_usd: r.finding ? r.finding.money_impact_monthly_usd : null,
         before: r.before || null,
         after: r.after || null,
       })).sort((a, b) => (b.money_monthly_usd || 0) - (a.money_monthly_usd || 0));
+    },
+
+    // Campaign snapshots across all managed accounts — powers the scope bar
+    // dropdowns and name/ID search. Refreshed by the weekly audit runs.
+    campaignsFor: async (agencyId) => {
+      const accounts = await db.select('agency_accounts',
+        `agency_id=eq.${q(agencyId)}&status=in.(pending,active)&select=id,tenant_id,display_name`);
+      if (!accounts.length) return [];
+      const byTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
+      const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      const rows = await db.select('campaigns',
+        `tenant_id=in.(${ids})&select=tenant_id,google_campaign_id,name,status,channel,budget_daily_usd,bidding&order=name.asc&limit=1000`);
+      return rows.map((c) => ({
+        account_id: byTenant[c.tenant_id] ? byTenant[c.tenant_id].id : null,
+        account: byTenant[c.tenant_id] ? byTenant[c.tenant_id].display_name : null,
+        google_campaign_id: c.google_campaign_id,
+        name: c.name,
+        status: c.status,
+        channel: c.channel,
+        budget_daily_usd: c.budget_daily_usd,
+        bidding: c.bidding,
+      }));
     },
     approveChange: async (agencyId, seatId, changeId) => {
       await db.update('changes', `id=eq.${q(changeId)}`, { status: 'approved' });

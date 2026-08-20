@@ -255,6 +255,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/log') return json(res, 200, { entries: await agencyStore.auditLog(ag) });
           if (sub === '/accounts') return json(res, 200, { accounts: await agencyStore.accountsList(ag) });
           if (sub === '/billing') return json(res, 200, await agencyStore.billing(ag, new Date(now()).toISOString()));
+          if (sub === '/campaigns') return json(res, 200, { campaigns: await agencyStore.campaignsFor(ag) });
         }
         if (req.method === 'POST') {
           if (!canWrite) return json(res, 403, { error: 'Read-only seat.' });
