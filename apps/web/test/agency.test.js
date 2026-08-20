@@ -38,6 +38,7 @@ function fakeAgencyStore() {
     addAccount: async (ag, seat, { display_name }) => { actions.push(['acc_add', display_name]); return { id: 'a9', display_name, status: 'pending' }; },
     setAccountStatus: async (ag, seat, id, status) => actions.push(['acc_status', id, status]),
     billing: async () => ({ accounts: 2, rate: 45, band: '1–10', accountsSum: 90, platformFee: 249, total: 339, tier: 'mid', cycle: { daysRemaining: 16, daysInPeriod: 31 }, add_today_prorated: 23.23 }),
+    campaignsFor: async () => [{ account_id: 'a1', account: 'Glow Studio', google_campaign_id: '21436587', name: 'Gel & Extensions', status: 'enabled' }],
   };
 }
 
@@ -106,6 +107,9 @@ test('agency: account lifecycle — reads for all, add/pause/resume/remove admin
     const bill = await (await fetch(`${base}/api/agency/billing`, { headers: { cookie: cookie('tn-ro') } })).json();
     assert.strictEqual(bill.total, 339);
     assert.strictEqual(bill.add_today_prorated, 23.23);
+
+    const camps = await (await fetch(`${base}/api/agency/campaigns`, { headers: { cookie: cookie('tn-am') } })).json();
+    assert.strictEqual(camps.campaigns[0].google_campaign_id, '21436587');
 
     // AM cannot manage the roster; admin can.
     assert.strictEqual((await post('tn-am', '/api/agency/accounts', { display_name: 'X' })).status, 403);
