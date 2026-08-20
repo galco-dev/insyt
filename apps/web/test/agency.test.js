@@ -39,6 +39,12 @@ function fakeAgencyStore() {
     setAccountStatus: async (ag, seat, id, status) => actions.push(['acc_status', id, status]),
     billing: async () => ({ accounts: 2, rate: 45, band: '1–10', accountsSum: 90, platformFee: 249, total: 339, tier: 'mid', cycle: { daysRemaining: 16, daysInPeriod: 31 }, add_today_prorated: 23.23 }),
     campaignsFor: async () => [{ account_id: 'a1', account: 'Glow Studio', google_campaign_id: '21436587', name: 'Gel & Extensions', status: 'enabled' }],
+    pacing: async () => [{ account_id: 'a1', account: 'Glow Studio', targets: { monthly_budget_usd: 2000 }, pacing: { status: 'over', deltaPct: 14.2, mtd: 1510, projected: 2284 }, performance: { status: 'hitting', cpa: 41.2, cpaTargetUsd: 45 } }],
+    setTargets: async (ag, seat, accountId, patch) => { actions.push(['targets', accountId, patch.monthly_budget_usd]); return accountId === 'a-missing' ? null : { tenant_id: 't1' }; },
+    alertsFor: async () => [{ id: 'al1', account: 'Glow Studio', severity: 'critical', kind: 'spend_spike', title: 'Spend 2.4× daily average', acked_at: null }],
+    ackAlert: async (ag, seat, id) => actions.push(['ack', ag, seat, id]),
+    snoozeChange: async (ag, seat, id, days, reason) => { actions.push(['snooze', id, days, reason]); return { until: '2026-08-27T00:00:00Z' }; },
+    approveBatch: async (ag, seat, ids) => { ids.forEach((id) => actions.push(['approve', ag, seat, id])); return { approved: ids.length }; },
   };
 }
 
@@ -125,6 +131,41 @@ test('agency: account lifecycle — reads for all, add/pause/resume/remove admin
     assert.strictEqual((await post('tn-admin', '/api/agency/accounts/a1/remove')).status, 200);
     assert.deepStrictEqual(ags.actions.at(-1), ['acc_status', 'a1', 'removed']);
     assert.strictEqual((await post('tn-am', '/api/agency/accounts/a1/pause')).status, 403);
+  });
+});
+
+test('agency: P0s — pacing/alerts reads, targets + snooze + ack writes, batch approve logs each id', async () => {
+  const ags = fakeAgencyStore();
+  await withApp({ store: baseStore(), crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {
+    const post = (tenant, path, body) => fetch(`${base}${path}`, {
+      method: 'POST', headers: { cookie: cookie(tenant), 'content-type': 'application/json' }, body: JSON.stringify(body || {}),
+    });
+
+    const pac = await (await fetch(`${base}/api/agency/pacing`, { headers: { cookie: cookie('tn-ro') } })).json();
+    assert.strictEqual(pac.accounts[0].pacing.status, 'over');
+    const al = await (await fetch(`${base}/api/agency/alerts`, { headers: { cookie: cookie('tn-ro') } })).json();
+    assert.strictEqual(al.alerts[0].kind, 'spend_spike');
+
+    // Writes gated: readonly blocked everywhere.
+    assert.strictEqual((await post('tn-ro', '/api/agency/targets/a1', { monthly_budget_usd: 2500 })).status, 403);
+    assert.strictEqual((await post('tn-ro', '/api/agency/approve-batch', { ids: ['x'] })).status, 403);
+
+    assert.strictEqual((await post('tn-am', '/api/agency/targets/a1', { monthly_budget_usd: 2500 })).status, 200);
+    assert.deepStrictEqual(ags.actions.at(-1), ['targets', 'a1', 2500]);
+    assert.strictEqual((await post('tn-am', '/api/agency/targets/a-missing', { monthly_budget_usd: 1 })).status, 404);
+
+    const sn = await post('tn-am', '/api/agency/snooze/chg1', { days: 7, reason: 'client OOO' });
+    assert.strictEqual((await sn.json()).until, '2026-08-27T00:00:00Z');
+    assert.deepStrictEqual(ags.actions.at(-1), ['snooze', 'chg1', 7, 'client OOO']);
+
+    assert.strictEqual((await post('tn-am', '/api/agency/alerts/al1/ack')).status, 200);
+    assert.deepStrictEqual(ags.actions.at(-1), ['ack', 'ag1', 's2', 'al1']);
+
+    // Batch approve: one call, every id individually in the audit trail.
+    assert.strictEqual((await post('tn-admin', '/api/agency/approve-batch', {})).status, 400);
+    const batch = await post('tn-am', '/api/agency/approve-batch', { ids: ['chg1', 'chg2', 'chg3'] });
+    assert.strictEqual((await batch.json()).approved, 3);
+    assert.deepStrictEqual(ags.actions.slice(-3).map((a) => a[3]), ['chg1', 'chg2', 'chg3']);
   });
 });
 
