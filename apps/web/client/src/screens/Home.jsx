@@ -7,7 +7,7 @@ import { Link } from '../lib/router.jsx';
 import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, Sparkline, useCountUp } from '../lib/ui.jsx';
 
 function MiniDial({ score }) {
-  const sevColor = score < 50 ? '#DC2626' : score < 70 ? '#D97706' : '#16A34A';
+  const sevColor = score < 50 ? 'var(--ui-critical)' : score < 70 ? 'var(--ui-warning)' : 'var(--ui-success)';
   const r = 40; const cx = 50; const cy = 50; const start = 135; const sweepMax = 270;
   const arc = (from, deg) => {
     const rad = (a) => ((a - 90) * Math.PI) / 180;
@@ -19,8 +19,8 @@ function MiniDial({ score }) {
   return (
     <div className="relative h-[100px] w-[100px] shrink-0" role="img" aria-label={`Account health ${score} out of 100`}>
       <svg viewBox="0 0 100 100" className="h-full w-full">
-        <path d={arc(start, sweepMax)} fill="none" stroke="#f2f2f2" strokeWidth="7" strokeLinecap="round" />
-        <path d={arc(start, Math.max((shown / 100) * sweepMax, 3))} fill="none" stroke={sevColor} strokeWidth="7" strokeLinecap="round" />
+        <path d={arc(start, sweepMax)} fill="none" strokeWidth="7" strokeLinecap="round" style={{ stroke: 'var(--ui-ring)' }} />
+        <path d={arc(start, Math.max((shown / 100) * sweepMax, 3))} fill="none" strokeWidth="7" strokeLinecap="round" style={{ stroke: sevColor }} />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center text-h4">{shown}</div>
     </div>

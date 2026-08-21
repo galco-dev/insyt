@@ -1,30 +1,165 @@
-/* Insyt app — premium dark restyle (v28). Tailwind v4.
-   Layer order: UUI kit globals (tailwind + kit @theme + plugins) first, then
-   the Insyt @theme overrides below win by cascade. Silver monochrome brand
-   ramp decided 21 Aug 2026 — brand 500 is monochrome to match the mono
-   Webflow landing pages; severity colors are the only hues in the product. */
+/* Insyt app — premium restyle (v28). Tailwind v4, two themes, one geometry.
+   DARK is the product default (near-black, silver mono ramp, decided 21 Aug
+   2026); LIGHT is its monochrome twin matching the Webflow landing pages.
+   The theme flips on the `dark-mode` class on <html> — the same class the
+   vendored UUI kit uses, so kit components switch in lockstep. All
+   theme-dependent values live in the --ui-* variables below; utilities
+   reference them via @theme inline or the parenthesized var() syntax.
+   Severity colors are the only hues in the product in both themes. */
 
 @import "./uui/styles/globals.css";
 
+/* ---------------------------------------------------------------- LIGHT */
+:root {
+  /* surfaces */
+  --ui-page: #fafafa;
+  --ui-sidebar: #f4f4f5;
+  --ui-card: #ffffff;
+  --ui-card-hi: #ffffff;
+  --ui-strong: #16181b;
+
+  /* neutral scale (black-alpha; text steps at 800/900) */
+  --ui-n50: rgba(0, 0, 0, 0.03);
+  --ui-n100: rgba(0, 0, 0, 0.045);
+  --ui-n200: rgba(0, 0, 0, 0.045);
+  --ui-n300: rgba(0, 0, 0, 0.07);
+  --ui-n400: rgba(0, 0, 0, 0.09);
+  --ui-n500: rgba(0, 0, 0, 0.13);
+  --ui-n600: rgba(0, 0, 0, 0.17);
+  --ui-n700: rgba(0, 0, 0, 0.24);
+  --ui-n800: #6d727a;
+  --ui-n900: #565b63;
+
+  /* severity (the only hues) */
+  --ui-critical: #dc2626;
+  --ui-critical-tint: rgba(220, 38, 38, 0.08);
+  --ui-warning: #d97706;
+  --ui-warning-tint: rgba(217, 119, 6, 0.08);
+  --ui-success: #16a34a;
+  --ui-success-tint: rgba(22, 163, 74, 0.08);
+  --ui-info: #2563eb;
+  --ui-info-tint: rgba(37, 99, 235, 0.08);
+
+  /* interactive: in mono, luminance signals "interactive" — on light the
+     primary plate is dark with light ink (text-page) */
+  --ui-cta-a: #33363b;
+  --ui-cta-b: #1f2226;
+  --ui-cta-edge: rgba(0, 0, 0, 0.35);
+  --ui-cta-hi: rgba(255, 255, 255, 0.18);
+  --ui-focus: #45494f;
+  --ui-dot-halo: rgba(0, 0, 0, 0.12);
+
+  /* chrome: rings, plates, wells */
+  --ui-ring: rgba(0, 0, 0, 0.08);
+  --ui-ring-strong: rgba(0, 0, 0, 0.13);
+  --ui-plate-a: #ffffff;
+  --ui-plate-b: #f2f3f4;
+  --ui-plate-a-h: #ffffff;
+  --ui-plate-b-h: #eceded;
+  --ui-plate-hi: rgba(255, 255, 255, 0.7);
+  --ui-well: #ffffff;
+  --ui-echo-a: rgba(0, 0, 0, 0.06);
+  --ui-echo-b: rgba(0, 0, 0, 0.04);
+  --ui-echo-c: rgba(0, 0, 0, 0.02);
+
+  /* icon bezels (double plate law, light from above) */
+  --ui-bezel-outer-a: #ffffff;
+  --ui-bezel-outer-b: #e7e8ea;
+  --ui-bezel-outer-ring: rgba(0, 0, 0, 0.12);
+  --ui-bezel-inner-a: #f7f8f9;
+  --ui-bezel-inner-b: #e3e5e7;
+  --ui-bezel-inner-ring: rgba(0, 0, 0, 0.09);
+  --ui-bezel-active-a: #3a3d42;
+  --ui-bezel-active-b: #232529;
+  --ui-bezel-active-ring: rgba(0, 0, 0, 0.35);
+
+  /* data + motion chrome */
+  --ui-ring-stop-a: #3a3d42;
+  --ui-ring-stop-b: #7c828b;
+  --ui-arc: #4a4e55;
+  --ui-grid: rgba(0, 0, 0, 0.07);
+  --ui-shimmer-base: rgba(0, 0, 0, 0.04);
+  --ui-shimmer-sheen: rgba(255, 255, 255, 0.55);
+  --ui-selection: rgba(0, 0, 0, 0.12);
+  --ui-lift: 0 8px 22px rgba(0, 0, 0, 0.12);
+}
+
+/* ----------------------------------------------------------------- DARK */
+.dark-mode {
+  --ui-page: #0a0a0c;
+  --ui-sidebar: #070808;
+  --ui-card: #131415;
+  --ui-card-hi: #17181a;
+  --ui-strong: #f4f5f6;
+
+  --ui-n50: rgba(255, 255, 255, 0.03);
+  --ui-n100: rgba(255, 255, 255, 0.06);
+  --ui-n200: rgba(255, 255, 255, 0.06);
+  --ui-n300: rgba(255, 255, 255, 0.08);
+  --ui-n400: rgba(255, 255, 255, 0.1);
+  --ui-n500: rgba(255, 255, 255, 0.14);
+  --ui-n600: rgba(255, 255, 255, 0.18);
+  --ui-n700: rgba(255, 255, 255, 0.25);
+  --ui-n800: #71747c;
+  --ui-n900: #9ba0a8;
+
+  --ui-critical: #f05252;
+  --ui-critical-tint: rgba(240, 82, 82, 0.12);
+  --ui-warning: #f5a524;
+  --ui-warning-tint: rgba(245, 165, 36, 0.12);
+  --ui-success: #2fbf71;
+  --ui-success-tint: rgba(47, 191, 113, 0.12);
+  --ui-info: #4d9fec;
+  --ui-info-tint: rgba(77, 159, 236, 0.12);
+
+  --ui-cta-a: #f4f5f6;
+  --ui-cta-b: #d9dbde;
+  --ui-cta-edge: rgba(185, 189, 195, 0.5);
+  --ui-cta-hi: rgba(255, 255, 255, 0.55);
+  --ui-focus: #b9bdc3;
+  --ui-dot-halo: rgba(244, 245, 246, 0.18);
+
+  --ui-ring: rgba(255, 255, 255, 0.07);
+  --ui-ring-strong: rgba(255, 255, 255, 0.12);
+  --ui-plate-a: rgba(255, 255, 255, 0.08);
+  --ui-plate-b: rgba(255, 255, 255, 0.03);
+  --ui-plate-a-h: rgba(255, 255, 255, 0.11);
+  --ui-plate-b-h: rgba(255, 255, 255, 0.05);
+  --ui-plate-hi: rgba(255, 255, 255, 0.08);
+  --ui-well: rgba(255, 255, 255, 0.04);
+  --ui-echo-a: rgba(255, 255, 255, 0.06);
+  --ui-echo-b: rgba(255, 255, 255, 0.04);
+  --ui-echo-c: rgba(255, 255, 255, 0.02);
+
+  --ui-bezel-outer-a: #26282a;
+  --ui-bezel-outer-b: #0e100f;
+  --ui-bezel-outer-ring: rgba(255, 255, 255, 0.16);
+  --ui-bezel-inner-a: #161817;
+  --ui-bezel-inner-b: #080909;
+  --ui-bezel-inner-ring: rgba(255, 255, 255, 0.09);
+  --ui-bezel-active-a: #d9dbde;
+  --ui-bezel-active-b: #8f949c;
+  --ui-bezel-active-ring: rgba(244, 245, 246, 0.45);
+
+  --ui-ring-stop-a: #f4f5f6;
+  --ui-ring-stop-b: #8f949c;
+  --ui-arc: #d9dbde;
+  --ui-grid: rgba(255, 255, 255, 0.06);
+  --ui-shimmer-base: rgba(255, 255, 255, 0.03);
+  --ui-shimmer-sheen: rgba(255, 255, 255, 0.06);
+  --ui-selection: rgba(217, 219, 222, 0.25);
+  --ui-lift: 0 8px 22px rgba(0, 0, 0, 0.45);
+}
+
+/* ------------------------------------------------- static (theme-free) */
 @theme {
-  /* -- Typefaces: Geist everywhere (kit defaults to Inter) -- */
   --font-sans: "Geist", "Helvetica", "Arial", sans-serif;
   --font-body: "Geist", "Helvetica", "Arial", sans-serif;
   --font-display: "Geist", "Helvetica", "Arial", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
 
-  /* -- Surfaces (dark only, near black) -- */
-  --color-page: #0a0a0c;
-  --color-sidebar: #070808;
-  --color-card: #131415;
-  --color-card-hi: #17181a;
-  --color-strong: #f4f5f6;
-
-  /* Compat alias while the accent-class sweep completes: "accent" was the
-     old near-black ink; on dark it maps to strong ink. */
-  --color-accent: #f4f5f6;
-
-  /* -- Brand ramp: SILVER monochrome (decided 21 Aug 2026) -- */
+  /* silver brand scale (decided 21 Aug 2026) — kept for kit components and
+     decorative uses; interactive surfaces use the --ui-cta-* semantics */
   --color-brand-25: #fdfdfd;
   --color-brand-50: #fafafb;
   --color-brand-100: #f9fafa;
@@ -38,43 +173,16 @@
   --color-brand-900: #26292e;
   --color-brand-950: #16181b;
 
-  /* -- Neutral scale remapped to white-alpha/dark so existing
-        border/hover/bg-neutral-* classes survive without a sweep -- */
-  --color-neutral-50: rgba(255, 255, 255, 0.03);
-  --color-neutral-100: rgba(255, 255, 255, 0.06);
-  --color-neutral-200: rgba(255, 255, 255, 0.06);
-  --color-neutral-300: rgba(255, 255, 255, 0.08);
-  --color-neutral-400: rgba(255, 255, 255, 0.1);
-  --color-neutral-500: rgba(255, 255, 255, 0.14);
-  --color-neutral-600: rgba(255, 255, 255, 0.18);
-  --color-neutral-700: rgba(255, 255, 255, 0.25);
-  --color-neutral-800: #71747c;
-  --color-neutral-900: #9ba0a8;
-
-  /* -- Severity: brightened for dark ground, darker alpha tints.
-        These four are the ONLY hues in the product. -- */
-  --color-critical: #f05252;
-  --color-critical-tint: rgba(240, 82, 82, 0.12);
-  --color-warning: #f5a524;
-  --color-warning-tint: rgba(245, 165, 36, 0.12);
-  --color-success: #2fbf71;
-  --color-success-tint: rgba(47, 191, 113, 0.12);
-  --color-info: #4d9fec;
-  --color-info-tint: rgba(77, 159, 236, 0.12);
-
-  /* -- Radii (carried over from the v3 token contract) -- */
   --radius-DEFAULT: 6px;
   --radius-sm: 4px;
   --radius-lg: 10px;
 
-  /* -- Containers -- */
   --container-container: 1428px;
   --container-xl2: 1138px;
   --container-l2: 896px;
   --container-m2: 654px;
   --container-s2: 412px;
 
-  /* -- Type scale (v3 contract, compressed one step for app density) -- */
   --text-h1: 2.5rem;
   --text-h1--line-height: 1.1;
   --text-h1--font-weight: 600;
@@ -98,11 +206,41 @@
   --text-tiny--line-height: 1.4;
 }
 
+/* ------------------------------------- theme-flipping named utilities */
+@theme inline {
+  --color-page: var(--ui-page);
+  --color-sidebar: var(--ui-sidebar);
+  --color-card: var(--ui-card);
+  --color-card-hi: var(--ui-card-hi);
+  --color-strong: var(--ui-strong);
+  --color-accent: var(--ui-strong);
+
+  --color-neutral-50: var(--ui-n50);
+  --color-neutral-100: var(--ui-n100);
+  --color-neutral-200: var(--ui-n200);
+  --color-neutral-300: var(--ui-n300);
+  --color-neutral-400: var(--ui-n400);
+  --color-neutral-500: var(--ui-n500);
+  --color-neutral-600: var(--ui-n600);
+  --color-neutral-700: var(--ui-n700);
+  --color-neutral-800: var(--ui-n800);
+  --color-neutral-900: var(--ui-n900);
+
+  --color-critical: var(--ui-critical);
+  --color-critical-tint: var(--ui-critical-tint);
+  --color-warning: var(--ui-warning);
+  --color-warning-tint: var(--ui-warning-tint);
+  --color-success: var(--ui-success);
+  --color-success-tint: var(--ui-success-tint);
+  --color-info: var(--ui-info);
+  --color-info-tint: var(--ui-info-tint);
+}
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    background-color: var(--color-page);
+    background-color: var(--ui-page);
   }
   body {
     @apply bg-page text-strong font-sans text-body;
@@ -111,7 +249,7 @@
     font-variant-numeric: tabular-nums;
   }
   ::selection {
-    background: rgba(217, 219, 222, 0.25);
+    background: var(--ui-selection);
   }
 }
 
@@ -143,12 +281,12 @@
     to { opacity: 1; }
   }
 
-  /* Shimmer sheen for skeletons: a light band sweeping over white/3% blocks. */
+  /* Shimmer sheen for skeletons. */
   .shimmer {
     position: relative;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.03);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    background: var(--ui-shimmer-base);
+    box-shadow: inset 0 0 0 1px var(--ui-ring);
   }
   .shimmer::after {
     content: "";
@@ -158,7 +296,7 @@
     background: linear-gradient(
       100deg,
       transparent 30%,
-      rgba(255, 255, 255, 0.06) 50%,
+      var(--ui-shimmer-sheen) 50%,
       transparent 70%
     );
     animation: shimmer 1.6s ease-in-out infinite;
@@ -181,7 +319,7 @@
     .lift { transition: box-shadow 0.18s ease, transform 0.18s ease; }
     .lift:hover {
       transform: translateY(-1px);
-      box-shadow: 0 8px 22px rgb(0 0 0 / 0.45);
+      box-shadow: var(--ui-lift);
     }
   }
 

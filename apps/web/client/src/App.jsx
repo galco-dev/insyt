@@ -7,7 +7,7 @@ import clsx from 'clsx';
 import { Home01 as HomeIcon, CheckSquare, Receipt as ScrollText, File02 as FileText, Settings01 as SettingsIcon, Map01 as Map } from '@untitledui/icons';
 import { RouterProvider, useRouter, Link } from './lib/router.jsx';
 import { api, isDemo } from './lib/api.js';
-import { MonoLabel, Button, Spinner, BrandOrb } from './lib/ui.jsx';
+import { MonoLabel, Button, Spinner, BrandOrb, ThemeToggle } from './lib/ui.jsx';
 import Start from './screens/Start.jsx';
 import Confirm from './screens/Confirm.jsx';
 import Plan from './screens/Plan.jsx';
@@ -56,7 +56,10 @@ function Frame({ children, withNav }) {
       <header className="sticky top-0 z-30 border-b border-neutral-300 bg-page/85 backdrop-blur">
         <div className="mx-auto flex max-w-l2 items-center justify-between px-5 py-4">
           <Link to="/app" className="flex items-center gap-2.5 text-h5 font-semibold tracking-tight"><BrandOrb size={22} />Insyt</Link>
-          {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
+          <div className="flex items-center gap-3">
+            {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <div className={clsx('page-fade', withNav && 'pb-20')}>{children}</div>
@@ -77,7 +80,7 @@ function Frame({ children, withNav }) {
                   <span
                     className={clsx(
                       'grid h-7 w-12 place-items-center rounded-full',
-                      active && 'bg-gradient-to-b from-white/[0.09] to-white/[0.03] ring-1 ring-inset ring-white/[0.1] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]',
+                      active && 'bg-gradient-to-b from-(--ui-plate-a) to-(--ui-plate-b) ring-1 ring-inset ring-(--ui-ring-strong) shadow-[inset_0_1px_0_var(--ui-plate-hi)]',
                     )}
                   >
                     <IconEl size={16} strokeWidth={active ? 2.4 : 1.8} aria-hidden />
@@ -85,8 +88,8 @@ function Frame({ children, withNav }) {
                   <span className="flex items-center gap-1.5">
                     <span
                       aria-hidden
-                      className={clsx('h-1 w-1 rounded-full bg-brand-300 transition-opacity duration-150', active ? 'opacity-100' : 'opacity-0')}
-                      style={active ? { boxShadow: '0 0 0 2px rgba(244,245,246,0.18)' } : undefined}
+                      className={clsx('h-1 w-1 rounded-full bg-(--ui-cta-a) transition-opacity duration-150', active ? 'opacity-100' : 'opacity-0')}
+                      style={active ? { boxShadow: '0 0 0 2px var(--ui-dot-halo)' } : undefined}
                     />
                     {label}
                   </span>

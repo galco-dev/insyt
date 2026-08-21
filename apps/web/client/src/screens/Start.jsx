@@ -90,7 +90,7 @@ export default function Start() {
 
       {state === 'idle' && (
         <div className="mx-auto mt-8 max-w-s2">
-          <div className="flex overflow-hidden rounded border border-neutral-500 bg-white/[0.04] focus-within:border-brand-500">
+          <div className="flex overflow-hidden rounded border border-neutral-500 bg-(--ui-well) focus-within:border-(--ui-focus)">
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -106,7 +106,7 @@ export default function Start() {
               autoComplete="url"
               autoFocus
             />
-            <button type="button" onClick={begin} className="flex items-center gap-2 whitespace-nowrap bg-brand-300 px-5 text-small font-medium text-page">
+            <button type="button" onClick={begin} className="flex items-center gap-2 whitespace-nowrap bg-(--ui-cta-a) px-5 text-small font-medium text-page">
               <Search size={15} aria-hidden /> Check my site
             </button>
           </div>
@@ -121,11 +121,11 @@ export default function Start() {
       {state === 'crawling' && (
         <Card className="mx-auto mt-8 max-w-s2 p-6">
           <div className="flex items-center gap-3">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-400 border-t-brand-300" aria-hidden />
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-400 border-t-(--ui-cta-a)" aria-hidden />
             <div className="text-body font-medium" aria-live="polite">{STAGES[stage]}</div>
           </div>
           <div className="mt-4 h-1 overflow-hidden rounded-full bg-neutral-200">
-            <div className="h-full bg-brand-300 transition-all duration-1000" style={{ width: `${((stage + 1) / STAGES.length) * 90}%` }} />
+            <div className="h-full bg-(--ui-cta-a) transition-all duration-1000" style={{ width: `${((stage + 1) / STAGES.length) * 90}%` }} />
           </div>
           <p className="mt-3 text-tiny text-neutral-900">Usually under three minutes. We only look at what any visitor can see.</p>
         </Card>

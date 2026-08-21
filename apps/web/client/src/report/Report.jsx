@@ -25,7 +25,7 @@ function VerdictChip({ verdict }) {
 // ---------------------------------------------------------------- health dial
 
 export function HealthDial({ score, label }) {
-  const sevColor = score < 50 ? '#DC2626' : score < 70 ? '#D97706' : '#16A34A';
+  const sevColor = score < 50 ? 'var(--ui-critical)' : score < 70 ? 'var(--ui-warning)' : 'var(--ui-success)';
   const r = 64;
   const cx = 80; const cy = 80;
   const start = 135; const sweepMax = 270;
@@ -39,8 +39,8 @@ export function HealthDial({ score, label }) {
   return (
     <div className="relative h-[160px] w-[160px] shrink-0" role="img" aria-label={`Account health ${score} out of 100 - ${label}`}>
       <svg viewBox="0 0 160 160" className="h-full w-full">
-        <path d={arc(start, sweepMax)} fill="none" stroke="#f2f2f2" strokeWidth="10" strokeLinecap="round" />
-        <path d={arc(start, Math.max(sweep, 4))} fill="none" stroke={sevColor} strokeWidth="10" strokeLinecap="round" />
+        <path d={arc(start, sweepMax)} fill="none" strokeWidth="10" strokeLinecap="round" style={{ stroke: 'var(--ui-ring)' }} />
+        <path d={arc(start, Math.max(sweep, 4))} fill="none" strokeWidth="10" strokeLinecap="round" style={{ stroke: sevColor }} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <div className="text-[2.75rem] font-semibold leading-none tracking-tight">{score}</div>
@@ -90,7 +90,7 @@ function SectionHead({ kicker, title, count, locked }) {
         <h2 className="mt-1 text-h4">{title}</h2>
       </div>
       {count && (
-        <span className="mb-0.5 inline-flex items-center gap-1.5 rounded-full border border-neutral-400 bg-white/[0.04] px-3 py-1 font-mono text-tiny text-neutral-900">
+        <span className="mb-0.5 inline-flex items-center gap-1.5 rounded-full border border-neutral-400 bg-(--ui-well) px-3 py-1 font-mono text-tiny text-neutral-900">
           {locked && <Lock size={11} aria-hidden />} {count}
         </span>
       )}
@@ -200,7 +200,7 @@ function UnlockBar({ visible }) {
           type="button"
           onClick={unlock}
           disabled={busy}
-          className="inline-flex shrink-0 items-center gap-2 rounded bg-gradient-to-b from-brand-300 to-brand-400 px-6 py-3 text-small font-medium text-page ring-1 ring-inset ring-brand-500/50 shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.55)] disabled:opacity-40"
+          className="inline-flex shrink-0 items-center gap-2 rounded bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) px-6 py-3 text-small font-medium text-page ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)] disabled:opacity-40"
         >
           {busy ? 'Opening checkout…' : `Unlock for ${audit.unlock.price}`} <ArrowRight size={15} aria-hidden />
         </button>

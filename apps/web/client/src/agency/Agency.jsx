@@ -13,7 +13,7 @@ import {
 } from '@untitledui/icons';
 import { api, isDemo, demoHref } from '../lib/api.js';
 import { RouterProvider, useRouter, Link } from '../lib/router.jsx';
-import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp, BrandOrb, ProgressRing, SEV_HEX } from '../lib/ui.jsx';
+import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp, BrandOrb, ProgressRing, SEV_HEX, ThemeToggle } from '../lib/ui.jsx';
 
 const NAV = [
   { to: '/app/agency', label: 'Portfolio', icon: LayoutGrid },
@@ -85,7 +85,7 @@ function ScopeBar() {
         <select
           value={scope.account || ''}
           onChange={(e) => setScope({ ...scope, account: e.target.value || null, campaign: null })}
-          className="rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-1.5 text-small outline-none focus:border-brand-500"
+          className="rounded border border-neutral-400 bg-(--ui-well) px-2.5 py-1.5 text-small outline-none focus:border-(--ui-focus)"
           aria-label="Account scope"
         >
           <option value="">All accounts</option>
@@ -96,7 +96,7 @@ function ScopeBar() {
           value={scope.campaign || ''}
           onChange={(e) => setScope({ ...scope, campaign: e.target.value || null })}
           disabled={!scope.account}
-          className="rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-1.5 text-small outline-none focus:border-brand-500 disabled:opacity-50"
+          className="rounded border border-neutral-400 bg-(--ui-well) px-2.5 py-1.5 text-small outline-none focus:border-(--ui-focus) disabled:opacity-50"
           aria-label="Campaign scope"
         >
           <option value="">{scope.account ? 'All campaigns' : 'Pick an account first'}</option>
@@ -116,14 +116,14 @@ function ScopeBar() {
             type="button"
             onClick={() => setScope({ ...scope, mine: !scope.mine })}
             className={clsx('rounded-full border px-3 py-1 font-mono text-tiny',
-              scope.mine ? 'border-transparent bg-brand-300 text-page' : 'border-neutral-400 bg-white/[0.04] text-neutral-900')}
+              scope.mine ? 'border-transparent bg-(--ui-cta-a) text-page' : 'border-neutral-400 bg-(--ui-well) text-neutral-900')}
             title={`Only accounts managed by ${meName}`}
           >
             My accounts ({mineNames.size})
           </button>
         )}
         <div className="relative ml-auto min-w-[220px] flex-1 sm:max-w-[320px]">
-          <div className="flex items-center gap-2 rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-1.5">
+          <div className="flex items-center gap-2 rounded border border-neutral-400 bg-(--ui-well) px-2.5 py-1.5">
             <Search size={13} className="shrink-0 text-neutral-800" aria-hidden />
             <input
               value={q}
@@ -333,7 +333,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
               type="checkbox"
               checked={selected}
               onChange={() => onSelect(item.id)}
-              className="size-4 accent-brand-300"
+              className="size-4 accent-(--ui-cta-a)"
               aria-label={`Select ${item.title} for batch approval`}
             />
           )}
@@ -357,7 +357,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
         {item.build_template ? (
           <Link
             to={demoHref(`/app/agency/build?template=${item.build_template}&for=${encodeURIComponent(item.account)}`)}
-            className="inline-flex items-center gap-1.5 rounded bg-gradient-to-b from-brand-300 to-brand-400 px-4 py-2 text-small font-medium text-page ring-1 ring-inset ring-brand-500/50 shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.55)]"
+            className="inline-flex items-center gap-1.5 rounded bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) px-4 py-2 text-small font-medium text-page ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)]"
           >
             <Hammer size={13} aria-hidden /> Build it
           </Link>
@@ -381,7 +381,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
             value={snoozeReason}
             onChange={(e) => setSnoozeReason(e.target.value)}
             placeholder="Reason (lands in the audit trail)"
-            className="min-w-[220px] flex-1 rounded border border-neutral-400 bg-white/[0.04] px-3 py-2 text-small outline-none focus:border-brand-500"
+            className="min-w-[220px] flex-1 rounded border border-neutral-400 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)"
             aria-label="Snooze reason"
           />
           <Button variant="secondary" onClick={() => snooze(7)} disabled={busy} className="!px-3 !py-2">7 days</Button>
@@ -443,7 +443,7 @@ function Triage() {
         Every change ships both ways: Apply (our executor runs it through the staged workspace → diff → publish → verify path) or Copy fix brief for manual execution. Nothing is ever auto-applied. Tick several and approve them in one go - each still lands individually in the per-seat audit log. Snooze parks an item with a reason; it comes back by itself.
       </p>
       {selIds.length > 0 && (
-        <div className="sticky top-[105px] z-20 mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-500 bg-white/[0.04] px-4 py-2.5 shadow-sm">
+        <div className="sticky top-[105px] z-20 mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-500 bg-(--ui-well) px-4 py-2.5 shadow-sm">
           <span className="text-small font-semibold">{selIds.length} selected{selMoney ? ` · ~$${selMoney}/mo total` : ''}</span>
           <Button onClick={approveSelected} disabled={busy} className="!px-4 !py-2">Approve {selIds.length} selected</Button>
           <button type="button" onClick={() => setSel({})} className="text-small text-neutral-900 underline underline-offset-2">Clear</button>
@@ -503,11 +503,11 @@ function Triage() {
 // platform (binding).
 
 const PACE_STATUS = {
-  over: { label: 'over pace', cls: 'bg-critical-tint text-critical', dot: 'bg-critical', halo: 'rgba(240,82,82,0.22)' },
-  at_risk: { label: 'accelerating', cls: 'bg-warning-tint text-warning', dot: 'bg-warning', halo: 'rgba(245,165,36,0.22)' },
-  under: { label: 'under pace', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'rgba(77,159,236,0.22)' },
-  no_budget: { label: 'no budget set', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'rgba(255,255,255,0.1)' },
-  on_pace: { label: 'on pace', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'rgba(47,191,113,0.22)' },
+  over: { label: 'over pace', cls: 'bg-critical-tint text-critical', dot: 'bg-critical', halo: 'color-mix(in srgb, var(--ui-critical) 22%, transparent)' },
+  at_risk: { label: 'accelerating', cls: 'bg-warning-tint text-warning', dot: 'bg-warning', halo: 'color-mix(in srgb, var(--ui-warning) 22%, transparent)' },
+  under: { label: 'under pace', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'color-mix(in srgb, var(--ui-info) 22%, transparent)' },
+  no_budget: { label: 'no budget set', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
+  on_pace: { label: 'on pace', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'color-mix(in srgb, var(--ui-success) 22%, transparent)' },
 };
 
 function StatusChip({ st, className }) {
@@ -562,7 +562,7 @@ function TargetEditor({ row, onClose }) {
         value={form[key]}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
         placeholder={placeholder}
-        className="w-32 rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-2 text-small outline-none focus:border-brand-500"
+        className="w-32 rounded border border-neutral-400 bg-(--ui-well) px-2.5 py-2 text-small outline-none focus:border-(--ui-focus)"
       />
     </label>
   );
@@ -732,9 +732,9 @@ function briefFromSpec(spec) {
 }
 
 const DRAFT_STATUS = {
-  draft: { label: 'draft', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'rgba(255,255,255,0.1)' },
-  created_paused: { label: 'created - paused', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'rgba(77,159,236,0.22)' },
-  enabled: { label: 'enabled', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'rgba(47,191,113,0.22)' },
+  draft: { label: 'draft', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
+  created_paused: { label: 'created - paused', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'color-mix(in srgb, var(--ui-info) 22%, transparent)' },
+  enabled: { label: 'enabled', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'color-mix(in srgb, var(--ui-success) 22%, transparent)' },
 };
 
 function DraftCard({ d, index }) {
@@ -844,7 +844,7 @@ function Build() {
   }
 
   const rows = [...created, ...(data.drafts || [])].filter((d) => !scope.account || d.account_id === scope.account);
-  const sel = 'rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-2 text-small outline-none focus:border-brand-500';
+  const sel = 'rounded border border-neutral-400 bg-(--ui-well) px-2.5 py-2 text-small outline-none focus:border-(--ui-focus)';
 
   return (
     <div>
@@ -930,7 +930,7 @@ function ReviewItem({ r }) {
         </div>
       </div>
       <div className="flex shrink-0 gap-2">
-        <a href={demoHref('/app/report')} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-white/[0.04] px-4 py-2 text-small font-medium">Preview</a>
+        <a href={demoHref('/app/report')} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-(--ui-well) px-4 py-2 text-small font-medium">Preview</a>
         <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Approve</Button>
         <Button variant="ghost" onClick={() => act('reject')} disabled={busy} className="!py-2">Send back</Button>
       </div>
@@ -964,9 +964,9 @@ function Review() {
 // ---------------------------------------------------------------- accounts + billing
 
 const ACC_STATUS = {
-  active: { label: 'active', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'rgba(47,191,113,0.22)' },
-  pending: { label: 'awaiting Google connection', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'rgba(77,159,236,0.22)' },
-  paused: { label: 'paused - not checked, not billed', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'rgba(255,255,255,0.1)' },
+  active: { label: 'active', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'color-mix(in srgb, var(--ui-success) 22%, transparent)' },
+  pending: { label: 'awaiting Google connection', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'color-mix(in srgb, var(--ui-info) 22%, transparent)' },
+  paused: { label: 'paused - not checked, not billed', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
 };
 
 function AccountRow({ a, onAction }) {
@@ -1065,7 +1065,7 @@ function Accounts() {
         </div>
       )}
 
-      <div className="mt-5 flex max-w-m2 overflow-hidden rounded border border-neutral-500 bg-white/[0.04] focus-within:border-brand-500">
+      <div className="mt-5 flex max-w-m2 overflow-hidden rounded border border-neutral-500 bg-(--ui-well) focus-within:border-(--ui-focus)">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -1074,7 +1074,7 @@ function Accounts() {
           className="w-full bg-transparent px-4 py-3 text-small outline-none placeholder:text-neutral-800"
           aria-label="New account name"
         />
-        <button type="button" onClick={add} disabled={busy} className="flex items-center gap-1.5 whitespace-nowrap bg-brand-300 px-4 text-small font-medium text-page disabled:opacity-40">
+        <button type="button" onClick={add} disabled={busy} className="flex items-center gap-1.5 whitespace-nowrap bg-(--ui-cta-a) px-4 text-small font-medium text-page disabled:opacity-40">
           <Plus size={14} aria-hidden /> Add account
         </button>
       </div>
@@ -1119,7 +1119,7 @@ function Brand() {
         type={type}
         value={kit[key] || ''}
         onChange={(e) => setKit({ ...kit, [key]: e.target.value })}
-        className={clsx('mt-1 w-full rounded border border-neutral-500 bg-white/[0.04] px-3 py-2.5 text-small outline-none focus:border-brand-500', type === 'color' && 'h-11 p-1')}
+        className={clsx('mt-1 w-full rounded border border-neutral-500 bg-(--ui-well) px-3 py-2.5 text-small outline-none focus:border-(--ui-focus)', type === 'color' && 'h-11 p-1')}
       />
     </label>
   );
@@ -1268,7 +1268,10 @@ function AgencyRoutes() {
             <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900">Agency</span>
             {me && me.agency && <span className="hidden text-small text-neutral-900 sm:inline">{me.agency.name}</span>}
           </div>
-          {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
+          <div className="flex items-center gap-3">
+            {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
+            <ThemeToggle />
+          </div>
         </div>
         <nav className="mx-auto flex max-w-xl2 gap-1 overflow-x-auto px-3 pb-2" aria-label="Agency">
           {NAV.map(({ to, label, icon: IconEl }) => {
@@ -1279,7 +1282,7 @@ function AgencyRoutes() {
                 to={demoHref(to)}
                 className={clsx(
                   'inline-flex shrink-0 items-center gap-1.5 rounded px-3 py-1.5 text-small font-medium',
-                  active ? 'bg-gradient-to-b from-brand-300 to-brand-400 text-page ring-1 ring-inset ring-brand-500/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]' : 'text-neutral-900 hover:bg-neutral-100',
+                  active ? 'bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) text-page ring-1 ring-inset ring-(--ui-cta-edge) shadow-[inset_0_1px_0_var(--ui-cta-hi)]' : 'text-neutral-900 hover:bg-neutral-100',
                 )}
               >
                 <IconEl size={14} aria-hidden /> {label}

@@ -41,14 +41,14 @@ export default function Plan() {
         The audit found the problems. A plan keeps finding them - and fixes what you approve, week after week.
       </p>
 
-      <div className="mt-6 inline-flex rounded border border-neutral-500 bg-white/[0.04] p-0.5" role="group" aria-label="Billing period">
+      <div className="mt-6 inline-flex rounded border border-neutral-500 bg-(--ui-well) p-0.5" role="group" aria-label="Billing period">
         {[['annual', 'Annual - 2 months free'], ['monthly', 'Monthly']].map(([value, label]) => (
           <button
             key={value}
             type="button"
             onClick={() => setCadence(value)}
             aria-pressed={cadence === value}
-            className={`rounded px-4 py-2 text-small font-medium ${cadence === value ? 'bg-brand-300 text-page' : 'text-neutral-900'}`}
+            className={`rounded px-4 py-2 text-small font-medium ${cadence === value ? 'bg-(--ui-cta-a) text-page' : 'text-neutral-900'}`}
           >
             {label}
           </button>
@@ -57,7 +57,7 @@ export default function Plan() {
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         {plan.tiers.map((t) => (
-          <Card key={t.tier} className={t.selected ? 'border-brand-500 p-6 ring-1 ring-brand-400' : 'p-6'}>
+          <Card key={t.tier} className={t.selected ? 'border-(--ui-focus) p-6 ring-1 ring-(--ui-focus)' : 'p-6'}>
             {t.selected && <MonoLabel className="!text-strong">Recommended for you</MonoLabel>}
             <h2 className="mt-1 text-h4">{t.label}</h2>
             <div className="mt-1 flex items-baseline gap-1">
