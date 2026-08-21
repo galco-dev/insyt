@@ -1,6 +1,6 @@
-// Settings — §11. Plan, connection, autopilot categories, billing portal.
+// Settings - §11. Plan, connection, autopilot categories, billing portal.
 import React, { useEffect, useState } from 'react';
-import { CreditCard, Link2, Zap } from 'lucide-react';
+import { CreditCard01 as CreditCard, Link01 as Link2, Zap } from '@untitledui/icons';
 import { api, isDemo } from '../lib/api.js';
 import { MonoLabel, Card, Spinner, Button, ErrorNote } from '../lib/ui.jsx';
 
@@ -24,7 +24,7 @@ export default function Settings() {
     try {
       const r = await api('/api/checkout/portal', { method: 'POST' });
       if (r.url) { window.location.href = r.url; return; }
-      setNote(isDemo() ? 'Demo mode — the card page opens here once payments are connected.' : 'Billing portal is almost ready — try again shortly.');
+      setNote(isDemo() ? 'Demo mode - the card page opens here once payments are connected.' : 'Billing portal is almost ready - try again shortly.');
     } catch (e) { setNote(e.message); }
   }
 
@@ -81,7 +81,7 @@ export default function Settings() {
       {note && <div className="mt-4"><ErrorNote message={note} /></div>}
 
       <p className="mt-6 text-tiny text-neutral-900">
-        Weekly report emails can be paused from any report email — alerts about breakage always reach you, those protect your money.
+        Weekly report emails can be paused from any report email - alerts about breakage always reach you, those protect your money.
       </p>
     </div>
   );

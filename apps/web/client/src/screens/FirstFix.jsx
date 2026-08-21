@@ -1,7 +1,7 @@
-// Funnel stage 9 — the first-fix ceremony. ONE finding, before/after, one
+// Funnel stage 9 - the first-fix ceremony. ONE finding, before/after, one
 // Approve. The write-scope ask happens here, at the moment of intent (§6).
 import React, { useEffect, useState } from 'react';
-import { ArrowDown, ShieldCheck, Undo2 } from 'lucide-react';
+import { ArrowDown, ShieldTick as ShieldCheck, FlipBackward as Undo2 } from '@untitledui/icons';
 import { api, isDemo } from '../lib/api.js';
 import { useRouter } from '../lib/router.jsx';
 import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';
@@ -75,7 +75,7 @@ export default function FirstFix() {
       </div>
       {!isDemo() && (
         <p className="mt-3 text-tiny text-neutral-900">
-          First approval? Google will ask once for permission to make fixes —{' '}
+          First approval? Google will ask once for permission to make fixes  - {' '}
           <a href="/auth/google/start?step=write" className="underline underline-offset-2">grant fix access</a>.
         </p>
       )}

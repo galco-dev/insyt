@@ -1,4 +1,4 @@
-// Canned data for demo mode — every /api/app response, shaped exactly like
+// Canned data for demo mode - every /api/app response, shaped exactly like
 // the real dashStore payloads, so screens are reviewable before credentials
 // exist. Same fictional business as the sample report (Glow Studio).
 
@@ -10,16 +10,16 @@ const pending = [
   { id: 'chg-3', title: 'A 30-second page view is being counted like a booking', money_line: 'about $290 a month' },
   // Creation-as-finding: a new ad arrives through the same approve flow as
   // every fix. It is created switched off; turning it on is a second yes.
-  { id: 'chg-4', title: 'People searching “Glow Studio” see competitors — your own-name ad is drafted and ready', money_line: 'about $8 a day, and it starts switched off' },
+  { id: 'chg-4', title: 'People searching “Glow Studio” see competitors - your own-name ad is drafted and ready', money_line: 'about $8 a day, and it starts switched off' },
 ];
 
 const ledger = [
   { id: 'l6', event: 'watch_triggered', actor: 'system', summary_text: 'We started a 48-hour watch on your latest fixes.', created_at: '2026-08-18T09:12:00Z' },
   { id: 'l5', event: 'change_applied', actor: 'system', summary_text: 'Applied: 14 searches excluded from your ads. Reversible with one tap.', created_at: '2026-08-18T09:10:00Z' },
   { id: 'l4', event: 'approval', actor: 'user', summary_text: 'You approved 2 fixes from your inbox.', created_at: '2026-08-18T08:57:00Z' },
-  { id: 'l3', event: 'report_sent', actor: 'system', summary_text: 'Weekly report delivered — 7 findings, about $1,240 a month at stake.', created_at: '2026-08-17T07:00:00Z' },
-  { id: 'l2', event: 'tag_verified', actor: 'system', summary_text: 'Your tracking is live — checked 12 pages, firing correctly.', created_at: '2026-08-12T15:20:00Z' },
-  { id: 'l1', event: 'connection_changed', actor: 'user', summary_text: 'Google connected — read access granted.', created_at: '2026-08-12T15:04:00Z' },
+  { id: 'l3', event: 'report_sent', actor: 'system', summary_text: 'Weekly report delivered - 7 findings, about $1,240 a month at stake.', created_at: '2026-08-17T07:00:00Z' },
+  { id: 'l2', event: 'tag_verified', actor: 'system', summary_text: 'Your tracking is live - checked 12 pages, firing correctly.', created_at: '2026-08-12T15:20:00Z' },
+  { id: 'l1', event: 'connection_changed', actor: 'user', summary_text: 'Google connected - read access granted.', created_at: '2026-08-12T15:04:00Z' },
 ];
 
 const reports = [
@@ -57,8 +57,8 @@ const DEMO = {
   },
   'GET /api/app/discovery': {
     matched: [
-      { id: 'a1', kind: 'ads_account', external_id: '642-459-1230', display_name: 'Glow Studio — Ads', linked: true },
-      { id: 'a2', kind: 'ga4_property', external_id: '3418867', display_name: 'Glow Studio — Analytics', linked: true },
+      { id: 'a1', kind: 'ads_account', external_id: '642-459-1230', display_name: 'Glow Studio - Ads', linked: true },
+      { id: 'a2', kind: 'ga4_property', external_id: '3418867', display_name: 'Glow Studio - Analytics', linked: true },
       { id: 'a3', kind: 'gtm_container', external_id: 'GTM-K2P9QX', display_name: 'glowstudio.ae', linked: true },
     ],
     unmatched: [
@@ -79,9 +79,9 @@ const DEMO = {
     fix: {
       change_id: 'chg-1',
       finding_title: '$430 a month goes to searches that never book',
-      explanation: 'Over 90 days, 11 recurring search themes — nail courses, salon jobs, DIY kits — spent $1,290 and produced zero bookings. Excluding them stops the leak the same day.',
+      explanation: 'Over 90 days, 11 recurring search themes - nail courses, salon jobs, DIY kits - spent $1,290 and produced zero bookings. Excluding them stops the leak the same day.',
       before_line: 'Your ads show for “nail courses dubai”, “nail technician jobs”, “gel nails at home”…',
-      after_line: '14 searches excluded — ads only show to people looking to book.',
+      after_line: '14 searches excluded - ads only show to people looking to book.',
     },
   },
   'GET /api/app/journey': {
@@ -89,7 +89,7 @@ const DEMO = {
       journey: 'A',
       stage: 'active',
       gates: { tag: true, approval: true, billing: true },
-      instruction_line: 'Everything is set up — your weekly checks run automatically.',
+      instruction_line: 'Everything is set up - your weekly checks run automatically.',
     },
   },
 };

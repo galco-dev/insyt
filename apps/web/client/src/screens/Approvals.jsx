@@ -1,4 +1,4 @@
-// Approvals queue — §11. One card per waiting fix; approve or dismiss.
+// Approvals queue - §11. One card per waiting fix; approve or dismiss.
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';

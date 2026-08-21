@@ -9,7 +9,7 @@ const fs = require('fs');
 const OUT = path.join(__dirname, '../public');
 const CARD = `<!doctype html><html><head><meta charset="utf-8"><style>
   * { margin: 0; box-sizing: border-box; }
-  body { width: 1200px; height: 630px; background: #000d14; color: #fff;
+  body { width: 1200px; height: 630px; background: #0a0a0c; color: #fff;
          font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
          padding: 70px 80px; display: flex; flex-direction: column; }
   .brand { font-family: ui-monospace, 'Courier New', monospace; font-size: 26px;

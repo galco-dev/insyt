@@ -1,11 +1,11 @@
-// The Report — §11 screen 4, anatomy per frontend-strategy §6.
+// The Report - §11 screen 4, anatomy per frontend-strategy §6.
 // Without a reportId: the full sample audit (public showcase + demo).
 // With a reportId: the tenant's real report (findings snapshot from the API).
 // Locked (pre-unlock) by default; ?unlocked=1 shows everything.
 
 import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import { CheckCircle2, AlertTriangle, Lock, ArrowRight, Undo2, Eye } from 'lucide-react';
+import { CheckCircle as CheckCircle2, AlertTriangle, Lock01 as Lock, ArrowRight, FlipBackward as Undo2, Eye } from '@untitledui/icons';
 import { audit, } from './data.js';
 import { api, isDemo } from '../lib/api.js';
 import {
@@ -37,7 +37,7 @@ export function HealthDial({ score, label }) {
     return `M ${x1} ${y1} A ${r} ${r} 0 ${deg > 180 ? 1 : 0} 1 ${x2} ${y2}`;
   };
   return (
-    <div className="relative h-[160px] w-[160px] shrink-0" role="img" aria-label={`Account health ${score} out of 100 — ${label}`}>
+    <div className="relative h-[160px] w-[160px] shrink-0" role="img" aria-label={`Account health ${score} out of 100 - ${label}`}>
       <svg viewBox="0 0 160 160" className="h-full w-full">
         <path d={arc(start, sweepMax)} fill="none" stroke="#f2f2f2" strokeWidth="10" strokeLinecap="round" />
         <path d={arc(start, Math.max(sweep, 4))} fill="none" stroke={sevColor} strokeWidth="10" strokeLinecap="round" />
@@ -56,7 +56,7 @@ function FindingCard({ f, locked, index = 0 }) {
   const m = severityMeta[f.severity] || severityMeta.info;
   return (
     <div
-      className={clsx('rise rounded border border-neutral-300 bg-white border-l-[3px]', COLOR[m.color].borderL)}
+      className={clsx('rise rounded border border-neutral-300 bg-card border-l-[3px]', COLOR[m.color].borderL)}
       style={{ '--rise-i': Math.min(index, 8) }}
     >
       <div className="p-5">
@@ -70,7 +70,7 @@ function FindingCard({ f, locked, index = 0 }) {
           <div className={clsx('mt-3 flex items-start gap-2 rounded-sm px-3 py-2.5', COLOR[m.color].tint)}>
             <ArrowRight size={15} strokeWidth={2.2} className={clsx('mt-0.5 shrink-0', COLOR[m.color].text)} aria-hidden />
             <p className={clsx('text-small font-medium', locked && 'blurred')} aria-hidden={locked || undefined}>
-              {locked ? 'The exact fix is in the full report — one approval away.' : f.fix}
+              {locked ? 'The exact fix is in the full report - one approval away.' : f.fix}
             </p>
             {locked && <Lock size={13} className="mt-0.5 shrink-0 text-neutral-900" aria-label="Unlocks with the full report" />}
           </div>
@@ -90,7 +90,7 @@ function SectionHead({ kicker, title, count, locked }) {
         <h2 className="mt-1 text-h4">{title}</h2>
       </div>
       {count && (
-        <span className="mb-0.5 inline-flex items-center gap-1.5 rounded-full border border-neutral-400 bg-white px-3 py-1 font-mono text-tiny text-neutral-900">
+        <span className="mb-0.5 inline-flex items-center gap-1.5 rounded-full border border-neutral-400 bg-white/[0.04] px-3 py-1 font-mono text-tiny text-neutral-900">
           {locked && <Lock size={11} aria-hidden />} {count}
         </span>
       )}
@@ -102,7 +102,7 @@ function DataTable({ spec, locked, clearRows = 3, renderCell }) {
   const rows = spec.rows;
   const hidden = spec.total ? spec.total - rows.length : 0;
   return (
-    <div className="overflow-hidden rounded border border-neutral-300 bg-white">
+    <div className="overflow-hidden rounded border border-neutral-300 bg-card">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-small">
           <thead>
@@ -130,7 +130,7 @@ function DataTable({ spec, locked, clearRows = 3, renderCell }) {
         <div className="flex items-center gap-2 border-t border-neutral-300 bg-neutral-50 px-4 py-2.5 font-mono text-tiny text-neutral-900">
           {locked ? <Lock size={12} aria-hidden /> : <Eye size={12} aria-hidden />}
           {locked
-            ? `${hidden > 0 ? `${hidden} more rows — ` : ''}every row and every verdict unlocks with the full report`
+            ? `${hidden > 0 ? `${hidden} more rows - ` : ''}every row and every verdict unlocks with the full report`
             : hidden > 0 ? `${hidden} more rows in the full data view` : null}
         </div>
       )}
@@ -185,12 +185,12 @@ function UnlockBar({ visible }) {
     try {
       const r = await api('/api/checkout/audit', { method: 'POST', body: { kind: 'audit_unlock' } });
       if (r.url) { window.location.href = r.url; return; }
-      setNote(isDemo() ? 'Demo mode — checkout opens here once payments are connected.' : 'Payments are almost ready — try again shortly.');
-    } catch (e) { setNote(e.status === 401 ? 'Sign in first — run your free check from the start page.' : e.message); }
+      setNote(isDemo() ? 'Demo mode - checkout opens here once payments are connected.' : 'Payments are almost ready - try again shortly.');
+    } catch (e) { setNote(e.status === 401 ? 'Sign in first - run your free check from the start page.' : e.message); }
     setBusy(false);
   }
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-300 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-300 bg-page/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
       <div className="mx-auto flex max-w-l2 flex-col items-start gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-body font-semibold">{audit.unlock.line}</div>
@@ -200,7 +200,7 @@ function UnlockBar({ visible }) {
           type="button"
           onClick={unlock}
           disabled={busy}
-          className="inline-flex shrink-0 items-center gap-2 rounded bg-accent px-6 py-3 text-small font-medium text-white disabled:opacity-40"
+          className="inline-flex shrink-0 items-center gap-2 rounded bg-gradient-to-b from-brand-300 to-brand-400 px-6 py-3 text-small font-medium text-page ring-1 ring-inset ring-brand-500/50 shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.55)] disabled:opacity-40"
         >
           {busy ? 'Opening checkout…' : `Unlock for ${audit.unlock.price}`} <ArrowRight size={15} aria-hidden />
         </button>
@@ -270,9 +270,9 @@ export default function Report({ reportId = null }) {
               About <span className="text-critical">${audit.wasteMonthly.toLocaleString()} a month</span> is going to waste.
             </h1>
             <p className="mt-2 max-w-m2 text-body text-neutral-900">
-              We checked your ads, your tracking and your counting — {audit.searchTerms.total} searches,{' '}
+              We checked your ads, your tracking and your counting - {audit.searchTerms.total} searches,{' '}
               {audit.keywords.total} keywords, {audit.campaigns.rows.length} campaigns, line by line. Health score{' '}
-              <strong>{audit.health}/100 — {audit.healthLabel.toLowerCase()}</strong>.
+              <strong>{audit.health}/100 - {audit.healthLabel.toLowerCase()}</strong>.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {chips.map(([sev, n]) => (
@@ -309,7 +309,7 @@ export default function Report({ reportId = null }) {
 
         {/* tracking */}
         <SectionHead kicker="Verified by crawling your site" title="Tracking health" />
-        <div className="overflow-hidden rounded border border-neutral-300 bg-white">
+        <div className="overflow-hidden rounded border border-neutral-300 bg-card">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-small">
               <thead>
@@ -329,11 +329,11 @@ export default function Report({ reportId = null }) {
         </div>
 
         {/* rebuild */}
-        <SectionHead kicker="Built from your own 90 days of data" title="How we would rebuild Generic — Nails" />
+        <SectionHead kicker="Built from your own 90 days of data" title="How we would rebuild Generic - Nails" />
         <p className="mb-4 max-w-m2 text-body text-neutral-900">{audit.rebuild.intro}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           {audit.rebuild.campaigns.map((c) => (
-            <div key={c.name} className="rounded border border-neutral-300 bg-white p-5">
+            <div key={c.name} className="rounded border border-neutral-300 bg-card p-5">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-h5">{c.name}</h3>
                 <span className="rounded-full bg-neutral-100 px-3 py-1 font-mono text-tiny text-neutral-900">{c.budget}</span>
@@ -343,7 +343,7 @@ export default function Report({ reportId = null }) {
             </div>
           ))}
         </div>
-        <div className={clsx('mt-3 flex items-start gap-2 rounded border border-neutral-300 bg-white p-4 text-small text-neutral-900')}>
+        <div className={clsx('mt-3 flex items-start gap-2 rounded border border-neutral-300 bg-card p-4 text-small text-neutral-900')}>
           <Undo2 size={15} className="mt-0.5 shrink-0" aria-hidden />
           <span className={clsx(locked && 'blurred')} aria-hidden={locked || undefined}>{audit.rebuild.shared}</span>
         </div>
@@ -351,8 +351,8 @@ export default function Report({ reportId = null }) {
         {/* trust footer */}
         <footer className="mt-14 border-t border-neutral-300 pt-6 pb-8">
           <p className="text-small text-neutral-900">
-            Read-only today — we can look, not touch. Every fix waits for your approval, every change is reversible
-            with one tap, and we watch for 48 hours after each one. Insyt — your ads and tracking, checked and fixed
+            Read-only today - we can look, not touch. Every fix waits for your approval, every change is reversible
+            with one tap, and we watch for 48 hours after each one. Insyt - your ads and tracking, checked and fixed
             every week.
           </p>
         </footer>

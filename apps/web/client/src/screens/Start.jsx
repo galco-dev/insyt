@@ -1,7 +1,7 @@
 // Funnel stage 1–3: URL paste → crawl theatre → findings strip → Google sign-in.
 // Public (no session). §5 crawl endpoints; strip shape from findings-strip.js.
 import React, { useEffect, useRef, useState } from 'react';
-import { Search, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { SearchMd as Search, CheckCircle as CheckCircle2, AlertTriangle, ShieldTick as ShieldCheck } from '@untitledui/icons';
 import { api, isDemo } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { MonoLabel, Button, Card, ErrorNote } from '../lib/ui.jsx';
@@ -18,7 +18,7 @@ const DEMO_STRIP = {
   headline: 'Found: Google tracking installed, 2 issues visible from the outside',
   items: [
     'Google tracking installed',
-    'Outdated tracking still running — it stopped collecting data in 2023',
+    'Outdated tracking still running - it stopped collecting data in 2023',
     "Tracking is installed but we couldn't see it recording visits",
   ],
   visible_issue_count: 2,
@@ -36,7 +36,7 @@ export default function Start() {
   useEffect(() => () => clearInterval(pollRef.current), []);
 
   // Arriving from the marketing site's hero paste box (?url=…): start the
-  // check immediately — the visitor already typed their address once.
+  // check immediately - the visitor already typed their address once.
   useEffect(() => {
     if (autoRef.current) return;
     const fromHero = new URLSearchParams(window.location.search).get('url');
@@ -50,7 +50,7 @@ export default function Start() {
   async function begin(given) {
     const target = (typeof given === 'string' ? given : url).trim();
     setError(null);
-    if (!target) { setError('Type your website address — like glowstudio.ae'); return; }
+    if (!target) { setError('Type your website address - like glowstudio.ae'); return; }
     setState('crawling'); setStage(0);
     const stageTimer = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 2600);
 
@@ -84,13 +84,13 @@ export default function Start() {
         </h1>
         <p className="mx-auto mt-3 max-w-[48ch] text-body text-neutral-900">
           Paste your website. We read it like a customer would, check your tracking from the outside, and show you
-          what we find — before you sign in to anything.
+          what we find - before you sign in to anything.
         </p>
       </section>
 
       {state === 'idle' && (
         <div className="mx-auto mt-8 max-w-s2">
-          <div className="flex overflow-hidden rounded border border-neutral-500 bg-white focus-within:border-accent">
+          <div className="flex overflow-hidden rounded border border-neutral-500 bg-white/[0.04] focus-within:border-brand-500">
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -106,7 +106,7 @@ export default function Start() {
               autoComplete="url"
               autoFocus
             />
-            <button type="button" onClick={begin} className="flex items-center gap-2 whitespace-nowrap bg-accent px-5 text-small font-medium text-white">
+            <button type="button" onClick={begin} className="flex items-center gap-2 whitespace-nowrap bg-brand-300 px-5 text-small font-medium text-page">
               <Search size={15} aria-hidden /> Check my site
             </button>
           </div>
@@ -121,11 +121,11 @@ export default function Start() {
       {state === 'crawling' && (
         <Card className="mx-auto mt-8 max-w-s2 p-6">
           <div className="flex items-center gap-3">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-400 border-t-accent" aria-hidden />
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-400 border-t-brand-300" aria-hidden />
             <div className="text-body font-medium" aria-live="polite">{STAGES[stage]}</div>
           </div>
           <div className="mt-4 h-1 overflow-hidden rounded-full bg-neutral-200">
-            <div className="h-full bg-accent transition-all duration-1000" style={{ width: `${((stage + 1) / STAGES.length) * 90}%` }} />
+            <div className="h-full bg-brand-300 transition-all duration-1000" style={{ width: `${((stage + 1) / STAGES.length) * 90}%` }} />
           </div>
           <p className="mt-3 text-tiny text-neutral-900">Usually under three minutes. We only look at what any visitor can see.</p>
         </Card>
@@ -153,13 +153,13 @@ export default function Start() {
             <div className="flex items-start gap-2.5">
               <ShieldCheck size={17} className="mt-0.5 shrink-0 text-success" aria-hidden />
               <p className="text-small text-neutral-900">
-                The full check looks inside — every dollar, every setting. <strong className="text-accent">Read-only: we can look, not touch.</strong>{' '}
+                The full check looks inside - every dollar, every setting. <strong className="text-strong">Read-only: we can look, not touch.</strong>{' '}
                 Nothing ever changes without your approval.
               </p>
             </div>
             <ol className="mt-4 flex flex-col gap-2 border-t border-neutral-200 pt-4">
               {[
-                'You pick your Google account — one tap.',
+                'You pick your Google account - one tap.',
                 'We read everything, look-only. Nothing changes.',
                 'Your full report is ready in about ten minutes.',
               ].map((step, i) => (
@@ -170,7 +170,7 @@ export default function Start() {
               ))}
             </ol>
             <Button href={isDemo() ? '/app/confirm?demo=1' : '/auth/google/start?step=discovery'} className="mt-4 w-full">
-              Continue with Google — run my free check
+              Continue with Google - run my free check
             </Button>
             <p className="mt-2 text-center text-tiny text-neutral-900">You choose the account. Disconnect any time.</p>
           </Card>
@@ -179,7 +179,7 @@ export default function Start() {
 
       {state === 'failed' && (
         <div className="mx-auto mt-8 max-w-s2">
-          <ErrorNote message="We couldn't reach that website. Check the address and try again — or try without www." />
+          <ErrorNote message="We couldn't reach that website. Check the address and try again - or try without www." />
           <Button variant="secondary" className="mt-4 w-full" onClick={() => setState('idle')}>Try again</Button>
         </div>
       )}

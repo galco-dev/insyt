@@ -1,7 +1,7 @@
-// Funnel stage 5 — discovery confirmation (§7): matched cards pre-ticked,
+// Funnel stage 5 - discovery confirmation (§7): matched cards pre-ticked,
 // unmatched collapsed, ONE action. Never a configuration form.
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ChevronDown } from 'lucide-react';
+import { CheckCircle as CheckCircle2, ChevronDown } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { useRouter } from '../lib/router.jsx';
 import { MonoLabel, Button, Card, Spinner, ErrorNote } from '../lib/ui.jsx';
@@ -38,7 +38,7 @@ export default function Confirm() {
       <MonoLabel>One tap and the check begins</MonoLabel>
       <h1 className="mt-2 text-h2 tracking-tight">We found your setup.</h1>
       <p className="mt-2 max-w-[52ch] text-body text-neutral-900">
-        These match your website — the tracking on your pages told us. Nothing to configure.
+        These match your website - the tracking on your pages told us. Nothing to configure.
       </p>
 
       <div className="mt-6 flex flex-col gap-3">
@@ -73,7 +73,7 @@ export default function Confirm() {
       )}
 
       <Button onClick={confirm} disabled={busy} className="mt-8 w-full sm:w-auto">
-        {busy ? 'Starting your check…' : 'Yes — run my free check'}
+        {busy ? 'Starting your check…' : 'Yes - run my free check'}
       </Button>
       <p className="mt-3 text-tiny text-neutral-900">Still read-only. Your report arrives in a few minutes.</p>
     </div>

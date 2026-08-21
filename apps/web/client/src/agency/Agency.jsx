@@ -1,17 +1,19 @@
-// Agency console — master §13. Portfolio grid, triage queue, report review,
+// Agency console - master §13. Portfolio grid, triage queue, report review,
 // brand kit, seats. Register inverts here: full technical vocabulary (this
 // tree is exempt from the customer jargon lint). Binding rule everywhere:
-// no auto-apply, no auto-publish — every action is an explicit seat click.
+// no auto-apply, no auto-publish - every action is an explicit seat click.
 
 import React, { useContext, useEffect, useMemo, useState, createContext } from 'react';
 import clsx from 'clsx';
 import {
-  LayoutGrid, ListChecks, FileCheck2, Palette, Users, ArrowRight, Undo2, Copy, Check, X, Zap,
-  Building2, Plus, Pause, Play, Trash2, Search, Gauge, Bell, Clock, Hammer,
-} from 'lucide-react';
+  LayoutGrid01 as LayoutGrid, CheckDone01 as ListChecks, FileCheck02 as FileCheck2, Palette,
+  Users01 as Users, ArrowRight, FlipBackward as Undo2, Copy01 as Copy, Check, X, Zap,
+  Building02 as Building2, Plus, PauseCircle as Pause, Play, Trash01 as Trash2, SearchMd as Search,
+  Speedometer03 as Gauge, Bell01 as Bell, Clock, Tool02 as Hammer,
+} from '@untitledui/icons';
 import { api, isDemo, demoHref } from '../lib/api.js';
 import { RouterProvider, useRouter, Link } from '../lib/router.jsx';
-import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp } from '../lib/ui.jsx';
+import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp, BrandOrb, ProgressRing, SEV_HEX } from '../lib/ui.jsx';
 
 const NAV = [
   { to: '/app/agency', label: 'Portfolio', icon: LayoutGrid },
@@ -37,7 +39,7 @@ function useAgency(path) {
 // ---------------------------------------------------------------- scope
 // The scope bar is a LENS, not navigation: Account > Campaign narrows every
 // screen in place (the stream stays money-sorted). Default is always
-// All accounts — the cross-portfolio stream is the product. Scope rides in
+// All accounts - the cross-portfolio stream is the product. Scope rides in
 // the URL so an account view is bookmarkable for the weekly client call.
 
 const ScopeContext = createContext({ scope: { account: null, campaign: null, mine: false }, setScope: () => {}, accounts: [], campaigns: [], mineNames: null, meName: null });
@@ -83,7 +85,7 @@ function ScopeBar() {
         <select
           value={scope.account || ''}
           onChange={(e) => setScope({ ...scope, account: e.target.value || null, campaign: null })}
-          className="rounded border border-neutral-400 bg-white px-2.5 py-1.5 text-small outline-none focus:border-accent"
+          className="rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-1.5 text-small outline-none focus:border-brand-500"
           aria-label="Account scope"
         >
           <option value="">All accounts</option>
@@ -94,7 +96,7 @@ function ScopeBar() {
           value={scope.campaign || ''}
           onChange={(e) => setScope({ ...scope, campaign: e.target.value || null })}
           disabled={!scope.account}
-          className="rounded border border-neutral-400 bg-white px-2.5 py-1.5 text-small outline-none focus:border-accent disabled:opacity-50"
+          className="rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-1.5 text-small outline-none focus:border-brand-500 disabled:opacity-50"
           aria-label="Campaign scope"
         >
           <option value="">{scope.account ? 'All campaigns' : 'Pick an account first'}</option>
@@ -114,25 +116,25 @@ function ScopeBar() {
             type="button"
             onClick={() => setScope({ ...scope, mine: !scope.mine })}
             className={clsx('rounded-full border px-3 py-1 font-mono text-tiny',
-              scope.mine ? 'border-accent bg-accent text-white' : 'border-neutral-400 bg-white text-neutral-900')}
+              scope.mine ? 'border-transparent bg-brand-300 text-page' : 'border-neutral-400 bg-white/[0.04] text-neutral-900')}
             title={`Only accounts managed by ${meName}`}
           >
             My accounts ({mineNames.size})
           </button>
         )}
         <div className="relative ml-auto min-w-[220px] flex-1 sm:max-w-[320px]">
-          <div className="flex items-center gap-2 rounded border border-neutral-400 bg-white px-2.5 py-1.5">
+          <div className="flex items-center gap-2 rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-1.5">
             <Search size={13} className="shrink-0 text-neutral-800" aria-hidden />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Find account or campaign — name or ID"
+              placeholder="Find account or campaign - name or ID"
               className="w-full bg-transparent text-small outline-none placeholder:text-neutral-800"
               aria-label="Search accounts and campaigns"
             />
           </div>
           {results.length > 0 && (
-            <div className="absolute inset-x-0 top-full z-40 mt-1 overflow-hidden rounded border border-neutral-300 bg-white shadow-lg">
+            <div className="absolute inset-x-0 top-full z-40 mt-1 overflow-hidden rounded border border-neutral-300 bg-card shadow-lg">
               {results.map((r, i) => (
                 <button
                   key={`${r.kind}-${r.account}-${r.campaign}-${i}`}
@@ -152,7 +154,7 @@ function ScopeBar() {
         <div className="mx-auto max-w-xl2 px-5 pb-2 font-mono text-tiny uppercase tracking-wide text-neutral-900">
           Scoped to {accountName(scope.account) || 'account'}
           {scope.campaign && ` › ${(campaigns.find((c) => c.google_campaign_id === scope.campaign) || {}).name || scope.campaign} · #${scope.campaign}`}
-          {' — every tab shows only this'}
+          {' - every tab shows only this'}
         </div>
       )}
     </div>
@@ -176,8 +178,12 @@ function applyScope(items, scope, accounts, mineNames = null) {
 // ---------------------------------------------------------------- portfolio
 
 function HealthPill({ score }) {
-  const tone = score < 50 ? 'bg-critical-tint text-critical' : score < 70 ? 'bg-warning-tint text-warning' : 'bg-success-tint text-success';
-  return <span className={clsx('rounded-full px-2.5 py-0.5 font-mono text-tiny font-semibold', tone)}>{score}</span>;
+  const hue = score < 50 ? SEV_HEX.critical : score < 70 ? SEV_HEX.warning : SEV_HEX.success;
+  return (
+    <ProgressRing value={score} size={38} stroke={3.5} stops={[hue, hue]} className="shrink-0">
+      <span className="font-mono text-[11px] font-semibold" style={{ color: hue }}>{score}</span>
+    </ProgressRing>
+  );
 }
 
 function Portfolio() {
@@ -201,10 +207,10 @@ function Portfolio() {
           <h1 className="mt-1 text-h3 tracking-tight">{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'} · {attention} {attention === 1 ? 'needs' : 'need'} attention</h1>
         </div>
         {credits && (
-          <div className="flex items-center gap-2 rounded border border-neutral-300 bg-white px-3 py-2 text-small">
+          <div className="flex items-center gap-2 rounded border border-neutral-300 bg-card px-3 py-2 text-small">
             <Zap size={14} className="text-info" aria-hidden />
             <span className="font-semibold">{credits.balance}</span> audit credits
-            <span className="text-neutral-900">— run a white-labelled prospect audit to pitch a new client</span>
+            <span className="text-neutral-900"> -  run a white-labelled prospect audit to pitch a new client</span>
           </div>
         )}
       </div>
@@ -222,9 +228,9 @@ function Portfolio() {
               <HealthPill score={a.health} />
             </div>
             <div className="flex items-center gap-4 text-small text-neutral-900">
-              <span><strong className={a.critical ? 'text-critical' : 'text-accent'}>{a.critical}</strong> critical</span>
-              <span><strong className="text-accent">{a.open_findings}</strong> open</span>
-              <span><strong className={a.pending_changes ? 'text-warning' : 'text-accent'}>{a.pending_changes}</strong> pending</span>
+              <span><strong className={a.critical ? 'text-critical' : 'text-strong'}>{a.critical}</strong> critical</span>
+              <span><strong className="text-strong">{a.open_findings}</strong> open</span>
+              <span><strong className={a.pending_changes ? 'text-warning' : 'text-strong'}>{a.pending_changes}</strong> pending</span>
               {a.reports_awaiting_review > 0 && <span className="text-info">{a.reports_awaiting_review} report to review</span>}
             </div>
             {paceById[a.id] && (paceById[a.id].performance.status !== 'no_target' || paceById[a.id].pacing.status !== 'on_pace') && (
@@ -239,7 +245,7 @@ function Portfolio() {
               </div>
             )}
             <div className="flex items-center justify-between border-t border-neutral-200 pt-2.5 text-tiny text-neutral-900">
-              <span>Last report {a.last_report_at ? new Date(a.last_report_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</span>
+              <span>Last report {a.last_report_at ? new Date(a.last_report_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ' - '}</span>
               <Link to={demoHref('/app/agency/triage')} className="inline-flex items-center gap-1 underline underline-offset-2">
                 Triage <ArrowRight size={12} aria-hidden />
               </Link>
@@ -291,7 +297,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
   }
   function copyBrief() {
     const brief = [
-      `${item.account} — ${item.title}`,
+      `${item.account} - ${item.title}`,
       `Rule ${item.rule_id} (layer ${item.layer}) · ${item.severity}${item.money_monthly_usd ? ` · ~$${item.money_monthly_usd}/mo` : ''}`,
       '', item.explanation, '',
       `BEFORE: ${JSON.stringify(item.before)}`, `AFTER:  ${JSON.stringify(item.after)}`,
@@ -305,7 +311,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         {state === 'approved' ? <Check size={15} className="text-success" aria-hidden /> : <X size={15} className="text-neutral-900" aria-hidden />}
-        {item.account}: {state === 'approved' ? 'approved — executor will apply and verify' : 'dismissed with reason'} · logged to the audit trail
+        {item.account}: {state === 'approved' ? 'approved - executor will apply and verify' : 'dismissed with reason'} · logged to the audit trail
       </Card>
     );
   }
@@ -313,7 +319,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         <Clock size={15} aria-hidden />
-        {item.account}: snoozed until {snoozedUntil ? new Date(snoozedUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'later'} — it returns to the queue by itself · logged
+        {item.account}: snoozed until {snoozedUntil ? new Date(snoozedUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'later'} - it returns to the queue by itself · logged
       </Card>
     );
   }
@@ -327,7 +333,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
               type="checkbox"
               checked={selected}
               onChange={() => onSelect(item.id)}
-              className="size-4 accent-[#0B1F2A]"
+              className="size-4 accent-brand-300"
               aria-label={`Select ${item.title} for batch approval`}
             />
           )}
@@ -351,7 +357,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
         {item.build_template ? (
           <Link
             to={demoHref(`/app/agency/build?template=${item.build_template}&for=${encodeURIComponent(item.account)}`)}
-            className="inline-flex items-center gap-1.5 rounded bg-accent px-4 py-2 text-small font-medium text-white"
+            className="inline-flex items-center gap-1.5 rounded bg-gradient-to-b from-brand-300 to-brand-400 px-4 py-2 text-small font-medium text-page ring-1 ring-inset ring-brand-500/50 shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.55)]"
           >
             <Hammer size={13} aria-hidden /> Build it
           </Link>
@@ -367,7 +373,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
             <Clock size={13} aria-hidden /> Snooze
           </Button>
         )}
-        {item.brief_only && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">brief-only account — Apply disabled</span>}
+        {item.brief_only && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">brief-only account - Apply disabled</span>}
       </div>
       {state === 'snoozing' && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded bg-neutral-50 p-3">
@@ -375,7 +381,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
             value={snoozeReason}
             onChange={(e) => setSnoozeReason(e.target.value)}
             placeholder="Reason (lands in the audit trail)"
-            className="min-w-[220px] flex-1 rounded border border-neutral-400 bg-white px-3 py-2 text-small outline-none focus:border-accent"
+            className="min-w-[220px] flex-1 rounded border border-neutral-400 bg-white/[0.04] px-3 py-2 text-small outline-none focus:border-brand-500"
             aria-label="Snooze reason"
           />
           <Button variant="secondary" onClick={() => snooze(7)} disabled={busy} className="!px-3 !py-2">7 days</Button>
@@ -434,10 +440,10 @@ function Triage() {
       <MonoLabel>Triage</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{scopedTitle}</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        Every change ships both ways: Apply (our executor runs it through the staged workspace → diff → publish → verify path) or Copy fix brief for manual execution. Nothing is ever auto-applied. Tick several and approve them in one go — each still lands individually in the per-seat audit log. Snooze parks an item with a reason; it comes back by itself.
+        Every change ships both ways: Apply (our executor runs it through the staged workspace → diff → publish → verify path) or Copy fix brief for manual execution. Nothing is ever auto-applied. Tick several and approve them in one go - each still lands individually in the per-seat audit log. Snooze parks an item with a reason; it comes back by itself.
       </p>
       {selIds.length > 0 && (
-        <div className="sticky top-[105px] z-20 mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-500 bg-white px-4 py-2.5 shadow-sm">
+        <div className="sticky top-[105px] z-20 mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-500 bg-white/[0.04] px-4 py-2.5 shadow-sm">
           <span className="text-small font-semibold">{selIds.length} selected{selMoney ? ` · ~$${selMoney}/mo total` : ''}</span>
           <Button onClick={approveSelected} disabled={busy} className="!px-4 !py-2">Approve {selIds.length} selected</Button>
           <button type="button" onClick={() => setSel({})} className="text-small text-neutral-900 underline underline-offset-2">Clear</button>
@@ -447,7 +453,7 @@ function Triage() {
         <div className="mt-5">
           <EmptyState
             title={scope.account ? 'Nothing in this scope' : 'Queue is clear'}
-            body={scope.account ? 'No proposed changes match the current scope — clear it to see the full stream.' : 'New findings from the weekly runs land here across every account.'}
+            body={scope.account ? 'No proposed changes match the current scope - clear it to see the full stream.' : 'New findings from the weekly runs land here across every account.'}
           />
         </div>
       ) : (
@@ -457,7 +463,7 @@ function Triage() {
       )}
       {accountWide && accountWide.length > 0 && (
         <div className="mt-8">
-          <MonoLabel>Account-wide — affects this campaign too</MonoLabel>
+          <MonoLabel>Account-wide - affects this campaign too</MonoLabel>
           <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
             Tracking and account-level issues aren&apos;t tied to one campaign, but they distort this campaign&apos;s data all the same.
           </p>
@@ -469,7 +475,7 @@ function Triage() {
       {snoozedAll.length > 0 && (
         <div className="mt-8 border-t border-neutral-200 pt-4">
           <button type="button" onClick={() => setShowSnoozed((s) => !s)} className="flex items-center gap-2 font-mono text-tiny uppercase tracking-wide text-neutral-900">
-            <Clock size={13} aria-hidden /> Snoozed ({snoozedAll.length}) {showSnoozed ? '— hide' : '— show'}
+            <Clock size={13} aria-hidden /> Snoozed ({snoozedAll.length}) {showSnoozed ? ' -  hide' : ' -  show'}
           </button>
           {showSnoozed && (
             <div className="mt-3 flex flex-col gap-2">
@@ -478,7 +484,7 @@ function Triage() {
                   <span><strong>{item.account}</strong> · {item.title}</span>
                   <span className="font-mono text-tiny">
                     returns {new Date(item.snoozed_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                    {item.snooze_reason ? ` — “${item.snooze_reason}”` : ''}
+                    {item.snooze_reason ? ` - “${item.snooze_reason}”` : ''}
                   </span>
                 </Card>
               ))}
@@ -491,25 +497,37 @@ function Triage() {
 }
 
 // ---------------------------------------------------------------- pacing
-// The daily agency ritual — "is anything going to blow its budget?" — as one
+// The daily agency ritual - "is anything going to blow its budget?" - as one
 // sorted list. Targets here are the agency's own operating targets for the
 // work (budget/CPA/ROAS); what they charge the client never enters the
 // platform (binding).
 
 const PACE_STATUS = {
-  over: { label: 'over pace', cls: 'bg-critical-tint text-critical' },
-  at_risk: { label: 'accelerating', cls: 'bg-warning-tint text-warning' },
-  under: { label: 'under pace', cls: 'bg-info-tint text-info' },
-  no_budget: { label: 'no budget set', cls: 'bg-neutral-100 text-neutral-900' },
-  on_pace: { label: 'on pace', cls: 'bg-success-tint text-success' },
+  over: { label: 'over pace', cls: 'bg-critical-tint text-critical', dot: 'bg-critical', halo: 'rgba(240,82,82,0.22)' },
+  at_risk: { label: 'accelerating', cls: 'bg-warning-tint text-warning', dot: 'bg-warning', halo: 'rgba(245,165,36,0.22)' },
+  under: { label: 'under pace', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'rgba(77,159,236,0.22)' },
+  no_budget: { label: 'no budget set', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'rgba(255,255,255,0.1)' },
+  on_pace: { label: 'on pace', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'rgba(47,191,113,0.22)' },
 };
+
+function StatusChip({ st, className }) {
+  if (!st || !st.label) return null;
+  return (
+    <span className={clsx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-mono text-tiny', st.cls, className)}>
+      {st.dot && (
+        <span aria-hidden className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', st.dot)} style={{ boxShadow: `0 0 0 2.5px ${st.halo}` }} />
+      )}
+      {st.label}
+    </span>
+  );
+}
 
 function PerfChip({ perf }) {
   if (!perf || perf.status === 'no_target') return null;
   const hit = perf.status === 'hitting';
   const label = perf.cpaTargetUsd != null
-    ? `CPA $${perf.cpa ?? '—'} vs $${perf.cpaTargetUsd} target`
-    : `ROAS ${perf.roas ?? '—'} vs ${perf.roasTarget} target`;
+    ? `CPA $${perf.cpa ?? ' - '} vs $${perf.cpaTargetUsd} target`
+    : `ROAS ${perf.roas ?? ' - '} vs ${perf.roasTarget} target`;
   return (
     <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', hit ? 'bg-success-tint text-success' : 'bg-critical-tint text-critical')}>
       {label}
@@ -544,7 +562,7 @@ function TargetEditor({ row, onClose }) {
         value={form[key]}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
         placeholder={placeholder}
-        className="w-32 rounded border border-neutral-400 bg-white px-2.5 py-2 text-small outline-none focus:border-accent"
+        className="w-32 rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-2 text-small outline-none focus:border-brand-500"
       />
     </label>
   );
@@ -572,7 +590,7 @@ function PacingRow({ row, index }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="text-body font-semibold">{row.account}</span>
-          <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', st.cls)}>{st.label}</span>
+          <StatusChip st={st} />
           <PerfChip perf={row.performance} />
           {saved && <span className="font-mono text-tiny text-success">targets saved</span>}
         </div>
@@ -583,9 +601,9 @@ function PacingRow({ row, index }) {
       {p.budget ? (
         <>
           <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-small text-neutral-900">
-            <span><strong className="text-accent">${p.mtd.toLocaleString()}</strong> of ${p.budget.toLocaleString()} spent</span>
-            <span>day {p.dayOfMonth} of {p.daysInMonth} — even pace would be ${Math.round(p.expectedToDate).toLocaleString()}</span>
-            <span>projected <strong className={p.status === 'over' || p.status === 'at_risk' ? 'text-critical' : 'text-accent'}>${Math.round(p.projected).toLocaleString()}</strong> ({p.deltaPct > 0 ? '+' : ''}{p.deltaPct}%)</span>
+            <span><strong className="text-strong">${p.mtd.toLocaleString()}</strong> of ${p.budget.toLocaleString()} spent</span>
+            <span>day {p.dayOfMonth} of {p.daysInMonth} - even pace would be ${Math.round(p.expectedToDate).toLocaleString()}</span>
+            <span>projected <strong className={p.status === 'over' || p.status === 'at_risk' ? 'text-critical' : 'text-strong'}>${Math.round(p.projected).toLocaleString()}</strong> ({p.deltaPct > 0 ? '+' : ''}{p.deltaPct}%)</span>
           </div>
           <div className="relative mt-2 h-2 rounded-full bg-neutral-100">
             <div className={clsx('h-2 rounded-full', barTone)} style={{ width: `${spentPct}%` }} />
@@ -594,7 +612,7 @@ function PacingRow({ row, index }) {
         </>
       ) : (
         <p className="mt-3 text-small text-neutral-900">
-          ${p.mtd.toLocaleString()} spent this month with no budget target set — set one so pacing can watch this account.
+          ${p.mtd.toLocaleString()} spent this month with no budget target set - set one so pacing can watch this account.
         </p>
       )}
       {editing && <TargetEditor row={row} onClose={(ok) => { setEditing(false); if (ok) setSaved(true); }} />}
@@ -616,7 +634,7 @@ function Pacing() {
       <MonoLabel>Budget pacing</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{problems === 0 ? 'Everything on pace' : `${problems} ${problems === 1 ? 'account needs' : 'accounts need'} a look`}{day ? ` · ${day}` : ''}</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        Month-to-date spend against each account&apos;s budget, projected forward at the current run rate. The tick on each bar is where even pacing would be today. Problems sort first. Budgets and CPA/ROAS targets here are your operating targets — what you charge your clients never enters this platform.
+        Month-to-date spend against each account&apos;s budget, projected forward at the current run rate. The tick on each bar is where even pacing would be today. Problems sort first. Budgets and CPA/ROAS targets here are your operating targets - what you charge your clients never enters this platform.
       </p>
       <div className="mt-5 flex flex-col gap-3">
         {rows.map((r, i) => <PacingRow key={r.account_id} row={r} index={i} />)}
@@ -676,7 +694,7 @@ function Alerts() {
       <MonoLabel>Alerts</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{open === 0 ? 'Nothing waiting on you' : `${open} unacknowledged`}</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        Breakage and fast movers that can&apos;t wait for the weekly run: tags going dark, spend spikes, disapprovals, conversion flatlines. A daily digest of unacknowledged alerts emails every seat each morning — acknowledging here keeps it out of the digest. Alerts only ever notify; fixes still go through triage.
+        Breakage and fast movers that can&apos;t wait for the weekly run: tags going dark, spend spikes, disapprovals, conversion flatlines. A daily digest of unacknowledged alerts emails every seat each morning - acknowledging here keeps it out of the digest. Alerts only ever notify; fixes still go through triage.
       </p>
       {rows.length === 0 ? (
         <div className="mt-5"><EmptyState title="All quiet" body="Alerts land here the moment monitoring spots them." /></div>
@@ -698,7 +716,7 @@ function Alerts() {
 
 function briefFromSpec(spec) {
   const lines = [
-    `CAMPAIGN BUILD BRIEF — ${spec.name}`,
+    `CAMPAIGN BUILD BRIEF - ${spec.name}`,
     `Channel: ${spec.channel} · Budget: $${spec.budget_daily_usd}/day · Bidding: ${spec.bidding}${spec.conversion_goal ? ` → ${spec.conversion_goal}` : ''}`,
     `Settings: geo ${spec.settings.geo} · networks ${(spec.settings.networks || []).join('+')} · CREATE PAUSED`,
   ];
@@ -714,9 +732,9 @@ function briefFromSpec(spec) {
 }
 
 const DRAFT_STATUS = {
-  draft: { label: 'draft', cls: 'bg-neutral-100 text-neutral-900' },
-  created_paused: { label: 'created — paused', cls: 'bg-info-tint text-info' },
-  enabled: { label: 'enabled', cls: 'bg-success-tint text-success' },
+  draft: { label: 'draft', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'rgba(255,255,255,0.1)' },
+  created_paused: { label: 'created - paused', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'rgba(77,159,236,0.22)' },
+  enabled: { label: 'enabled', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'rgba(47,191,113,0.22)' },
 };
 
 function DraftCard({ d, index }) {
@@ -751,12 +769,12 @@ function DraftCard({ d, index }) {
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">{d.account}</span>
           <span className="text-body font-semibold">{spec.name}</span>
-          <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', st.cls)}>{st.label}</span>
+          <StatusChip st={st} />
         </div>
         <span className="font-mono text-tiny text-neutral-900">${spec.budget_daily_usd}/day · {spec.bidding}</span>
       </div>
       <div className="mt-2 text-small text-neutral-900">
-        {spec.channel} · {groups.length} ad group{groups.length === 1 ? '' : 's'} · {groups.reduce((n, g) => n + ((g.keywords || []).length), 0)} keywords · goal {spec.conversion_goal || '—'}
+        {spec.channel} · {groups.length} ad group{groups.length === 1 ? '' : 's'} · {groups.reduce((n, g) => n + ((g.keywords || []).length), 0)} keywords · goal {spec.conversion_goal || ' - '}
         {' · '}
         <button type="button" onClick={() => setOpen((o) => !o)} className="underline underline-offset-2">{open ? 'hide spec' : 'view full spec'}</button>
       </div>
@@ -765,10 +783,10 @@ function DraftCard({ d, index }) {
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-3">
         {status === 'draft' && (
-          <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Create in Google Ads — paused</Button>
+          <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Create in Google Ads - paused</Button>
         )}
         {status === 'created_paused' && (
-          <Button onClick={() => act('enable')} disabled={busy} className="!px-4 !py-2"><Play size={13} aria-hidden /> Enable — starts spending</Button>
+          <Button onClick={() => act('enable')} disabled={busy} className="!px-4 !py-2"><Play size={13} aria-hidden /> Enable - starts spending</Button>
         )}
         <Button variant="secondary" onClick={copyBrief} className="!px-4 !py-2">
           <Copy size={13} aria-hidden /> {copied ? 'Copied' : 'Copy build brief'}
@@ -776,7 +794,7 @@ function DraftCard({ d, index }) {
         {status !== 'enabled' && (
           <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy} className="!py-2">Dismiss</Button>
         )}
-        {status === 'created_paused' && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">paused — spends nothing until enabled</span>}
+        {status === 'created_paused' && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">paused - spends nothing until enabled</span>}
         {status === 'enabled' && <span className="font-mono text-tiny uppercase tracking-wide text-success">live · one-tap pause any time</span>}
       </div>
     </Card>
@@ -826,17 +844,17 @@ function Build() {
   }
 
   const rows = [...created, ...(data.drafts || [])].filter((d) => !scope.account || d.account_id === scope.account);
-  const sel = 'rounded border border-neutral-400 bg-white px-2.5 py-2 text-small outline-none focus:border-accent';
+  const sel = 'rounded border border-neutral-400 bg-white/[0.04] px-2.5 py-2 text-small outline-none focus:border-brand-500';
 
   return (
     <div>
       <MonoLabel>Campaign builder</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">Drafted from the account&apos;s own data. Born paused.</h1>
       <p className="mt-1 max-w-[74ch] text-small text-neutral-900">
-        A build is the biggest change we can propose, so it ships through the same pipeline as every fix: draft → you approve → created in Google Ads <strong>paused</strong> → you enable, as a second explicit click. The builder refuses to draft onto broken measurement — tracking findings clear first. Every step logs to the per-seat audit trail. Brief-only workflow? Copy the build brief instead.
+        A build is the biggest change we can propose, so it ships through the same pipeline as every fix: draft → you approve → created in Google Ads <strong>paused</strong> → you enable, as a second explicit click. The builder refuses to draft onto broken measurement - tracking findings clear first. Every step logs to the per-seat audit trail. Brief-only workflow? Copy the build brief instead.
       </p>
 
-      <div className="mt-5 flex flex-wrap items-end gap-3 rounded border border-neutral-300 bg-white p-4">
+      <div className="mt-5 flex flex-wrap items-end gap-3 rounded border border-neutral-300 bg-card p-4">
         <label className="flex flex-col gap-1">
           <MonoLabel>Account</MonoLabel>
           <select value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} className={sel} aria-label="Account for the new campaign">
@@ -847,9 +865,9 @@ function Build() {
         <label className="flex flex-col gap-1">
           <MonoLabel>Template</MonoLabel>
           <select value={form.template} onChange={(e) => setForm({ ...form, template: e.target.value })} className={sel} aria-label="Campaign template">
-            <option value="brand">Brand — own-name searches</option>
-            <option value="generic">Generic — service searches</option>
-            <option value="remarketing">Remarketing — past visitors</option>
+            <option value="brand">Brand - own-name searches</option>
+            <option value="generic">Generic - service searches</option>
+            <option value="remarketing">Remarketing - past visitors</option>
           </select>
         </label>
         {form.template === 'generic' && (
@@ -872,7 +890,7 @@ function Build() {
       </div>
 
       {rows.length === 0 ? (
-        <div className="mt-5"><EmptyState title="No drafts yet" body="Draft one above, or hit Build on any coverage-gap finding in Triage — it lands here pre-filled." /></div>
+        <div className="mt-5"><EmptyState title="No drafts yet" body="Draft one above, or hit Build on any coverage-gap finding in Triage - it lands here pre-filled." /></div>
       ) : (
         <div className="mt-5 flex flex-col gap-3">
           {rows.map((d, i) => <DraftCard key={d.id} d={d} index={i} />)}
@@ -899,7 +917,7 @@ function ReviewItem({ r }) {
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         {state === 'approve' ? <Check size={15} className="text-success" aria-hidden /> : <X size={15} aria-hidden />}
-        {r.account}: report {state === 'approve' ? 'approved — now visible in the client library' : 'sent back'}
+        {r.account}: report {state === 'approve' ? 'approved - now visible in the client library' : 'sent back'}
       </Card>
     );
   }
@@ -912,7 +930,7 @@ function ReviewItem({ r }) {
         </div>
       </div>
       <div className="flex shrink-0 gap-2">
-        <a href={demoHref('/app/report')} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-white px-4 py-2 text-small font-medium">Preview</a>
+        <a href={demoHref('/app/report')} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-white/[0.04] px-4 py-2 text-small font-medium">Preview</a>
         <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Approve</Button>
         <Button variant="ghost" onClick={() => act('reject')} disabled={busy} className="!py-2">Send back</Button>
       </div>
@@ -925,7 +943,7 @@ function Review() {
   const { scope, accounts, mineNames } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading review queue" />;
-  // Reports are account-level renders — campaign scope narrows to the account.
+  // Reports are account-level renders - campaign scope narrows to the account.
   const { items: queue } = applyScope(data.queue || [], { account: scope.account, campaign: null, mine: scope.mine }, accounts, mineNames);
   return (
     <div>
@@ -946,9 +964,9 @@ function Review() {
 // ---------------------------------------------------------------- accounts + billing
 
 const ACC_STATUS = {
-  active: { label: 'active', cls: 'bg-success-tint text-success' },
-  pending: { label: 'awaiting Google connection', cls: 'bg-info-tint text-info' },
-  paused: { label: 'paused — not checked, not billed', cls: 'bg-neutral-100 text-neutral-900' },
+  active: { label: 'active', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'rgba(47,191,113,0.22)' },
+  pending: { label: 'awaiting Google connection', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'rgba(77,159,236,0.22)' },
+  paused: { label: 'paused - not checked, not billed', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'rgba(255,255,255,0.1)' },
 };
 
 function AccountRow({ a, onAction }) {
@@ -969,7 +987,7 @@ function AccountRow({ a, onAction }) {
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         <Check size={15} className="text-success" aria-hidden />
-        {a.display_name} removed — billing stops at the end of this cycle; its history and ledger stay readable.
+        {a.display_name} removed - billing stops at the end of this cycle; its history and ledger stay readable.
       </Card>
     );
   }
@@ -979,7 +997,7 @@ function AccountRow({ a, onAction }) {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-body font-semibold">{a.display_name}</span>
-          <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', st.cls)}>{st.label}</span>
+          <StatusChip st={st} />
         </div>
         <div className="mt-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900">
           {a.seat ? a.seat.name : 'Unassigned'} · {a.report_register}{a.brief_only ? ' · brief-only' : ''} · added {new Date(a.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
@@ -1041,27 +1059,27 @@ function Accounts() {
             <MonoLabel>Band position</MonoLabel>
             <div className="mt-1 text-h3">${bill.rate}<span className="text-small text-neutral-900">/account</span></div>
             <div className="mt-1 text-small text-neutral-900">
-              {bill.accounts <= 10 ? `From account 11 every account drops to $39 — automatically.` : bill.accounts <= 30 ? `From account 31 every account drops to $35 — automatically.` : 'Best rate — applied to the whole portfolio.'}
+              {bill.accounts <= 10 ? `From account 11 every account drops to $39 - automatically.` : bill.accounts <= 30 ? `From account 31 every account drops to $35 - automatically.` : 'Best rate - applied to the whole portfolio.'}
             </div>
           </Card>
         </div>
       )}
 
-      <div className="mt-5 flex max-w-m2 overflow-hidden rounded border border-neutral-500 bg-white focus-within:border-accent">
+      <div className="mt-5 flex max-w-m2 overflow-hidden rounded border border-neutral-500 bg-white/[0.04] focus-within:border-brand-500">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
-          placeholder="Client name — e.g. Harbor Clinic"
+          placeholder="Client name - e.g. Harbor Clinic"
           className="w-full bg-transparent px-4 py-3 text-small outline-none placeholder:text-neutral-800"
           aria-label="New account name"
         />
-        <button type="button" onClick={add} disabled={busy} className="flex items-center gap-1.5 whitespace-nowrap bg-accent px-4 text-small font-medium text-white disabled:opacity-40">
+        <button type="button" onClick={add} disabled={busy} className="flex items-center gap-1.5 whitespace-nowrap bg-brand-300 px-4 text-small font-medium text-page disabled:opacity-40">
           <Plus size={14} aria-hidden /> Add account
         </button>
       </div>
       <p className="mt-2 max-w-[72ch] text-tiny text-neutral-900">
-        A new account starts as "awaiting Google connection" — connect its Ads/GA4/GTM access (or send the client an access request) and the first audit runs the same day. Pause an account any time: paused accounts keep their full history but are not checked and not billed.
+        A new account starts as "awaiting Google connection" - connect its Ads/GA4/GTM access (or send the client an access request) and the first audit runs the same day. Pause an account any time: paused accounts keep their full history but are not checked and not billed.
       </p>
 
       <div className="mt-5 flex flex-col gap-2">
@@ -1069,7 +1087,7 @@ function Accounts() {
       </div>
 
       <p className="mt-6 max-w-[76ch] border-t border-neutral-200 pt-4 text-tiny text-neutral-900">
-        What we bill you is the whole money story here. The platform never asks what you charge your clients, never stores your client fees, and takes no share of them — your commercial relationship with your clients is yours alone.
+        What we bill you is the whole money story here. The platform never asks what you charge your clients, never stores your client fees, and takes no share of them - your commercial relationship with your clients is yours alone.
       </p>
     </div>
   );
@@ -1101,7 +1119,7 @@ function Brand() {
         type={type}
         value={kit[key] || ''}
         onChange={(e) => setKit({ ...kit, [key]: e.target.value })}
-        className={clsx('mt-1 w-full rounded border border-neutral-500 bg-white px-3 py-2.5 text-small outline-none focus:border-accent', type === 'color' && 'h-11 p-1')}
+        className={clsx('mt-1 w-full rounded border border-neutral-500 bg-white/[0.04] px-3 py-2.5 text-small outline-none focus:border-brand-500', type === 'color' && 'h-11 p-1')}
       />
     </label>
   );
@@ -1112,7 +1130,7 @@ function Brand() {
         <MonoLabel>Brand kit {kit.version ? `· v${kit.version}` : ''}</MonoLabel>
         <h1 className="mt-1 text-h3 tracking-tight">Your reports, your name on them</h1>
         <p className="mt-1 text-small text-neutral-900">
-          The kit applies to everything your clients see: the report web view, the PDF, and (Top tier) the portal on your own domain. This console stays Insyt-branded — it&apos;s your back office. Versioned: a rebrand never alters reports already in client hands.
+          The kit applies to everything your clients see: the report web view, the PDF, and (Top tier) the portal on your own domain. This console stays Insyt-branded - it&apos;s your back office. Versioned: a rebrand never alters reports already in client hands.
         </p>
         <div className="mt-5 flex flex-col gap-4">
           {field('Report display name', 'display_name')}
@@ -1130,13 +1148,13 @@ function Brand() {
       </div>
       <div>
         <MonoLabel>Live preview</MonoLabel>
-        <div className="mt-1 overflow-hidden rounded border border-neutral-300 bg-white">
+        <div className="mt-1 overflow-hidden rounded border border-neutral-300 bg-card">
           <div className="flex items-center justify-between px-5 py-4" style={{ background: kit.color_primary || '#0B1F2A' }}>
             <span className="text-h5 font-semibold text-white">{kit.display_name || 'Your agency'}</span>
             <span className="font-mono text-tiny uppercase tracking-[0.12em] text-white/70">Weekly report</span>
           </div>
           <div className="p-5">
-            <div className="text-h4">Glow Studio — 7 findings, biggest money first</div>
+            <div className="text-h4">Glow Studio - 7 findings, biggest money first</div>
             <div className="mt-2 h-2 w-40 rounded-full" style={{ background: kit.color_accent || '#E07A3F' }} />
             <p className="mt-3 text-small text-neutral-900">Dual primary conversion actions are double-counting purchases…</p>
             <div className="mt-5 border-t border-neutral-200 pt-3 text-tiny text-neutral-900">{kit.footer_text || 'Footer line appears here'}</div>
@@ -1154,7 +1172,7 @@ function Seats() {
   const { data: log } = useAgency('/api/agency/log');
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading seats" />;
-  const roleLabel = { admin: 'Admin — billing, brand, seats, all accounts', am: 'Account manager — scoped to assigned accounts', readonly: 'Read-only' };
+  const roleLabel = { admin: 'Admin - billing, brand, seats, all accounts', am: 'Account manager - scoped to assigned accounts', readonly: 'Read-only' };
   return (
     <div>
       <MonoLabel>Seats &amp; roles</MonoLabel>
@@ -1173,10 +1191,10 @@ function Seats() {
       {log && (
         <div className="mt-8">
           <MonoLabel>Per-seat audit trail</MonoLabel>
-          <div className="mt-2 overflow-hidden rounded border border-neutral-300 bg-white">
+          <div className="mt-2 overflow-hidden rounded border border-neutral-300 bg-card">
             {log.entries.map((e, i) => (
               <div key={i} className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-2.5 text-small last:border-0">
-                <span><strong>{e.seat ? e.seat.name : 'system'}</strong> · {e.event.replace(/_/g, ' ')}{e.detail && e.detail.reason ? ` — “${e.detail.reason}”` : ''}</span>
+                <span><strong>{e.seat ? e.seat.name : 'system'}</strong> · {e.event.replace(/_/g, ' ')}{e.detail && e.detail.reason ? ` - “${e.detail.reason}”` : ''}</span>
                 <span className="shrink-0 font-mono text-tiny text-neutral-900">{new Date(e.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             ))}
@@ -1197,7 +1215,7 @@ function AgencyRoutes() {
   const { data: campData } = useAgency('/api/agency/campaigns');
   const [scope, setScopeState] = useState(readScopeFromUrl);
   const setScope = (next) => { setScopeState(next); writeScopeToUrl(next); };
-  // Tab links replace the URL without query params — re-stamp the scope so a
+  // Tab links replace the URL without query params - re-stamp the scope so a
   // scoped view stays bookmarkable wherever you navigate.
   useEffect(() => { writeScopeToUrl(scope); }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
   const scopeValue = useMemo(() => {
@@ -1243,10 +1261,10 @@ function AgencyRoutes() {
   return (
     <ScopeContext.Provider value={scopeValue}>
     <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-neutral-300 bg-white/85 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-neutral-300 bg-page/85 backdrop-blur">
         <div className="mx-auto flex max-w-xl2 items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-3">
-            <Link to={demoHref('/app/agency')} className="text-h5 font-semibold tracking-tight">Insyt</Link>
+            <Link to={demoHref('/app/agency')} className="flex items-center gap-2.5 text-h5 font-semibold tracking-tight"><BrandOrb size={22} />Insyt</Link>
             <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900">Agency</span>
             {me && me.agency && <span className="hidden text-small text-neutral-900 sm:inline">{me.agency.name}</span>}
           </div>
@@ -1261,7 +1279,7 @@ function AgencyRoutes() {
                 to={demoHref(to)}
                 className={clsx(
                   'inline-flex shrink-0 items-center gap-1.5 rounded px-3 py-1.5 text-small font-medium',
-                  active ? 'bg-accent text-white' : 'text-neutral-900 hover:bg-neutral-100',
+                  active ? 'bg-gradient-to-b from-brand-300 to-brand-400 text-page ring-1 ring-inset ring-brand-500/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]' : 'text-neutral-900 hover:bg-neutral-100',
                 )}
               >
                 <IconEl size={14} aria-hidden /> {label}
@@ -1271,10 +1289,10 @@ function AgencyRoutes() {
         </nav>
       </header>
       <ScopeBar />
-      <main className="mx-auto max-w-xl2 px-5 pb-24 pt-8">{screen}</main>
+      <main className="page-fade mx-auto max-w-xl2 px-5 pb-24 pt-8">{screen}</main>
       <footer className="mx-auto max-w-xl2 px-5 pb-10 text-tiny text-neutral-900">
         <Undo2 size={12} className="mr-1 inline" aria-hidden />
-        No auto-apply, ever. Changes land on client accounts under your name — every one waits for a seat&apos;s explicit approval, and every applied change keeps a one-tap rollback.
+        No auto-apply, ever. Changes land on client accounts under your name - every one waits for a seat&apos;s explicit approval, and every applied change keeps a one-tap rollback.
       </footer>
     </div>
     </ScopeContext.Provider>

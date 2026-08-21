@@ -1,6 +1,6 @@
-// Journey screen — §11/§9. Gates as a checklist; one instruction at a time.
+// Journey screen - §11/§9. Gates as a checklist; one instruction at a time.
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Circle } from 'lucide-react';
+import { CheckCircle as CheckCircle2, Circle } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { MonoLabel, Card, Spinner, ErrorNote } from '../lib/ui.jsx';
 
@@ -45,7 +45,7 @@ export default function Journey() {
       </Card>
 
       <p className="mt-4 text-tiny text-neutral-900">
-        We check automatically at every step — there is nothing to confirm from your side.
+        We check automatically at every step - there is nothing to confirm from your side.
       </p>
     </div>
   );

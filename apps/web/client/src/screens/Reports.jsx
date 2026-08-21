@@ -1,6 +1,6 @@
-// Report archive — §11. Every report ever, newest first.
+// Report archive - §11. Every report ever, newest first.
 import React, { useEffect, useState } from 'react';
-import { FileText, ArrowRight } from 'lucide-react';
+import { File02 as FileText, ArrowRight } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { MonoLabel, Card, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';
@@ -21,7 +21,7 @@ export default function Reports() {
       <h1 className="mt-1 text-h2 tracking-tight">Reports</h1>
 
       {reports.length === 0 ? (
-        <div className="mt-6"><EmptyState title="Your first report is on its way" body="Reports land here every week — and stay here." /></div>
+        <div className="mt-6"><EmptyState title="Your first report is on its way" body="Reports land here every week - and stay here." /></div>
       ) : (
         <Card className="mt-6 divide-y divide-neutral-200">
           {reports.map((r) => (

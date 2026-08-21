@@ -19,7 +19,11 @@ const COPY_GLOBS = ['apps/web/copy', 'apps/worker/templates', 'packages/emails',
 
 // Agency surfaces invert the register (master §4.3): full technical
 // vocabulary internally, so the blocklist does not apply there.
-const EXEMPT = [path.join('apps', 'web', 'client', 'src', 'agency')];
+const EXEMPT = [
+  path.join('apps', 'web', 'client', 'src', 'agency'),
+  // Vendored Untitled UI kit: third-party source, not app copy, kept as-is.
+  path.join('apps', 'web', 'client', 'src', 'uui'),
+];
 
 function* walk(dir) {
   if (!fs.existsSync(dir)) return;

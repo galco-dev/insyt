@@ -1,6 +1,6 @@
-// The ledger — §11. Everything we ever did, newest first, plain language.
+// The ledger - §11. Everything we ever did, newest first, plain language.
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Undo2, FileText, Link2, Eye, AlertTriangle } from 'lucide-react';
+import { CheckCircle as CheckCircle2, FlipBackward as Undo2, File02 as FileText, Link01 as Link2, Eye, AlertTriangle } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { MonoLabel, Card, Spinner, EmptyState, ErrorNote, Button } from '../lib/ui.jsx';
 
@@ -29,7 +29,7 @@ export default function Ledger() {
       <h1 className="mt-1 text-h2 tracking-tight">Ledger</h1>
 
       {entries.length === 0 ? (
-        <div className="mt-6"><EmptyState title="Nothing here yet" body="Once your first check runs, every action lands here — permanently." /></div>
+        <div className="mt-6"><EmptyState title="Nothing here yet" body="Once your first check runs, every action lands here - permanently." /></div>
       ) : (
         <Card className="mt-6 divide-y divide-neutral-200">
           {entries.map((e) => {

@@ -1,7 +1,7 @@
-// Dashboard home — §11 screen 2. Health, waiting approvals, cumulative value,
+// Dashboard home - §11 screen 2. Health, waiting approvals, cumulative value,
 // latest report. Every element leads somewhere; empty states sell next steps.
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, Zap } from 'lucide-react';
+import { ArrowRight, Zap } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, Sparkline, useCountUp } from '../lib/ui.jsx';
@@ -57,7 +57,7 @@ export default function Home() {
         <div className="min-w-0 flex-1">
           <MonoLabel>Account health</MonoLabel>
           <div className="mt-0.5 text-h5">
-            {health.score < 50 ? 'Needs work — fixes waiting below.' : health.score < 70 ? 'Getting better every week.' : 'Healthy — we keep watch.'}
+            {health.score < 50 ? 'Needs work - fixes waiting below.' : health.score < 70 ? 'Getting better every week.' : 'Healthy - we keep watch.'}
           </div>
           {latest && (
             <Link to={`/app/report/${latest.id}`} className="mt-1 inline-flex items-center gap-1 text-small underline underline-offset-2">
@@ -84,7 +84,7 @@ export default function Home() {
             <div>
               <div className="text-body font-semibold">You&apos;ve said yes {streak} times in a row.</div>
               <div className="mt-0.5 text-small text-neutral-900">
-                Autopilot applies these same safe fixes for you and tells you after — you keep the one-tap undo on every change.
+                Autopilot applies these same safe fixes for you and tells you after - you keep the one-tap undo on every change.
               </div>
             </div>
           </div>

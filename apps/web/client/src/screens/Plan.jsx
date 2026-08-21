@@ -1,13 +1,13 @@
-// Funnel stage 8 — plan screen. Their band only, Core pre-selected, prices
+// Funnel stage 8 - plan screen. Their band only, Core pre-selected, prices
 // from pricing_config via /api/app/plan. CTA → Stripe Checkout.
 import React, { useEffect, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check } from '@untitledui/icons';
 import { api, isDemo } from '../lib/api.js';
 import { MonoLabel, Button, Card, Spinner, ErrorNote } from '../lib/ui.jsx';
 
 const TIER_LINES = {
   core: ['Weekly check of ads, tracking and counting', 'Every fix waits for your one-tap approval', '48-hour verification after every change'],
-  autopilot: ['Everything in Core', 'Routine fixes applied for you — always reversible', 'Monthly deep review, biggest money first'],
+  autopilot: ['Everything in Core', 'Routine fixes applied for you - always reversible', 'Monthly deep review, biggest money first'],
   scale: ['Everything in Autopilot', 'For accounts that spend like a job', 'Priority support, same register'],
 };
 
@@ -28,7 +28,7 @@ export default function Plan() {
     try {
       const r = await api('/api/checkout/subscribe', { method: 'POST', body: { tier, cadence } });
       if (r.url) { window.location.href = r.url; return; }
-      setNote(isDemo() ? 'Demo mode — checkout opens here once payments are connected.' : 'Payments are almost ready — try again shortly.');
+      setNote(isDemo() ? 'Demo mode - checkout opens here once payments are connected.' : 'Payments are almost ready - try again shortly.');
     } catch (e) { setNote(e.message); }
     setBusyTier(null);
   }
@@ -38,17 +38,17 @@ export default function Plan() {
       <MonoLabel>Your $20 audit is credited to month one</MonoLabel>
       <h1 className="mt-2 text-h2 tracking-tight">Keep it fixed, every week.</h1>
       <p className="mt-2 max-w-[52ch] text-body text-neutral-900">
-        The audit found the problems. A plan keeps finding them — and fixes what you approve, week after week.
+        The audit found the problems. A plan keeps finding them - and fixes what you approve, week after week.
       </p>
 
-      <div className="mt-6 inline-flex rounded border border-neutral-500 bg-white p-0.5" role="group" aria-label="Billing period">
-        {[['annual', 'Annual — 2 months free'], ['monthly', 'Monthly']].map(([value, label]) => (
+      <div className="mt-6 inline-flex rounded border border-neutral-500 bg-white/[0.04] p-0.5" role="group" aria-label="Billing period">
+        {[['annual', 'Annual - 2 months free'], ['monthly', 'Monthly']].map(([value, label]) => (
           <button
             key={value}
             type="button"
             onClick={() => setCadence(value)}
             aria-pressed={cadence === value}
-            className={`rounded px-4 py-2 text-small font-medium ${cadence === value ? 'bg-accent text-white' : 'text-neutral-900'}`}
+            className={`rounded px-4 py-2 text-small font-medium ${cadence === value ? 'bg-brand-300 text-page' : 'text-neutral-900'}`}
           >
             {label}
           </button>
@@ -57,8 +57,8 @@ export default function Plan() {
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         {plan.tiers.map((t) => (
-          <Card key={t.tier} className={t.selected ? 'border-accent p-6 ring-1 ring-accent' : 'p-6'}>
-            {t.selected && <MonoLabel className="!text-accent">Recommended for you</MonoLabel>}
+          <Card key={t.tier} className={t.selected ? 'border-brand-500 p-6 ring-1 ring-brand-400' : 'p-6'}>
+            {t.selected && <MonoLabel className="!text-strong">Recommended for you</MonoLabel>}
             <h2 className="mt-1 text-h4">{t.label}</h2>
             <div className="mt-1 flex items-baseline gap-1">
               <span className="text-h3">${t.price_usd}</span>
@@ -66,7 +66,7 @@ export default function Plan() {
             </div>
             <div className="mt-0.5 text-tiny text-neutral-900">
               {cadence === 'annual'
-                ? `Billed $${(t.price_usd * 10).toLocaleString()} a year — you save $${(t.price_usd * 2).toLocaleString()}`
+                ? `Billed $${(t.price_usd * 10).toLocaleString()} a year - you save $${(t.price_usd * 2).toLocaleString()}`
                 : 'Billed monthly. Switch to annual any time for 2 months free.'}
             </div>
             <ul className="mt-4 flex flex-col gap-2">
