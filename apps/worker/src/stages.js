@@ -20,10 +20,12 @@ const l4rsa = require('../../../packages/rules/src/layer4-rsa');
 const l5urls = require('../../../packages/rules/src/layer5-urls');
 const { computeVolumeDrops } = require('../../../packages/rules/src/layer3-fire');
 const { assembleEnvelope } = require('../../../packages/report/src/envelope');
+const { assembleDeep } = require('../../../packages/report/src/deep');
+const l6 = require('../../../packages/rules/src/layer6-deep');
 const { narrateFinding, narrateSlots } = require('../../../packages/report/src/narration');
 const { renderReport } = require('../../../packages/report/src/render');
 
-const ALL_RULES = [...l1.rules, ...l2.rules, ...l3.rules, ...l4.rules, ...l4rsa.rules, ...l5.rules, ...l5urls.rules];
+const ALL_RULES = [...l1.rules, ...l2.rules, ...l3.rules, ...l4.rules, ...l4rsa.rules, ...l5.rules, ...l5urls.rules, ...l6.rules];
 
 function buildStages({ google, crawler, model, store }) {
   return [
@@ -67,6 +69,7 @@ function buildStages({ google, crawler, model, store }) {
           ruleConfig: await store.ruleConfig(),
           ctx: {
             gtm: ctx.gtm, ga4: ctx.ga4, ga4Data: ctx.ga4Data, ads: ctx.ads, witness: ctx.witness,
+            adsDeep: ctx.adsDeep || (ctx.ads && ctx.ads.deep) || null,
             linkedMeasurementIds: ctx.ga4 ? [ctx.ga4.measurement_ids || []].flat() : [],
             linkedAdsCustomerIds: ctx.ads ? [ctx.ads.customer_id] : [],
             servesEuUk: !!ctx.run.serves_eu_uk,
@@ -110,11 +113,19 @@ function buildStages({ google, crawler, model, store }) {
       name: 'render',
       required: true,
       run: async (ctx) => {
+        const deep = assembleDeep({
+          adsDeep: ctx.adsDeep || (ctx.ads && ctx.ads.deep) || null,
+          witness: ctx.witness,
+          findings: ctx.findings,
+          changes: store.changeRegister ? await store.changeRegister(ctx.run.tenant_id).catch(() => []) : [],
+          extraUnexamined: ['demographics', 'conversion_lag', 'change_history', 'seasonality'],
+        });
         const envelope = assembleEnvelope({
           run: { id: ctx.run.id, type: ctx.run.type, status: 'complete' },
           findings: ctx.findings,
           ledgerCumulative: await store.ledgerCumulative(ctx.run.tenant_id),
           narrativeSlots: ctx.narrativeSlots,
+          deep,
           // "Against your goals" section — present only when the (agency)
           // account has targets set; store.performanceFor is optional.
           performance: store.performanceFor
@@ -155,6 +166,8 @@ function stageDataPresent(rule, ctx) {
   // url.* rules ride on the verification crawl's URL sweep, not the witness.
   if (rule.rule_id && rule.rule_id.startsWith('url.')) return !!ctx.urlHealth;
   if (rule.layer === 5) return !!ctx.witness;
+  // Deep rules guard internally per data block; truth.* also needs the crawl.
+  if (rule.layer === 6) return rule.rule_id.startsWith('truth.') ? !!ctx.witness : true;
   return false;
 }
 

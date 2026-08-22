@@ -5,7 +5,7 @@
 
 const { chromium } = require('playwright');
 const {
-  extractTags, fingerprintCms, detectBookingProvider, deriveKeyPages,
+  extractTags, fingerprintCms, detectBookingProvider, deriveKeyPages, extractPrices,
 } = require('./extract');
 
 const HOMEPAGE_BUDGET_MS = 15_000;
@@ -95,6 +95,7 @@ async function discoveryCrawl(url, opts = {}) {
     }
 
     let tags = extractTags(home.html, home.requestUrls);
+    let prices = extractPrices(home.html);
     const cms = fingerprintCms(home.html, home.headers);
     let booking = detectBookingProvider(home.html);
 
@@ -111,6 +112,7 @@ async function discoveryCrawl(url, opts = {}) {
       if (res.ok) {
         crawled += 1;
         tags = mergeTags(tags, extractTags(res.html, res.requestUrls));
+        prices = prices.concat(extractPrices(res.html).filter((p) => !prices.some((q) => q.label === p.label && q.amount === p.amount)));
         booking = booking || detectBookingProvider(res.html);
       }
     }
@@ -120,6 +122,7 @@ async function discoveryCrawl(url, opts = {}) {
       status: 'complete',
       cms_fingerprint: cms,
       tags_found: tags,
+      prices,
       booking_provider: booking,
       pages_crawled: crawled,
       pages,

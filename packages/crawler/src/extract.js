@@ -96,4 +96,31 @@ function deriveKeyPages(html, baseUrl, limit = 5) {
   return scored.slice(0, limit);
 }
 
-module.exports = { extractTags, fingerprintCms, detectBookingProvider, deriveKeyPages, PATTERNS };
+/**
+ * Price-menu extraction — feeds truth.price_mismatch (deep layer). Pulls
+ * "label ... CUR amount" pairs from visible text; deterministic, no model.
+ * Strips tags first; a label is the preceding run of letters/spaces on the
+ * same text fragment (menus, price lists, service cards all match).
+ */
+function extractPrices(html, { currencies = ['AED', 'USD', 'EUR', 'GBP', '\\$'] } = {}) {
+  const text = String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, '\n');
+  const cur = currencies.join('|');
+  const re = new RegExp(`([A-Za-z][A-Za-z&' -]{2,60}?)[\\s:·.-]*(?:from\\s+)?(${cur})\\s?(\\d{2,5})(?!\\d)`, 'g');
+  const out = [];
+  const seen = new Set();
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const label = m[1].trim().replace(/\s+/g, ' ');
+    const amount = Number(m[3]);
+    const key = `${label.toLowerCase()}::${amount}`;
+    if (label.length < 3 || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ label, amount, currency: m[2] === '$' ? 'USD' : m[2] });
+  }
+  return out;
+}
+
+module.exports = { extractTags, fingerprintCms, detectBookingProvider, deriveKeyPages, extractPrices, PATTERNS };

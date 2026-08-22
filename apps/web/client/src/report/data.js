@@ -183,3 +183,129 @@ export const verdictMeta = {
   retire: { label: 'Retire', color: 'critical' },
   restructure: { label: 'Rebuild', color: 'warning' },
 };
+
+
+// Deep sections - the paid tier's anatomy, sample-sized. Same discipline as
+// the engine: measured figures come from the row data above; anything
+// allocated rather than measured says modelled right on the chart.
+export const deep = {
+  moneyPicture: {
+    modelled: true,
+    xLabels: ['May', 'Jun', 'Jul', 'Aug 1-12', 'Aug 13-20'],
+    actual: [3100, 3580, 5400, 2720, 1810],
+    optimized: [2670, 3100, 4710, 2380, 1560],
+    saved: [430, 480, 690, 340, 250],
+  },
+  cpaCurve: {
+    xLabels: ['May', 'Jun', 'Jul', 'Aug 1-12', 'Aug 13-20'],
+    values: [66, 38, 31, 30, 48],
+    floor: 30,
+    regressionAt: 4,
+    note: 'The jump tracks the 13 Aug counting fix; ads are relearning toward the floor.',
+  },
+  leakLedger: {
+    rows: [
+      { label: 'Gel + BIAB', segments: [
+        { kind: 'recovered', label: 'Recovered', value: 288 },
+        { kind: 'calendar', label: 'Calendar waste', value: 0 },
+        { kind: 'active', label: 'Still bleeding', value: 331 },
+      ] },
+      { label: 'Lashes', segments: [
+        { kind: 'recovered', label: 'Recovered', value: 197 },
+        { kind: 'calendar', label: 'Calendar waste', value: 274 },
+        { kind: 'active', label: 'Still bleeding', value: 520 },
+      ] },
+      { label: 'Brows', segments: [
+        { kind: 'recovered', label: 'Recovered', value: 173 },
+        { kind: 'calendar', label: 'Calendar waste', value: 250 },
+        { kind: 'active', label: 'Still bleeding', value: 389 },
+      ] },
+    ],
+    sub: 'Green is already recovered, gray is calendar waste, red is still bleeding. The red column adds up to the headline number.',
+  },
+  qs: {
+    avg: 3.9,
+    premiumMonthly: 760,
+    bins: [
+      { label: 'QS 1', count: 2, status: 'critical' },
+      { label: 'QS 2', count: 3, status: 'critical' },
+      { label: 'QS 3', count: 8, status: 'critical' },
+      { label: 'QS 4', count: 5, status: 'warning' },
+      { label: 'QS 5', count: 5, status: 'warning' },
+      { label: 'QS 6', count: 3, status: 'success' },
+      { label: 'QS 7', count: 2, status: 'success' },
+    ],
+    sub: 'Google rates every search\'s fit from 1 to 10 and prices clicks by it. Most of your spend sits in the red bins, paying up to twice per click for the same position.',
+  },
+  hours: {
+    flagged: [5, 8],
+    rows: [
+      { hour: 0, spend: 86, cpa: 32 }, { hour: 1, spend: 68, cpa: 38 }, { hour: 2, spend: 60, cpa: null },
+      { hour: 3, spend: 88, cpa: null }, { hour: 4, spend: 20, cpa: 28 }, { hour: 5, spend: 19, cpa: 95 },
+      { hour: 6, spend: 40, cpa: 30 }, { hour: 7, spend: 52, cpa: 24 }, { hour: 8, spend: 90, cpa: 74 },
+      { hour: 9, spend: 62, cpa: 40 }, { hour: 10, spend: 112, cpa: 33 }, { hour: 11, spend: 111, cpa: 28 },
+      { hour: 12, spend: 108, cpa: 25 }, { hour: 13, spend: 104, cpa: 22 }, { hour: 14, spend: 122, cpa: 44 },
+      { hour: 15, spend: 103, cpa: 38 }, { hour: 16, spend: 108, cpa: 30 }, { hour: 17, spend: 78, cpa: 41 },
+      { hour: 18, spend: 94, cpa: 50 }, { hour: 19, spend: 71, cpa: 36 }, { hour: 20, spend: 70, cpa: 27 },
+      { hour: 21, spend: 56, cpa: 22 }, { hour: 22, spend: 52, cpa: 25 }, { hour: 23, spend: 46, cpa: 20 },
+    ],
+    sub: 'Two hours pay a multiple of your usual price per result. Excluding them keeps every other hour running.',
+  },
+  headroom: {
+    rows: [
+      { label: 'Brows', pct: 24.2 },
+      { label: 'Gel + BIAB', pct: 10.7 },
+      { label: 'Lashes', pct: 10.0 },
+    ],
+    metrics: {
+      columns: ['Measure', 'Gel + BIAB', 'Lashes', 'Brows', 'Reading'],
+      rows: [
+        ['Share of interested clicks won', '10.7%', '10.0%', '24.2%', 'The market holds roughly ten times today\'s volume'],
+        ['Views lost to the budget cap', '22.9%', '20.7%', '19.9%', 'A fifth of interested views missed while results ran on target'],
+        ['Filtered suspicious clicks', '5.5%', '9.5%', '12.9%', 'Not billed; Brows is near the alarm band, watch monthly'],
+      ],
+    },
+    sub: 'The share of interested clicks you win today. The rest of the market is reachable at a measured pace, at the efficiency you already have.',
+  },
+  conversionMix: [
+    { signal: 'WhatsApp taps', count: 44, share: 36, note: 'Primary booking route' },
+    { signal: 'Online bookings', count: 21, share: 17, note: 'Via your booking page' },
+    { signal: 'Phone calls', count: 2, share: 2, note: 'Rare by customer habit' },
+    { signal: 'Direction requests', count: 56, share: 46, note: 'Soft walk-in intent, counted separately on purpose' },
+  ],
+  copyAssets: {
+    columns: ['Ad wording', 'Type', 'Views', 'Status', 'What it tells us'],
+    rows: [
+      ['"Russian Manicure From $45"', 'Headline', '1,489', 'good', 'Your most-served line. Service plus price is the proven formula'],
+      ['"20% Off First Booking"', 'Headline', '1,711', 'good', 'The offer angle Google picks second, everywhere'],
+      ['"Gel + BIAB $68"', 'Headline', '814', 'good', 'Carries its group; the group books at your average'],
+      ['"Book On WhatsApp"', 'Headline', '165', 'watch', 'Missing from your three newest ads; add it back'],
+      ['"Lash Lift + Tint $68"', 'Headline', '344', 'good', 'Earning placement since the rewrite'],
+      ['"Brow Lamination From $40"', 'Headline', 'serving', 'serious', 'The website says $68. Same-day wording fix'],
+      ['"One session, 6-8 weeks of lift"', 'Description', '452', 'good', 'Your best description; keep it everywhere'],
+      ['"Walk-ins welcome, DIFC, 5 min"', 'Description', '386', 'good', 'Location proof works with the price lines'],
+    ],
+  },
+  register: {
+    sub: 'Each change is itemised, reversible, and applied only after your approval. This is the record a handover-ready account keeps.',
+    columns: ['ID', 'Change', 'Exact item', 'Why', 'Status'],
+    rows: [
+      ['G-01', 'Pause search', '"manicure near me" (exact)', 'Lowest quality rating, zero bookings, priciest clicks', 'Applied · verified 18 Aug'],
+      ['G-02', 'Exclude searches', '14 competitor salon names', 'Browsers, not bookers; zero bookings across 90 days', 'Applied · verified 18 Aug'],
+      ['G-03', 'Add search', '"Russian manicure" (exact)', 'Real demand arriving through the side door', 'Applied · verified 18 Aug'],
+      ['L-01', 'Exclude searches', '"acrylic", "dip nails" and 3 more', 'Services not on your menu', 'Applied · verified 18 Aug'],
+      ['L-02', 'Fix wording', 'Typo in your newest lash ad', 'Live on 100+ search pages', 'Waiting for your yes'],
+      ['B-01', 'Fix wording', '"Brow Lamination From $40" to $68', 'The website price is $68; price-intent clicks arrive on a wrong promise', 'Waiting for your yes'],
+      ['B-02', 'Exclude hours', '05:00-06:00 account-wide', 'Money hours analysis above', 'Waiting for your yes'],
+      ['B-03', 'Exclude day', 'Tuesday, Brows only', 'Costs five times what Friday costs, lifetime', 'Waiting for your yes'],
+      ['A-01', 'Demote counter', 'Direction requests to secondary', 'Softer signal; cleaner target for smart bidding', 'Waiting for your yes'],
+      ['A-02', 'Remove dead links', '18 never-served extras under your ads', 'Dead inventory, one had a typo on 95 search pages', 'Applied · verified 18 Aug'],
+    ],
+  },
+  unexamined: [
+    'Age and gender breakdown - offered, not yet pulled; out-of-audience spend would be free waste removal',
+    'How long bookings take to land - calibrates whether young results are read too early',
+    'Account change history - would confirm authorship of every change we did not make',
+    'Seasonal patterns - needs a longer history; revisit quarterly',
+  ],
+};

@@ -1,33 +1,65 @@
 {
-  "_comment": "Customer-facing strings for reports and emails. This tree IS linted by scripts/jargon-lint.js (master §4 blocklist + register). Change copy here, never inline in renderer code.",
-  "report": {
-    "health_label": "Account health",
-    "money_headline_waste": "About {amount} a month is going to waste",
-    "money_headline_clean": "No money leaks found this week",
-    "since_last_week_title": "Since last week",
-    "cumulative_strip": "{fixes} fixes applied since day one · about {amount} of waste removed",
-    "locked_placeholder": "{count} {noun} found — unlock the full report to see the list and the fix",
-    "locked_fix_placeholder": "The exact fix is in the full report",
-    "unlock_cta": "Unlock the full report — $20, credited to your first month",
-    "view_online": "View this report online",
-    "settings_link": "Email settings",
-    "degraded_notice": "Part of this check could not run this week ({reasons}). Everything shown is complete; nothing is guessed.",
-    "footer_note": "We check your ads, your visit tracking and your site every week, and fix what you approve.",
-    "severity_labels": {
-      "critical": "Needs attention now",
-      "warning": "Costing you money",
-      "opportunity": "Worth grabbing",
-      "info": "Good to know"
-    },
-    "noun_for_kind": {
-      "search_term": "search terms",
-      "gtm_tag": "setup items",
-      "conversion_action": "counters",
-      "event": "tracked actions",
-      "campaign": "campaigns",
-      "page": "pages",
-      "measurement_id": "tracking codes",
-      "default": "items"
-    }
+ "_comment": "Customer-facing strings for reports and emails. This tree IS linted by scripts/jargon-lint.js (master §4 blocklist + register). Change copy here, never inline in renderer code.",
+ "report": {
+  "health_label": "Account health",
+  "money_headline_waste": "About {amount} a month is going to waste",
+  "money_headline_clean": "No money leaks found this week",
+  "since_last_week_title": "Since last week",
+  "cumulative_strip": "{fixes} fixes applied since day one · about {amount} of waste removed",
+  "locked_placeholder": "{count} {noun} found — unlock the full report to see the list and the fix",
+  "locked_fix_placeholder": "The exact fix is in the full report",
+  "unlock_cta": "Unlock the full report — $20, credited to your first month",
+  "view_online": "View this report online",
+  "settings_link": "Email settings",
+  "degraded_notice": "Part of this check could not run this week ({reasons}). Everything shown is complete; nothing is guessed.",
+  "footer_note": "We check your ads, your visit tracking and your site every week, and fix what you approve.",
+  "severity_labels": {
+   "critical": "Needs attention now",
+   "warning": "Costing you money",
+   "opportunity": "Worth grabbing",
+   "info": "Good to know"
+  },
+  "noun_for_kind": {
+   "search_term": "search terms",
+   "gtm_tag": "setup items",
+   "conversion_action": "counters",
+   "event": "tracked actions",
+   "campaign": "campaigns",
+   "page": "pages",
+   "measurement_id": "tracking codes",
+   "default": "items"
+  },
+  "deep": {
+   "money_picture_title": "The money picture",
+   "money_picture_sub": "What you spent against what the same weeks would have cost with the measured waste removed. The gap is the leak.",
+   "cpa_curve_title": "Cost per result over time",
+   "cpa_curve_sub": "A healthy account matures toward a floor. A jump off the floor usually means counting changed or ads are relearning.",
+   "leaks_title": "Where the leaks are",
+   "leaks_sub": "Green is money already recovered, gray is calendar waste, red is still bleeding.",
+   "qs_title": "Quality rating: the structural per-click premium",
+   "qs_sub": "Google rates every search's fit from 1 to 10 and prices clicks by it. Low ratings pay a premium for the same position.",
+   "hours_title": "Money hours",
+   "hours_sub": "Spend and cost per result, hour by hour. Flagged hours pay a multiple of your usual price per result.",
+   "headroom_title": "Room to grow",
+   "headroom_sub": "The share of interested clicks you win today. The rest of the market is reachable at a measured pace.",
+   "keywords_title": "Every search, in full",
+   "conversion_mix_title": "How people actually book",
+   "copy_title": "What your ads say, and what Google chooses to serve",
+   "register_title": "Every change, on the record",
+   "register_sub": "Each change is itemised, reversible, and applied only after your approval.",
+   "unexamined_title": "Not yet examined, said plainly",
+   "unexamined_sub": "These datasets were not part of this check. Nothing here is guessed; absence is stated, never papered over.",
+   "modelled_label": "modelled",
+   "measured_label": "measured",
+   "modelled_note": "Figures marked modelled are careful estimates, shown apart from measured figures on purpose.",
+   "locked_table": "{count} rows in the full report, each with the exact fix",
+   "email_deep_strip": "This week's full report carries the charts, the complete tables and the change register.",
+   "open_full_report": "Open the full report",
+   "status_labels": {
+    "good": "On track",
+    "watch": "Watch",
+    "serious": "Fix"
+   }
   }
+ }
 }

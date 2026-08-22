@@ -11,16 +11,19 @@ const path = require('path');
 // Copy lives in the linted tree (packages/emails) — the register is the product.
 const COPY = require(path.join(__dirname, '..', '..', 'emails', 'copy.json')).report;
 
+// v28 light mono palette (21 Aug 2026): ink/silver chrome, severity colors
+// are the only hues. The app's dark theme is a client concern; this renderer
+// serves email + standalone web where light is the correct ground.
 const TOKENS = {
-  accent: '#000d14',
+  accent: '#16181b',
   critical: '#DC2626',
   warning: '#D97706',
   success: '#16A34A',
   info: '#2563EB',
   opportunity: '#16A34A',
-  neutral100: '#f7f7f7',
-  neutral400: '#e6e6e6',
-  neutral900: '#727272',
+  neutral100: '#f6f6f7',
+  neutral400: '#e4e5e7',
+  neutral900: '#565b63',
   radius: '6px',
   font: "'Geist', Helvetica, Arial, sans-serif",
 };
@@ -87,6 +90,115 @@ function findingCard(finding, unlocked) {
 }
 
 const { renderPerformanceSection } = require('./performance');
+const charts = require('./charts');
+
+/* ------------------------------------------------------- deep sections */
+const DEEP = COPY.deep || {};
+const th = (t, align = 'left') => `<th style="font-family:${TOKENS.font};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#ffffff;background:${TOKENS.accent};padding:7px 9px;text-align:${align};">${esc(t)}</th>`;
+const td = (v, { align = 'left', color = '#333', weight = 400 } = {}) => `<td style="font-family:${TOKENS.font};font-size:12.5px;color:${color};padding:6px 9px;border-bottom:1px solid ${TOKENS.neutral400};text-align:${align};font-weight:${weight};font-variant-numeric:tabular-nums;">${v}</td>`;
+const statusChip = (status) => {
+  const map = { good: TOKENS.success, watch: TOKENS.warning, serious: TOKENS.critical };
+  const color = map[status] || TOKENS.neutral900;
+  const label = (DEEP.status_labels || {})[status] || status;
+  return `<span style="font-family:${TOKENS.font};display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:${color};"><span style="display:inline-block;width:6px;height:6px;border-radius:99px;background:${color};box-shadow:0 0 0 2.5px ${color}22;"></span>${esc(label)}</span>`;
+};
+const modelledChip = () => `<span style="font-family:${TOKENS.font};font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:${TOKENS.neutral900};border:1px solid ${TOKENS.neutral400};border-radius:99px;padding:1.5px 7px;margin-left:8px;vertical-align:middle;">${esc(DEEP.modelled_label || 'modelled')}</span>`;
+
+function deepSection(title, sub, inner, { modelled = false } = {}) {
+  return `<div style="padding:20px 0 6px 0;">
+    <div style="font-family:${TOKENS.font};font-size:17px;font-weight:600;color:${TOKENS.accent};">${esc(title)}${modelled ? modelledChip() : ''}</div>
+    ${sub ? `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};padding:3px 0 10px 0;">${esc(sub)}</div>` : ''}
+    ${inner}
+  </div>`;
+}
+
+function lockedTableNote(count) {
+  return `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};background:${TOKENS.neutral100};border:1px dashed ${TOKENS.neutral400};border-radius:${TOKENS.radius};padding:12px;text-align:center;">${fill(DEEP.locked_table || '{count} rows in the full report', { count })}</div>`;
+}
+
+function renderDeepSections(deep, { unlocked, mode, currency }) {
+  if (!deep) return '';
+  if (mode === 'email') {
+    return `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};background:${TOKENS.neutral100};border-radius:${TOKENS.radius};padding:12px 14px;margin:8px 0 16px 0;text-align:center;">${esc(DEEP.email_deep_strip || '')}</div>`;
+  }
+  const cur = currency || '$';
+  let out = '';
+  if (deep.money_picture) {
+    const mp = deep.money_picture;
+    out += deepSection(DEEP.money_picture_title, DEEP.money_picture_sub, charts.lineChart({
+      xLabels: mp.x_labels,
+      series: [
+        { label: 'Actual spend', points: mp.actual },
+        { label: 'With waste removed', points: mp.optimized, status: 'success' },
+      ],
+      band: { from: 1, to: 0, labels: mp.saved.map((v) => (v > 0 ? `-${v.toLocaleString('en-US')}` : null)) },
+    }), { modelled: mp.modelled });
+  }
+  if (deep.cpa_curve) {
+    const cc = deep.cpa_curve;
+    const regIdx = cc.regression_period ? cc.x_labels.indexOf(cc.regression_period) : -1;
+    out += deepSection(DEEP.cpa_curve_title, DEEP.cpa_curve_sub, charts.lineChart({
+      xLabels: cc.x_labels,
+      series: [{ label: 'Cost per result', points: cc.values }],
+      annotate: regIdx > 0 ? [{ i0: regIdx - 0.5 >= 0 ? regIdx - 0.5 : 0, i1: regIdx, label: 'off the floor' }] : [],
+    }));
+  }
+  if (deep.leak_ledger) {
+    const l = deep.leak_ledger; const t = l.totals;
+    const bars = charts.stackedBarsH({ rows: [{ label: 'Account', segments: [
+      { label: 'Recovered', value: t.recovered_usd, kind: 'recovered' },
+      { label: 'Calendar waste', value: t.calendar_usd, kind: 'calendar' },
+      { label: 'Still bleeding', value: t.active_usd, kind: 'active' },
+    ].filter((g) => g.value > 0) }], unit: '' });
+    const rows = l.rows.map((r) => `<tr>${td(esc(r.label))}${td(`${cur}${r.cost_usd.toLocaleString('en-US')}/mo${r.modelled ? modelledChip() : ''}`, { align: 'right' })}${td(statusChip(r.severity === 'critical' ? 'serious' : r.severity === 'warning' ? 'watch' : 'good'))}${td(esc(r.fix))}</tr>`).join('');
+    out += deepSection(DEEP.leaks_title, DEEP.leaks_sub, `${bars}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;border-collapse:collapse;"><tr>${th('Leak')}${th('Cost', 'right')}${th('Status')}${th('Fix')}</tr>${rows}</table>`);
+  }
+  if (deep.qs_distribution) {
+    const q = deep.qs_distribution;
+    out += deepSection(DEEP.qs_title, DEEP.qs_sub,
+      charts.histogram({ bins: q.bins, note: `average ${q.avg}` })
+      + `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};padding-top:6px;">${esc(DEEP.modelled_note || '')}</div>`,
+      { modelled: true });
+  }
+  if (deep.hour_profile) {
+    out += deepSection(DEEP.hours_title, DEEP.hours_sub, charts.hourProfile({ hours: deep.hour_profile.hours, flagged: deep.hour_profile.flagged, currency: cur }));
+  }
+  if (deep.headroom) {
+    out += deepSection(DEEP.headroom_title, DEEP.headroom_sub, charts.shareBars({ rows: deep.headroom.rows.map((r) => ({ label: r.label, pct: r.pct })) }));
+  }
+  if (deep.keyword_table) {
+    const inner = unlocked
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>${th('Search')}${th('Match')}${th('Cost', 'right')}${th('Clicks', 'right')}${th('Results', 'right')}${th('Cost/result', 'right')}${th('Quality', 'right')}${th('Status')}</tr>
+        ${deep.keyword_table.rows.map((k) => `<tr>${td(esc(k.keyword), { weight: 600, color: TOKENS.accent })}${td(esc(k.match))}${td(cur + k.cost_usd.toLocaleString('en-US'), { align: 'right' })}${td(k.clicks, { align: 'right' })}${td(k.conversions, { align: 'right' })}${td(k.cpa_usd != null ? cur + k.cpa_usd.toLocaleString('en-US') : '-', { align: 'right' })}${td(k.quality ?? '-', { align: 'right' })}${td(statusChip(k.status))}</tr>`).join('')}</table>`
+      : lockedTableNote(deep.keyword_table.rows.length);
+    out += deepSection(DEEP.keywords_title, null, inner);
+  }
+  if (deep.conversion_mix) {
+    out += deepSection(DEEP.conversion_mix_title, null,
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>${th('Signal')}${th('Count', 'right')}${th('Share', 'right')}${th('Note')}</tr>
+      ${deep.conversion_mix.map((r) => `<tr>${td(esc(r.signal), { weight: 600, color: TOKENS.accent })}${td(r.count, { align: 'right' })}${td(r.share_pct + '%', { align: 'right' })}${td(esc(r.note))}</tr>`).join('')}</table>`);
+  }
+  if (deep.copy_assets) {
+    const inner = unlocked
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>${th('Wording')}${th('Type')}${th('Views', 'right')}${th('Status')}${th('Insight')}</tr>
+        ${deep.copy_assets.rows.map((a) => `<tr>${td(esc(a.text), { weight: 600, color: TOKENS.accent })}${td(esc(a.type))}${td(a.impressions != null ? a.impressions.toLocaleString('en-US') : '-', { align: 'right' })}${td(statusChip(a.status))}${td(esc(a.insight))}</tr>`).join('')}</table>`
+      : lockedTableNote(deep.copy_assets.rows.length);
+    out += deepSection(DEEP.copy_title, null, inner);
+  }
+  if (deep.execution_register) {
+    const inner = unlocked
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>${th('ID')}${th('Change')}${th('Exact item')}${th('Why')}${th('Status')}</tr>
+        ${deep.execution_register.rows.map((c) => `<tr>${td(esc(c.id))}${td(esc(c.kind))}${td(esc(c.item), { weight: 600, color: TOKENS.accent })}${td(esc(c.rationale))}${td(esc(c.status) + (c.verified_at ? ` · ${esc(c.verified_at)}` : ''), { color: TOKENS.success, weight: 600 })}</tr>`).join('')}</table>`
+      : lockedTableNote(deep.execution_register.rows.length);
+    out += deepSection(DEEP.register_title, DEEP.register_sub, inner);
+  }
+  if (deep.unexamined && deep.unexamined.length) {
+    out += deepSection(DEEP.unexamined_title, DEEP.unexamined_sub,
+      deep.unexamined.map((u) => `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};border:1px solid ${TOKENS.neutral400};border-radius:${TOKENS.radius};padding:9px 12px;margin-bottom:6px;">${esc(u)}</div>`).join(''));
+  }
+  return out;
+}
 
 function renderReport(envelope, { unlocked = false, healthScore = null, mode = 'web', links = {} } = {}) {
   const cards = envelope.findings
@@ -117,6 +229,7 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
     ${degraded}
     ${unlockCta}
     ${cards}
+    ${renderDeepSections(envelope.deep, { unlocked, mode, currency: envelope.currency_symbol })}
     ${sinceLast}
     ${cumulative}
     <div style="font-family:${TOKENS.font};font-size:12px;color:${TOKENS.neutral900};text-align:center;padding-top:8px;">${esc(COPY.footer_note)}</div>

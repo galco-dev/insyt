@@ -5,8 +5,9 @@
 
 import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
+import { LineChart, StackedBarsH, Histogram, HourProfile, ShareBars } from './charts.jsx';
 import { CheckCircle as CheckCircle2, AlertTriangle, Lock01 as Lock, ArrowRight, FlipBackward as Undo2, Eye } from '@untitledui/icons';
-import { audit, } from './data.js';
+import { audit, deep } from './data.js';
 import { api, isDemo } from '../lib/api.js';
 import {
   COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState,
@@ -209,6 +210,15 @@ function UnlockBar({ visible }) {
   );
 }
 
+
+function ChartCard({ children }) {
+  return (
+    <div className="overflow-x-auto rounded-lg bg-gradient-to-b from-card-hi to-card p-4 ring-1 ring-inset ring-(--ui-ring) sm:p-5">
+      {children}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- real report (findings snapshot)
 
 const SNAPSHOT_SEV = { critical: 'critical', warning: 'warning', info: 'info', opportunity: 'info' };
@@ -346,6 +356,97 @@ export default function Report({ reportId = null }) {
         <div className={clsx('mt-3 flex items-start gap-2 rounded border border-neutral-300 bg-card p-4 text-small text-neutral-900')}>
           <Undo2 size={15} className="mt-0.5 shrink-0" aria-hidden />
           <span className={clsx(locked && 'blurred')} aria-hidden={locked || undefined}>{audit.rebuild.shared}</span>
+        </div>
+
+
+        {/* ---- deep sections: the money picture ---- */}
+        <SectionHead kicker="Modelled from measured leaks" title="The money picture" />
+        <p className="mb-4 max-w-m2 text-body text-neutral-900">
+          What you spent, against what the same weeks would have cost with the measured waste removed. The shaded gap is the leak.
+        </p>
+        <ChartCard>
+          <LineChart
+            xLabels={deep.moneyPicture.xLabels}
+            series={[
+              { label: 'Actual spend', points: deep.moneyPicture.actual },
+              { label: 'With waste removed', points: deep.moneyPicture.optimized, status: 'success' },
+            ]}
+            band={{ from: 1, to: 0, labels: deep.moneyPicture.saved.map((v) => `-${v}`) }}
+          />
+        </ChartCard>
+
+        <SectionHead kicker="Maturity, then a reset" title="Cost per result over time" />
+        <p className="mb-4 max-w-m2 text-body text-neutral-900">{deep.cpaCurve.note}</p>
+        <ChartCard>
+          <LineChart
+            xLabels={deep.cpaCurve.xLabels}
+            series={[{ label: 'Cost per result', points: deep.cpaCurve.values }]}
+            annotate={[{ i0: deep.cpaCurve.regressionAt - 0.5, i1: deep.cpaCurve.regressionAt, label: 'off the floor' }]}
+          />
+        </ChartCard>
+
+        <SectionHead kicker="Recovered vs still bleeding" title="Where the leaks are" />
+        <p className="mb-4 max-w-m2 text-body text-neutral-900">{deep.leakLedger.sub}</p>
+        <ChartCard>
+          <StackedBarsH rows={deep.leakLedger.rows} />
+        </ChartCard>
+
+        <SectionHead kicker={`Average ${deep.qs.avg} · about $${deep.qs.premiumMonthly}/mo modelled`} title="The per-click quality tax" />
+        <p className="mb-4 max-w-m2 text-body text-neutral-900">{deep.qs.sub}</p>
+        <ChartCard>
+          <Histogram bins={deep.qs.bins} note={`average ${deep.qs.avg}`} />
+        </ChartCard>
+
+        <SectionHead kicker="Hour by hour, 30 days" title="Money hours" />
+        <p className="mb-4 max-w-m2 text-body text-neutral-900">{deep.hours.sub}</p>
+        <ChartCard>
+          <HourProfile hours={deep.hours.rows} flagged={deep.hours.flagged} />
+        </ChartCard>
+
+        <SectionHead kicker="Share of interested clicks won" title="Room to grow" />
+        <p className="mb-4 max-w-m2 text-body text-neutral-900">{deep.headroom.sub}</p>
+        <ChartCard>
+          <ShareBars rows={deep.headroom.rows} />
+        </ChartCard>
+        <DataTable spec={{ columns: deep.headroom.metrics.columns, rows: deep.headroom.metrics.rows, total: null }} locked={locked} clearRows={1} renderCell={(c, j) => statCell(c, j, j)} />
+
+        <SectionHead kicker="Counted separately on purpose" title="How people actually book" />
+        <div className="overflow-hidden rounded border border-neutral-300 bg-card">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-small">
+              <thead>
+                <tr className="border-b border-neutral-300 bg-neutral-50">
+                  {['Signal', 'Count', 'Share', 'Note'].map((c) => (
+                    <th key={c} className="whitespace-nowrap px-4 py-2.5 text-left font-mono text-tiny font-medium uppercase tracking-[0.1em] text-neutral-900">{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {deep.conversionMix.map((r) => (
+                  <tr key={r.signal} className="border-b border-neutral-200 last:border-0">
+                    <td className="px-4 py-2.5 font-medium">{r.signal}</td>
+                    <td className="px-4 py-2.5 tabular-nums">{r.count}</td>
+                    <td className="px-4 py-2.5 tabular-nums">{r.share}%</td>
+                    <td className="px-4 py-2.5 text-neutral-900">{r.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <SectionHead kicker="Serving data, last 30 days" title="What your ads say, and what Google chooses to serve" count={`${deep.copyAssets.rows.length} lines`} locked={locked} />
+        <DataTable spec={{ columns: deep.copyAssets.columns, rows: deep.copyAssets.rows, total: null }} locked={locked} clearRows={3} renderCell={(c, j) => statCell(c, j, j)} />
+
+        <SectionHead kicker="Itemised, reversible, approval-first" title="Every change, on the record" count={`${deep.register.rows.length} changes`} locked={locked} />
+        <p className="mb-4 max-w-m2 text-body text-neutral-900">{deep.register.sub}</p>
+        <DataTable spec={{ columns: deep.register.columns, rows: deep.register.rows, total: null }} locked={locked} clearRows={3} renderCell={(c, j) => statCell(c, j, j)} />
+
+        <SectionHead kicker="Said plainly" title="Not yet examined" />
+        <div className="flex flex-col gap-2">
+          {deep.unexamined.map((u) => (
+            <div key={u} className="rounded border border-neutral-300 bg-card px-4 py-3 text-small text-neutral-900">{u}</div>
+          ))}
         </div>
 
         {/* trust footer */}
