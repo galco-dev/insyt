@@ -69,7 +69,7 @@ function useSetupDone(enabled) {
 function SignIn() {
   return (
     <div className="mx-auto max-w-s2 px-5 pt-20 text-center">
-      <MonoLabel>Insyt</MonoLabel>
+      <span className="inline-flex justify-center"><Wordmark className="h-9" /></span>
       <h1 className="mt-2 text-h2 tracking-tight">Sign in</h1>
       <p className="mt-2 text-body text-neutral-900">
         The one-tap links in your Insyt emails sign you straight in. New here? Start with your free check.
