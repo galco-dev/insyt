@@ -2,7 +2,7 @@
 // the real dashStore payloads, so screens are reviewable before credentials
 // exist. Same fictional business as the sample report (Glow Studio).
 
-import { AGENCY_DEMO } from '../agency/demo.js';
+import { agencyDemo } from '../agency/demo.js';
 
 const pending = [
   {
@@ -123,10 +123,92 @@ const DEMO = {
   },
 };
 
-export function demoData(path, method) {
+// ---------------------------------------------------------------- state
+// The customer demo is stateful for the actions that matter: approving or
+// dismissing a fix, sending a request, and flipping autopilot. Everything
+// mutates session-lifetime copies so the screens stay consistent.
+let CS = null;
+function cstate() {
+  if (!CS) {
+    CS = structuredClone({
+      pending,
+      ledger,
+      cumulative: { fixes: 6, waste_removed_usd: 730 },
+      autopilot: { negatives: false, budgets: false, counting: false },
+      health: 58,
+    });
+  }
+  return CS;
+}
+const cnow = () => new Date().toISOString();
+
+function customerDemo(path, method, body) {
+  const s = cstate();
+  const p = path.split('?')[0];
+
+  if (method === 'GET') {
+    if (p === '/api/app/home') {
+      const base = DEMO['GET /api/app/home'];
+      return {
+        ...structuredClone(base),
+        health: { ...structuredClone(base.health), score: s.health },
+        pending: s.pending,
+        cumulative: s.cumulative,
+      };
+    }
+    if (p === '/api/app/approvals') return { pending: s.pending };
+    if (p === '/api/app/ledger') return { entries: s.ledger };
+    if (p === '/api/app/settings') {
+      const base = structuredClone(DEMO['GET /api/app/settings']);
+      base.settings.autopilot = { ...s.autopilot };
+      return base;
+    }
+    return undefined;
+  }
+
+  if (method !== 'POST') return undefined;
+
+  if (p.startsWith('/api/app/approve/')) {
+    const id = p.split('/').pop();
+    const i = s.pending.findIndex((x) => x.id === id);
+    if (i !== -1) {
+      const item = s.pending.splice(i, 1)[0];
+      s.cumulative.fixes += 1;
+      const m = /\$([0-9][0-9,]*)/.exec(item.money_line || item.title || '');
+      if (m) s.cumulative.waste_removed_usd += Number(m[1].replace(/,/g, ''));
+      s.health = Math.min(96, s.health + 3);
+      s.ledger.unshift({ id: `l-${Date.now()}`, event: 'change_applied', actor: 'system', summary_text: `Applied: ${item.title}. Reversible with one tap.`, created_at: cnow() });
+    }
+    return { ok: true };
+  }
+  if (p.startsWith('/api/app/dismiss/')) {
+    const id = p.split('/').pop();
+    const i = s.pending.findIndex((x) => x.id === id);
+    if (i !== -1) s.pending.splice(i, 1);
+    return { ok: true };
+  }
+  if (p === '/api/app/request-change') {
+    const text = String((body && body.text) || '').slice(0, 500);
+    s.ledger.unshift({ id: `l-${Date.now()}`, event: 'change_requested', actor: 'user', summary_text: `You asked: "${text}". We will draft it as a change for your approval.`, created_at: cnow() });
+    return { ok: true };
+  }
+  if (p === '/api/app/autopilot') {
+    const cats = (body && (body.categories || body)) || {};
+    for (const k of ['negatives', 'budgets', 'counting']) s.autopilot[k] = !!cats[k];
+    return { ok: true, categories: { ...s.autopilot } };
+  }
+  return undefined;
+}
+
+export function demoData(path, method, body) {
+  if (path.startsWith('/api/agency')) {
+    const hit = agencyDemo(path, method, body);
+    if (hit !== undefined) return hit;
+  }
+  const stateful = customerDemo(path, method, body);
+  if (stateful !== undefined) return stateful;
   const key = `${method} ${path.split('?')[0]}`;
   if (DEMO[key] !== undefined) return DEMO[key];
-  if (AGENCY_DEMO[key] !== undefined) return AGENCY_DEMO[key];
   if (method === 'POST' && path.startsWith('/api/checkout/')) {
     return { url: null, demo: true };
   }

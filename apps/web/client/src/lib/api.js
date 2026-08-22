@@ -13,7 +13,7 @@ export class ApiError extends Error {
 
 export async function api(path, { method = 'GET', body } = {}) {
   if (isDemo()) {
-    const hit = demoData(path, method);
+    const hit = demoData(path, method, body);
     if (hit !== undefined) return structuredClone(hit);
     return { ok: true };
   }
