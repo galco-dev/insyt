@@ -202,12 +202,15 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         const sub = path.slice('/api/app'.length) || '/';
         if (req.method === 'GET') {
           if (sub === '/home') {
-            const [health, pending, cumulative, reports, streak, plan] = await Promise.all([
+            const [health, pending, cumulative, reports, streak, plan, spend] = await Promise.all([
               dashStore.healthLatest(t), dashStore.pendingApprovals(t), dashStore.cumulative(t), dashStore.reports(t),
               dashStore.approvalStreak ? dashStore.approvalStreak(t) : 0,
               dashStore.planPosition ? dashStore.planPosition(t) : null,
+              // Spend position ships with the audit engine phase; until the
+              // store grows the method the card simply does not render.
+              dashStore.spendPosition ? dashStore.spendPosition(t) : null,
             ]);
-            return json(res, 200, { health, pending, cumulative, reports, streak, plan });
+            return json(res, 200, { health, pending, cumulative, reports, streak, plan, spend });
           }
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t) });
           if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t) });
@@ -224,6 +227,32 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           }
         }
         if (req.method === 'POST') {
+          // Body-carrying endpoints: autopilot categories and the
+          // request-a-change composer. Both write through the store so demo
+          // and tests can stub them; both stay no-ops for stores without the
+          // methods rather than erroring the whole API.
+          if (sub === '/autopilot' || sub === '/request-change') {
+            let body = '';
+            req.on('data', (c) => { body += c; });
+            req.on('end', async () => {
+              let parsed; try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
+              try {
+                if (sub === '/autopilot') {
+                  if (!dashStore.setAutopilot) return json(res, 501, { error: 'Not available yet.' });
+                  const categories = await dashStore.setAutopilot(t, parsed.categories || parsed);
+                  return json(res, 200, { ok: true, categories });
+                }
+                const text = String(parsed.text || '').trim();
+                if (!text) return json(res, 400, { error: 'Tell us what you would like changed.' });
+                if (!dashStore.requestChange) return json(res, 501, { error: 'Not available yet.' });
+                await dashStore.requestChange(t, text);
+                return json(res, 200, { ok: true });
+              } catch {
+                return json(res, 500, { error: 'Something went wrong. Try again.' });
+              }
+            });
+            return;
+          }
           if (sub.startsWith('/approve/')) { await dashStore.approveChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
           if (sub.startsWith('/dismiss/')) { await dashStore.dismissChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
           if (sub.startsWith('/revert/')) { await dashStore.requestRevert(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }

@@ -44,7 +44,7 @@ export default function Home() {
   if (error) return <div className="mx-auto max-w-m2 px-5 pt-14"><ErrorNote message={error} /></div>;
   if (!data) return <Spinner label="Loading your account" />;
 
-  const { health, pending, cumulative, reports, streak, plan } = data;
+  const { health, pending, cumulative, reports, streak, plan, spend } = data;
   const latest = reports && reports[0];
   const trend = (health.trend || []).map((p) => (typeof p === 'number' ? p : p.score));
   const delta = trend.length >= 2 ? trend[trend.length - 1] - trend[trend.length - 2] : null;
@@ -93,7 +93,7 @@ export default function Home() {
       )}
 
       {cumulative && (cumulative.fixes > 0 || cumulative.waste_removed_usd > 0) && (
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className={`mt-3 grid gap-3 ${spend ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
           <Card className="p-4">
             <MonoLabel>Fixes applied</MonoLabel>
             <div className="mt-1 text-h3">{cumulative.fixes}</div>
@@ -102,6 +102,18 @@ export default function Home() {
             <MonoLabel>Waste removed</MonoLabel>
             <WasteFigure value={cumulative.waste_removed_usd} />
           </Card>
+          {spend && (
+            <Card className="col-span-2 p-4 sm:col-span-1">
+              <MonoLabel>Spent this month</MonoLabel>
+              <div className="mt-1 text-h3">
+                ${Math.round(spend.month_usd).toLocaleString()}
+                {spend.month_budget_usd ? (
+                  <span className="text-small text-neutral-900"> of ${Math.round(spend.month_budget_usd).toLocaleString()}</span>
+                ) : null}
+              </div>
+              {spend.pace_line && <div className="mt-0.5 text-tiny text-neutral-900">{spend.pace_line}</div>}
+            </Card>
+          )}
         </div>
       )}
 

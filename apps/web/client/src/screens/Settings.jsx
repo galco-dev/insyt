@@ -1,7 +1,11 @@
-// Settings - §11. Plan, connection, autopilot categories, billing portal.
+// Settings - §11. Plan, connection, autopilot categories, billing portal,
+// and the your-data actions the legal pages promise (export, delete,
+// disconnect). Autopilot toggles write through /api/app/autopilot.
 import React, { useEffect, useState } from 'react';
-import { CreditCard01 as CreditCard, Link01 as Link2, Zap } from '@untitledui/icons';
+import { CreditCard01 as CreditCard, Link01 as Link2, Zap, ShieldTick as ShieldCheck } from '@untitledui/icons';
+import clsx from 'clsx';
 import { api, isDemo } from '../lib/api.js';
+import { Link } from '../lib/router.jsx';
 import { MonoLabel, Card, Spinner, Button, ErrorNote } from '../lib/ui.jsx';
 
 const AUTOPILOT_LABEL = {
@@ -10,10 +14,37 @@ const AUTOPILOT_LABEL = {
   counting: 'Keeping your counting honest',
 };
 
+function Toggle({ on, busy, onClick, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={busy}
+      onClick={onClick}
+      className={clsx(
+        'relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-150',
+        on ? 'border-transparent bg-(--ui-cta-a)' : 'border-neutral-400 bg-neutral-200',
+        busy && 'opacity-60',
+      )}
+    >
+      <span
+        aria-hidden
+        className={clsx(
+          'absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow transition-all duration-150',
+          on ? 'left-[22px]' : 'left-0.5',
+        )}
+      />
+    </button>
+  );
+}
+
 export default function Settings() {
   const [settings, setSettings] = useState(null);
   const [error, setError] = useState(null);
   const [note, setNote] = useState(null);
+  const [busyKey, setBusyKey] = useState(null);
   useEffect(() => { api('/api/app/settings').then((d) => setSettings(d.settings)).catch((e) => setError(e.message)); }, []);
 
   if (error) return <div className="mx-auto max-w-m2 px-5 pt-14"><ErrorNote message={error} /></div>;
@@ -30,6 +61,22 @@ export default function Settings() {
 
   const autopilot = settings.autopilot || {};
 
+  async function flip(key) {
+    const next = { ...autopilot, [key]: !autopilot[key] };
+    setBusyKey(key);
+    // Optimistic: the switch answers immediately; a failure rolls it back.
+    setSettings((s) => ({ ...s, autopilot: next }));
+    try {
+      await api('/api/app/autopilot', { method: 'POST', body: { categories: next } });
+    } catch (e) {
+      setSettings((s) => ({ ...s, autopilot }));
+      setNote(e.message);
+    }
+    setBusyKey(null);
+  }
+
+  const mail = (subject) => `mailto:hello@tryinsyt.com?subject=${encodeURIComponent(subject)}`;
+
   return (
     <div className="mx-auto max-w-m2 px-5 pb-24 pt-10">
       <MonoLabel>Your account</MonoLabel>
@@ -42,16 +89,27 @@ export default function Settings() {
             <MonoLabel>Plan</MonoLabel>
             <div className="mt-0.5 text-body font-medium">{settings.plan_line}</div>
           </div>
-          <Button variant="secondary" onClick={portal} className="!px-4 !py-2">Manage card</Button>
+          <div className="flex shrink-0 gap-2">
+            <Link to="/app/plan"><Button variant="secondary" className="!px-4 !py-2">Change plan</Button></Link>
+            <Button variant="secondary" onClick={portal} className="!px-4 !py-2">Manage card</Button>
+          </div>
         </div>
+        <p className="mt-3 text-tiny text-neutral-900">
+          Cancelling? The card page handles it - your subscription runs to the end of the period you paid for, and your accounts stay exactly as they are.
+        </p>
       </Card>
 
       <Card className="mt-3 p-5">
         <div className="flex items-start gap-3">
           <Link2 size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
-          <div>
+          <div className="flex-1">
             <MonoLabel>Google connection</MonoLabel>
             <div className="mt-0.5 text-body">{settings.connection_status}</div>
+            <p className="mt-2 text-tiny text-neutral-900">
+              To cut off our access at any time, remove Insyt at{' '}
+              <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="underline underline-offset-2">your Google Account</a>
+              {' '}or <a href={mail('Disconnect my Google account')} className="underline underline-offset-2">email us</a> and we do it for you. Stored data is deleted within 30 days.
+            </p>
           </div>
         </div>
       </Card>
@@ -62,17 +120,36 @@ export default function Settings() {
           <div className="flex-1">
             <MonoLabel>Autopilot</MonoLabel>
             <p className="mt-0.5 text-small text-neutral-900">
-              What we may fix without waiting for a tap. Everything stays reversible and lands in your ledger.
+              What we may fix without waiting for a tap. Everything stays reversible and lands in your history.
             </p>
-            <div className="mt-3 flex flex-col gap-2">
+            <div className="mt-3 flex flex-col gap-2.5">
               {Object.entries(AUTOPILOT_LABEL).map(([key, label]) => (
                 <div key={key} className="flex items-center justify-between gap-3 text-small">
                   <span>{label}</span>
-                  <span className={autopilot[key] ? 'font-mono text-tiny uppercase tracking-[0.1em] text-success' : 'font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900'}>
-                    {autopilot[key] ? 'On' : 'Asks first'}
-                  </span>
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">
+                      {autopilot[key] ? 'On' : 'Asks first'}
+                    </span>
+                    <Toggle on={!!autopilot[key]} busy={busyKey === key} onClick={() => flip(key)} label={label} />
+                  </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="mt-3 p-5">
+        <div className="flex items-start gap-3">
+          <ShieldCheck size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
+          <div className="flex-1">
+            <MonoLabel>Your data</MonoLabel>
+            <p className="mt-0.5 text-small text-neutral-900">
+              Everything we hold is yours. Export it or delete it whenever you like - requests are completed within 30 days.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="secondary" href={mail('Data export')} className="!px-4 !py-2">Export my data</Button>
+              <Button variant="secondary" href={mail('Delete my data')} className="!px-4 !py-2">Delete my account</Button>
             </div>
           </div>
         </div>

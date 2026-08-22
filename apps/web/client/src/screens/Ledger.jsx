@@ -9,6 +9,7 @@ const EVENT_ICON = {
   change_reverted: Undo2, revert_requested: Undo2,
   report_sent: FileText, connection_changed: Link2,
   watch_triggered: Eye, subscription_changed: FileText,
+  change_requested: FileText,
 };
 
 export default function Ledger() {
@@ -26,7 +27,7 @@ export default function Ledger() {
   return (
     <div className="mx-auto max-w-m2 px-5 pb-24 pt-10">
       <MonoLabel>Every action, on the record</MonoLabel>
-      <h1 className="mt-1 text-h2 tracking-tight">Ledger</h1>
+      <h1 className="mt-1 text-h2 tracking-tight">History</h1>
 
       {entries.length === 0 ? (
         <div className="mt-6"><EmptyState title="Nothing here yet" body="Once your first check runs, every action lands here - permanently." /></div>

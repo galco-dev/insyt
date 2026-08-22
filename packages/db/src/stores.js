@@ -190,13 +190,38 @@ function dashStore(db) {
     },
     pendingApprovals: async (tenantId) => {
       const rows = await db.select('changes',
-        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,finding:findings(title,money_impact_monthly_usd)&order=created_at.desc`);
+        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,before,after,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
       return rows.map((r) => ({
         id: r.id,
         title: (r.finding && r.finding.title) || 'A fix is ready',
         money_line: r.finding && r.finding.money_impact_monthly_usd
           ? `about $${Math.round(r.finding.money_impact_monthly_usd)} a month` : null,
+        // The trust layer: what exactly changes, in plain words, on the card
+        // itself. Falls back to the raw before/after when no prose exists.
+        explanation: (r.finding && r.finding.explanation) || null,
+        before_line: r.before ? (r.before.line || JSON.stringify(r.before).slice(0, 140)) : null,
+        after_line: r.after ? (r.after.line || JSON.stringify(r.after).slice(0, 140)) : null,
       }));
+    },
+    // User-initiated request (dashboard composer). Recorded to the ledger so
+    // it is on the record immediately; the drafting flow picks it up and turns
+    // it into a proposed change through the normal approve pipeline.
+    requestChange: async (tenantId, text) => {
+      const clean = String(text || '').slice(0, 500);
+      await db.insert('ledger', [{
+        tenant_id: tenantId, event: 'change_requested', actor: 'user',
+        summary_text: `You asked: "${clean}". We will draft it as a change for your approval.`,
+      }], { returning: false });
+      await db.insert('audit_log', [{ tenant_id: tenantId, event: 'change_requested', detail: { text: clean } }], { returning: false }).catch(() => {});
+    },
+    setAutopilot: async (tenantId, categories) => {
+      const allowed = ['negatives', 'budgets', 'counting'];
+      const clean = {};
+      for (const k of allowed) clean[k] = !!(categories && categories[k]);
+      const existing = await db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=tenant_id`, { single: true }).catch(() => null);
+      if (existing) await db.update('autopilot_settings', `tenant_id=eq.${q(tenantId)}`, { categories: clean });
+      else await db.insert('autopilot_settings', [{ tenant_id: tenantId, categories: clean }], { returning: false });
+      return clean;
     },
     cumulative: async (tenantId) => {
       const row = await db.select('ledger_cumulative', `tenant_id=eq.${q(tenantId)}`, { single: true });

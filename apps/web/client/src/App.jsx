@@ -25,12 +25,46 @@ const NAV = [
   { to: '/app', label: 'Home', icon: HomeIcon },
   { to: '/app/approvals', label: 'Approvals', icon: CheckSquare },
   { to: '/app/reports', label: 'Reports', icon: FileText },
-  { to: '/app/ledger', label: 'Ledger', icon: ScrollText },
+  { to: '/app/ledger', label: 'History', icon: ScrollText },
   { to: '/app/journey', label: 'Setup', icon: Map },
   { to: '/app/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
+// Browser-tab titles per route. The report screen sets its own.
+const TITLES = {
+  '/app': 'Home - Insyt',
+  '/app/approvals': 'Approvals - Insyt',
+  '/app/reports': 'Reports - Insyt',
+  '/app/ledger': 'History - Insyt',
+  '/app/journey': 'Setup - Insyt',
+  '/app/settings': 'Settings - Insyt',
+  '/app/start': 'Free check - Insyt',
+  '/app/plan': 'Plans - Insyt',
+};
+
 const PUBLIC = new Set(['/app/start', '/app/report']);
+
+// Setup auto-hide: once every gate is green the tab is a dead end, so it
+// leaves the nav. Cached per session; a fresh gate change shows on reload.
+let setupDonePromise = null;
+function useSetupDone(enabled) {
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    if (!setupDonePromise) {
+      setupDonePromise = api('/api/app/journey')
+        .then((d) => {
+          const g = d && d.journey && d.journey.gates;
+          return !!(g && g.tag && g.approval && g.billing);
+        })
+        .catch(() => false);
+    }
+    let alive = true;
+    setupDonePromise.then((v) => { if (alive) setDone(v); });
+    return () => { alive = false; };
+  }, [enabled]);
+  return done;
+}
 
 function SignIn() {
   return (
@@ -51,22 +85,51 @@ function SignIn() {
 
 function Frame({ children, withNav }) {
   const { path } = useRouter();
+  const setupDone = useSetupDone(!!withNav);
+  const items = withNav ? NAV.filter((n) => !(setupDone && n.to === '/app/journey')) : [];
+
+  useEffect(() => {
+    document.title = TITLES[path] || 'Insyt';
+  }, [path]);
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-neutral-300 bg-page/85 backdrop-blur">
-        <div className="mx-auto flex max-w-l2 items-center justify-between px-5 py-4">
-          <Link to="/app" className="flex items-center"><Wordmark className="h-8" /></Link>
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex max-w-l2 items-center justify-between gap-6 px-5 py-4">
+          <Link to="/app" className="flex shrink-0 items-center"><Wordmark className="h-8" /></Link>
+          {/* Desktop: the nav lives up here; the bottom bar is phones only. */}
+          {withNav && (
+            <nav className="hidden flex-1 items-center justify-center gap-1 md:flex" aria-label="Main">
+              {items.map(({ to, label }) => {
+                const active = path === to;
+                return (
+                  <Link
+                    key={to}
+                    to={to}
+                    className={clsx(
+                      'rounded-full px-3.5 py-1.5 text-small transition-colors duration-150',
+                      active
+                        ? 'bg-gradient-to-b from-(--ui-plate-a) to-(--ui-plate-b) font-medium text-strong ring-1 ring-inset ring-(--ui-ring-strong)'
+                        : 'text-neutral-900 hover:text-strong',
+                    )}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
+          <div className="flex shrink-0 items-center gap-3">
             {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
             <ThemeToggle />
           </div>
         </div>
       </header>
-      <div className={clsx('page-fade', withNav && 'pb-20')}>{children}</div>
+      <div className={clsx('page-fade', withNav && 'pb-20 md:pb-8')}>{children}</div>
       {withNav && (
-        <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-300 bg-page/90 pb-[env(safe-area-inset-bottom)] backdrop-blur" aria-label="Main">
+        <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-300 bg-page/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden" aria-label="Main">
           <div className="mx-auto flex max-w-l2 items-stretch justify-between px-2">
-            {NAV.map(({ to, label, icon: IconEl }) => {
+            {items.map(({ to, label, icon: IconEl }) => {
               const active = path === to;
               return (
                 <Link

@@ -5,12 +5,40 @@
 import { AGENCY_DEMO } from '../agency/demo.js';
 
 const pending = [
-  { id: 'chg-1', title: '$430 a month goes to searches that never book', money_line: 'about $430 a month' },
-  { id: 'chg-2', title: 'One campaign is missing 38% of its chances', money_line: 'about $520 a month' },
-  { id: 'chg-3', title: 'A 30-second page view is being counted like a booking', money_line: 'about $290 a month' },
+  {
+    id: 'chg-1',
+    title: '$430 a month goes to searches that never book',
+    money_line: 'stopped the same day you approve',
+    explanation: 'Over 90 days, 11 recurring search themes - nail courses, salon jobs, DIY kits - spent money and produced zero bookings.',
+    before_line: 'Your ads show for "nail courses dubai", "nail technician jobs", "gel nails at home"',
+    after_line: '14 searches excluded - your ads only show to people looking to book',
+  },
+  {
+    id: 'chg-2',
+    title: 'One campaign is missing 38% of its chances',
+    money_line: 'about $520 a month left on the table',
+    explanation: 'Your strongest campaign runs out of budget by mid-afternoon most days, while a weaker one never spends its full budget.',
+    before_line: 'Budgets split $40 / $25 a day - the strongest campaign is capped daily',
+    after_line: 'Budgets split $52 / $13 a day - the strongest campaign never gets capped',
+  },
+  {
+    id: 'chg-3',
+    title: 'A 30-second page view is being counted like a booking',
+    money_line: 'about $290 a month spent on flattered keywords',
+    explanation: 'A quick page view is currently recorded as if it were a booking, which makes weak keywords look like winners.',
+    before_line: 'Page views counted alongside real bookings',
+    after_line: 'Only real enquiry forms and calls counted as bookings',
+  },
   // Creation-as-finding: a new ad arrives through the same approve flow as
   // every fix. It is created switched off; turning it on is a second yes.
-  { id: 'chg-4', title: 'People searching “Glow Studio” see competitors - your own-name ad is drafted and ready', money_line: 'about $8 a day, and it starts switched off' },
+  {
+    id: 'chg-4',
+    title: 'People searching “Glow Studio” see competitors - your own-name ad is drafted and ready',
+    money_line: 'about $8 a day, and it starts switched off',
+    explanation: 'Competitors show above you when people search your own name. A simple own-name ad puts you back on top.',
+    before_line: 'Searches for "Glow Studio" show competitor ads first',
+    after_line: 'Your own ad on top - created switched off, turning it on is a second yes',
+  },
 ];
 
 const ledger = [
@@ -44,6 +72,7 @@ const DEMO = {
     reports,
     streak: 11,
     plan: { tier: 'core', label: 'Core', band: '4k' },
+    spend: { month_usd: 1240, month_budget_usd: 1950, pace_line: 'On pace - 64% spent, 68% of the month gone' },
   },
   'GET /api/app/approvals': { pending },
   'GET /api/app/ledger': { entries: ledger },
