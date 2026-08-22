@@ -13,7 +13,7 @@ import {
 } from '@untitledui/icons';
 import { api, isDemo, demoHref } from '../lib/api.js';
 import { RouterProvider, useRouter, Link } from '../lib/router.jsx';
-import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp, BrandOrb, ProgressRing, SEV_HEX, ThemeToggle } from '../lib/ui.jsx';
+import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp, BrandOrb, Wordmark, ProgressRing, SEV_HEX, ThemeToggle } from '../lib/ui.jsx';
 
 const NAV = [
   { to: '/app/agency', label: 'Portfolio', icon: LayoutGrid },
@@ -1264,7 +1264,7 @@ function AgencyRoutes() {
       <header className="sticky top-0 z-30 border-b border-neutral-300 bg-page/85 backdrop-blur">
         <div className="mx-auto flex max-w-xl2 items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-3">
-            <Link to={demoHref('/app/agency')} className="flex items-center gap-2.5 text-h5 font-semibold tracking-tight"><BrandOrb size={22} />Insyt</Link>
+            <Link to={demoHref('/app/agency')} className="flex items-center"><Wordmark className="h-8" /></Link>
             <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900">Agency</span>
             {me && me.agency && <span className="hidden text-small text-neutral-900 sm:inline">{me.agency.name}</span>}
           </div>

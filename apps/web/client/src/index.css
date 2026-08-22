@@ -334,3 +334,9 @@
    at .25rem; the v3 token contract says 6px. No variant-prefixed bare
    `rounded` exists in the client (verified 21 Aug 2026). */
 .rounded { border-radius: 6px; }
+
+/* Theme-aware wordmark: black on light, white on dark. Unlayered on
+   purpose so the swap always wins. */
+.wordmark-dark { display: none; }
+.dark-mode .wordmark-light { display: none; }
+.dark-mode .wordmark-dark { display: inline-block; }

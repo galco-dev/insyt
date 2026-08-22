@@ -159,6 +159,19 @@ export function BrandOrb({ size = 28, className }) {
   );
 }
 
+/* ---------------------------------------------------------------- Wordmark
+   The Insyt wordmark image, used in headers. Swaps black/white with the
+   theme via the wordmark-light / wordmark-dark rules in index.css. Size it
+   with a height class on the wrapper (h-8 in app headers). */
+export function Wordmark({ className }) {
+  return (
+    <span className={clsx('inline-flex shrink-0 items-center', className)}>
+      <img src="/app/brand/insyt-wordmark-black.png" alt="Insyt" className="wordmark-light h-full w-auto" />
+      <img src="/app/brand/insyt-wordmark-white.png" alt="Insyt" className="wordmark-dark h-full w-auto" />
+    </span>
+  );
+}
+
 /* ------------------------------------------------------------------ Spinner
    Never a plain spinner: the brand orb with a thin orbiting arc. */
 export function Spinner({ label = 'Loading…' }) {

@@ -7,7 +7,7 @@ import clsx from 'clsx';
 import { Home01 as HomeIcon, CheckSquare, Receipt as ScrollText, File02 as FileText, Settings01 as SettingsIcon, Map01 as Map } from '@untitledui/icons';
 import { RouterProvider, useRouter, Link } from './lib/router.jsx';
 import { api, isDemo } from './lib/api.js';
-import { MonoLabel, Button, Spinner, BrandOrb, ThemeToggle } from './lib/ui.jsx';
+import { MonoLabel, Button, Spinner, Wordmark, ThemeToggle } from './lib/ui.jsx';
 import Start from './screens/Start.jsx';
 import Confirm from './screens/Confirm.jsx';
 import Plan from './screens/Plan.jsx';
@@ -55,7 +55,7 @@ function Frame({ children, withNav }) {
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-neutral-300 bg-page/85 backdrop-blur">
         <div className="mx-auto flex max-w-l2 items-center justify-between px-5 py-4">
-          <Link to="/app" className="flex items-center gap-2.5 text-h5 font-semibold tracking-tight"><BrandOrb size={22} />Insyt</Link>
+          <Link to="/app" className="flex items-center"><Wordmark className="h-8" /></Link>
           <div className="flex items-center gap-3">
             {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
             <ThemeToggle />
