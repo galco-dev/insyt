@@ -9,6 +9,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { AlertOctagon, AlertTriangle, InfoCircle, CheckCircle, ArrowRight, Moon01, Sun } from '@untitledui/icons';
+import { Link as RouterLink } from './router.jsx';
 
 export const severityMeta = {
   critical: { label: 'Critical', color: 'critical' },
@@ -439,6 +440,48 @@ export function Sparkline({ points, width = 96, height = 28 }) {
       <circle cx={lx} cy={ly} r="2.5" style={{ fill: stroke }} />
       <circle cx={lx} cy={ly} r="2.5" fill="none" strokeWidth="3" style={{ stroke, strokeOpacity: 0.25 }} />
     </svg>
+  );
+}
+
+/* ---------------------------------------------------------------- Nav atoms
+   CountBadge: the "needs you" number. Renders nothing at zero so quiet stays
+   quiet - the number is the only summons in the whole interface.
+   Segments: one screen, several views of it. Items are real links so every
+   segment stays bookmarkable and old URLs keep working. */
+export function CountBadge({ n, className, inverted = false }) {
+  if (!n) return null;
+  return (
+    <span
+      className={clsx(
+        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-semibold leading-none',
+        inverted ? 'bg-page text-strong' : 'bg-(--ui-cta-a) text-page',
+        className,
+      )}
+    >
+      {n > 99 ? '99+' : n}
+    </span>
+  );
+}
+
+export function Segments({ items, className }) {
+  return (
+    <div className={clsx('inline-flex flex-wrap items-center gap-1 rounded-full border border-neutral-300 bg-neutral-50 p-1', className)}>
+      {items.map(({ label, to, active, count }) => (
+        <RouterLink
+          key={label}
+          to={to}
+          className={clsx(
+            'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-small transition-colors duration-150',
+            active
+              ? 'bg-gradient-to-b from-(--ui-plate-a) to-(--ui-plate-b) font-medium text-strong ring-1 ring-inset ring-(--ui-ring-strong)'
+              : 'text-neutral-900 hover:text-strong',
+          )}
+        >
+          {label}
+          <CountBadge n={count} />
+        </RouterLink>
+      ))}
+    </div>
   );
 }
 

@@ -4,28 +4,30 @@
 
 import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import { Home01 as HomeIcon, CheckSquare, Receipt as ScrollText, File02 as FileText, Settings01 as SettingsIcon, Map01 as Map } from '@untitledui/icons';
+import { Home01 as HomeIcon, CheckSquare, Receipt as ScrollText, Settings01 as SettingsIcon, Map01 as Map } from '@untitledui/icons';
 import { RouterProvider, useRouter, Link } from './lib/router.jsx';
 import { api, isDemo } from './lib/api.js';
-import { MonoLabel, Button, Spinner, Wordmark, ThemeToggle } from './lib/ui.jsx';
+import { MonoLabel, Button, Spinner, Wordmark, ThemeToggle, CountBadge } from './lib/ui.jsx';
 import Start from './screens/Start.jsx';
 import Confirm from './screens/Confirm.jsx';
 import Plan from './screens/Plan.jsx';
 import FirstFix from './screens/FirstFix.jsx';
 import Home from './screens/Home.jsx';
 import Approvals from './screens/Approvals.jsx';
-import Ledger from './screens/Ledger.jsx';
-import Reports from './screens/Reports.jsx';
+import History from './screens/Ledger.jsx';
 import Journey from './screens/Journey.jsx';
 import Settings from './screens/Settings.jsx';
 import Report from './report/Report.jsx';
 import Agency from './agency/Agency.jsx';
 
+// Four steady-state tabs: how am I doing (Home) - what needs me (Approvals) -
+// what happened (History: activity + reports as lenses) - my account
+// (Settings). Setup shows only during onboarding. Approvals carries the one
+// "needs you" number.
 const NAV = [
   { to: '/app', label: 'Home', icon: HomeIcon },
-  { to: '/app/approvals', label: 'Approvals', icon: CheckSquare },
-  { to: '/app/reports', label: 'Reports', icon: FileText },
-  { to: '/app/ledger', label: 'History', icon: ScrollText },
+  { to: '/app/approvals', label: 'Approvals', icon: CheckSquare, badge: true },
+  { to: '/app/ledger', label: 'History', icon: ScrollText, match: ['/app/ledger', '/app/reports'] },
   { to: '/app/journey', label: 'Setup', icon: Map },
   { to: '/app/settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -34,7 +36,7 @@ const NAV = [
 const TITLES = {
   '/app': 'Home - Insyt',
   '/app/approvals': 'Approvals - Insyt',
-  '/app/reports': 'Reports - Insyt',
+  '/app/reports': 'History - Insyt',
   '/app/ledger': 'History - Insyt',
   '/app/journey': 'Setup - Insyt',
   '/app/settings': 'Settings - Insyt',
@@ -66,6 +68,19 @@ function useSetupDone(enabled) {
   return done;
 }
 
+// The one "needs you" number - pending approvals. Refetched on route change
+// so it tracks approvals and dismissals made anywhere in the app.
+function usePendingCount(enabled, path) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let alive = true;
+    api('/api/app/approvals').then((d) => { if (alive) setN((d.pending || []).length); }).catch(() => {});
+    return () => { alive = false; };
+  }, [enabled, path]);
+  return n;
+}
+
 function SignIn() {
   return (
     <div className="mx-auto max-w-s2 px-5 pt-20 text-center">
@@ -86,7 +101,9 @@ function SignIn() {
 function Frame({ children, withNav }) {
   const { path } = useRouter();
   const setupDone = useSetupDone(!!withNav);
+  const pending = usePendingCount(!!withNav, path);
   const items = withNav ? NAV.filter((n) => !(setupDone && n.to === '/app/journey')) : [];
+  const isActive = (n) => (n.match ? n.match.includes(path) : path === n.to);
 
   useEffect(() => {
     document.title = TITLES[path] || 'Insyt';
@@ -100,20 +117,21 @@ function Frame({ children, withNav }) {
           {/* Desktop: the nav lives up here; the bottom bar is phones only. */}
           {withNav && (
             <nav className="hidden flex-1 items-center justify-center gap-1 md:flex" aria-label="Main">
-              {items.map(({ to, label }) => {
-                const active = path === to;
+              {items.map((n) => {
+                const active = isActive(n);
                 return (
                   <Link
-                    key={to}
-                    to={to}
+                    key={n.to}
+                    to={n.to}
                     className={clsx(
-                      'rounded-full px-3.5 py-1.5 text-small transition-colors duration-150',
+                      'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-small transition-colors duration-150',
                       active
                         ? 'bg-gradient-to-b from-(--ui-plate-a) to-(--ui-plate-b) font-medium text-strong ring-1 ring-inset ring-(--ui-ring-strong)'
                         : 'text-neutral-900 hover:text-strong',
                     )}
                   >
-                    {label}
+                    {n.label}
+                    {n.badge && <CountBadge n={pending} />}
                   </Link>
                 );
               })}
@@ -129,8 +147,9 @@ function Frame({ children, withNav }) {
       {withNav && (
         <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-300 bg-page/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden" aria-label="Main">
           <div className="mx-auto flex max-w-l2 items-stretch justify-between px-2">
-            {items.map(({ to, label, icon: IconEl }) => {
-              const active = path === to;
+            {items.map((n) => {
+              const { to, label, icon: IconEl } = n;
+              const active = isActive(n);
               return (
                 <Link
                   key={to}
@@ -142,11 +161,14 @@ function Frame({ children, withNav }) {
                 >
                   <span
                     className={clsx(
-                      'grid h-7 w-12 place-items-center rounded-full',
+                      'relative grid h-7 w-12 place-items-center rounded-full',
                       active && 'bg-gradient-to-b from-(--ui-plate-a) to-(--ui-plate-b) ring-1 ring-inset ring-(--ui-ring-strong) shadow-[inset_0_1px_0_var(--ui-plate-hi)]',
                     )}
                   >
                     <IconEl size={16} strokeWidth={active ? 2.4 : 1.8} aria-hidden />
+                    {n.badge && pending > 0 && (
+                      <CountBadge n={pending} className="absolute -right-1 -top-1" />
+                    )}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span
@@ -192,8 +214,8 @@ function Routes() {
   if (path === '/app/first-fix') return <Frame><FirstFix /></Frame>;
   if (path.startsWith('/app/report/')) return <Frame withNav><Report reportId={path.split('/')[3]} /></Frame>;
   if (path === '/app/approvals') return <Frame withNav><Approvals /></Frame>;
-  if (path === '/app/ledger') return <Frame withNav><Ledger /></Frame>;
-  if (path === '/app/reports') return <Frame withNav><Reports /></Frame>;
+  if (path === '/app/ledger') return <Frame withNav><History view="activity" /></Frame>;
+  if (path === '/app/reports') return <Frame withNav><History view="reports" /></Frame>;
   if (path === '/app/journey') return <Frame withNav><Journey /></Frame>;
   if (path === '/app/settings') return <Frame withNav><Settings /></Frame>;
   return <Frame withNav><Home /></Frame>;

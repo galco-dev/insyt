@@ -6,25 +6,26 @@
 import React, { useContext, useEffect, useMemo, useState, createContext } from 'react';
 import clsx from 'clsx';
 import {
-  LayoutGrid01 as LayoutGrid, CheckDone01 as ListChecks, FileCheck02 as FileCheck2, Palette,
-  Users01 as Users, ArrowRight, FlipBackward as Undo2, Copy01 as Copy, Check, X, Zap,
+  LayoutGrid01 as LayoutGrid, CheckDone01 as ListChecks,
+  ArrowRight, FlipBackward as Undo2, Copy01 as Copy, Check, X, Zap,
   Building02 as Building2, Plus, PauseCircle as Pause, Play, Trash01 as Trash2, SearchMd as Search,
-  Speedometer03 as Gauge, Bell01 as Bell, Clock, Tool02 as Hammer,
+  Clock, Tool02 as Hammer, Settings01 as SettingsIcon,
 } from '@untitledui/icons';
 import { api, isDemo, demoHref } from '../lib/api.js';
 import { RouterProvider, useRouter, Link } from '../lib/router.jsx';
-import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp, BrandOrb, Wordmark, ProgressRing, SEV_HEX, ThemeToggle } from '../lib/ui.jsx';
+import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, useCountUp, BrandOrb, Wordmark, ProgressRing, SEV_HEX, ThemeToggle, Segments, CountBadge } from '../lib/ui.jsx';
 
+// Five doors that read like the job: how are things (Portfolio, with a
+// Pacing lens) - what needs me (Work: the Triage/Alerts/Review queues, one
+// combined count) - make something (Build) - the roster (Accounts) - config
+// (Settings: Brand + Seats). Every pre-restructure URL still deep-links
+// into its lens or queue.
 const NAV = [
-  { to: '/app/agency', label: 'Portfolio', icon: LayoutGrid },
-  { to: '/app/agency/triage', label: 'Triage', icon: ListChecks },
-  { to: '/app/agency/pacing', label: 'Pacing', icon: Gauge },
-  { to: '/app/agency/alerts', label: 'Alerts', icon: Bell },
+  { to: '/app/agency', label: 'Portfolio', icon: LayoutGrid, match: ['/app/agency', '/app/agency/pacing'] },
+  { to: '/app/agency/triage', label: 'Work', icon: ListChecks, badge: true, match: ['/app/agency/work', '/app/agency/triage', '/app/agency/alerts', '/app/agency/review'] },
   { to: '/app/agency/build', label: 'Build', icon: Hammer },
-  { to: '/app/agency/review', label: 'Review', icon: FileCheck2 },
   { to: '/app/agency/accounts', label: 'Accounts', icon: Building2 },
-  { to: '/app/agency/brand', label: 'Brand', icon: Palette },
-  { to: '/app/agency/seats', label: 'Seats', icon: Users },
+  { to: '/app/agency/brand', label: 'Settings', icon: SettingsIcon, match: ['/app/agency/settings', '/app/agency/brand', '/app/agency/seats'] },
 ];
 
 const SEV = { critical: 'critical', warning: 'warning', info: 'info' };
@@ -34,6 +35,31 @@ function useAgency(path) {
   const [error, setError] = useState(null);
   useEffect(() => { api(path).then(setData).catch((e) => setError(e)); }, [path]);
   return { data, error };
+}
+
+// The one "needs you" number: open triage items + unacknowledged alerts +
+// reports awaiting review, portfolio-wide. Refetched on every route change
+// so it tracks work done anywhere in the console.
+function useWorkCounts(path) {
+  const [counts, setCounts] = useState({ triage: 0, alerts: 0, review: 0 });
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      api('/api/agency/triage').catch(() => null),
+      api('/api/agency/alerts').catch(() => null),
+      api('/api/agency/review').catch(() => null),
+    ]).then(([t, a, r]) => {
+      if (!alive) return;
+      const now = Date.now();
+      setCounts({
+        triage: t ? (t.queue || []).filter((i) => !(i.snoozed_until && Date.parse(i.snoozed_until) > now)).length : 0,
+        alerts: a ? (a.alerts || []).filter((x) => !x.acked_at).length : 0,
+        review: r ? (r.queue || []).length : 0,
+      });
+    });
+    return () => { alive = false; };
+  }, [path]);
+  return counts;
 }
 
 // ---------------------------------------------------------------- scope
@@ -1206,6 +1232,58 @@ function Seats() {
   );
 }
 
+// ---------------------------------------------------------------- lenses
+// Portfolio and Pacing are two views of the same accounts; Triage, Alerts
+// and Review are three queues of the same daily work; Brand and Seats are
+// both monthly config. Segments are real links, so every pre-restructure
+// URL still lands exactly where it used to.
+
+function PortfolioView({ lens }) {
+  return (
+    <div>
+      <Segments
+        className="mb-5"
+        items={[
+          { label: 'Health', to: demoHref('/app/agency'), active: lens !== 'pacing' },
+          { label: 'Pacing', to: demoHref('/app/agency/pacing'), active: lens === 'pacing' },
+        ]}
+      />
+      {lens === 'pacing' ? <Pacing /> : <Portfolio />}
+    </div>
+  );
+}
+
+function WorkView({ queue, counts }) {
+  return (
+    <div>
+      <Segments
+        className="mb-5"
+        items={[
+          { label: 'Triage', to: demoHref('/app/agency/triage'), active: queue === 'triage', count: counts.triage },
+          { label: 'Alerts', to: demoHref('/app/agency/alerts'), active: queue === 'alerts', count: counts.alerts },
+          { label: 'Review', to: demoHref('/app/agency/review'), active: queue === 'review', count: counts.review },
+        ]}
+      />
+      {queue === 'alerts' ? <Alerts /> : queue === 'review' ? <Review /> : <Triage />}
+    </div>
+  );
+}
+
+function AgencySettingsView({ pane }) {
+  return (
+    <div>
+      <Segments
+        className="mb-5"
+        items={[
+          { label: 'Brand', to: demoHref('/app/agency/brand'), active: pane !== 'seats' },
+          { label: 'Seats', to: demoHref('/app/agency/seats'), active: pane === 'seats' },
+        ]}
+      />
+      {pane === 'seats' ? <Seats /> : <Brand />}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- shell
 
 function AgencyRoutes() {
@@ -1230,15 +1308,18 @@ function AgencyRoutes() {
     };
   }, [scope, accData, campData, me]);
 
-  let screen = <Portfolio />;
-  if (path === '/app/agency/triage') screen = <Triage />;
-  if (path === '/app/agency/pacing') screen = <Pacing />;
-  if (path === '/app/agency/alerts') screen = <Alerts />;
+  const workCounts = useWorkCounts(path);
+  const workTotal = workCounts.triage + workCounts.alerts + workCounts.review;
+
+  let screen = <PortfolioView lens="health" />;
+  if (path === '/app/agency/pacing') screen = <PortfolioView lens="pacing" />;
+  if (path === '/app/agency/work' || path === '/app/agency/triage') screen = <WorkView queue="triage" counts={workCounts} />;
+  if (path === '/app/agency/alerts') screen = <WorkView queue="alerts" counts={workCounts} />;
+  if (path === '/app/agency/review') screen = <WorkView queue="review" counts={workCounts} />;
   if (path === '/app/agency/build') screen = <Build />;
-  if (path === '/app/agency/review') screen = <Review />;
   if (path === '/app/agency/accounts') screen = <Accounts />;
-  if (path === '/app/agency/brand') screen = <Brand />;
-  if (path === '/app/agency/seats') screen = <Seats />;
+  if (path === '/app/agency/settings' || path === '/app/agency/brand') screen = <AgencySettingsView pane="brand" />;
+  if (path === '/app/agency/seats') screen = <AgencySettingsView pane="seats" />;
 
   if (error && error.status === 401 && !isDemo()) {
     return (
@@ -1274,8 +1355,9 @@ function AgencyRoutes() {
           </div>
         </div>
         <nav className="mx-auto flex max-w-xl2 gap-1 overflow-x-auto px-3 pb-2" aria-label="Agency">
-          {NAV.map(({ to, label, icon: IconEl }) => {
-            const active = path === to;
+          {NAV.map((n) => {
+            const { to, label, icon: IconEl } = n;
+            const active = n.match ? n.match.includes(path) : path === to;
             return (
               <Link
                 key={to}
@@ -1286,6 +1368,7 @@ function AgencyRoutes() {
                 )}
               >
                 <IconEl size={14} aria-hidden /> {label}
+                {n.badge && <CountBadge n={workTotal} inverted={active} />}
               </Link>
             );
           })}
