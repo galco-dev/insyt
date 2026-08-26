@@ -11,8 +11,10 @@ const { executorStore } = require('../../../packages/db/src/stores');
 
 async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }) {
   const q = (s) => encodeURIComponent(s);
-  const approved = await db.select('changes',
-    `status=eq.approved&applied_at=is.null&select=id,tenant_id,tool_id,params,finding_id,run_id&order=created_at.asc&limit=${limit}`);
+  // changes has no run_id column — the run comes through the finding.
+  const rows = await db.select('changes',
+    `status=eq.approved&applied_at=is.null&select=id,tenant_id,tool_id,params,finding_id,finding:findings(run_id)&order=created_at.asc&limit=${limit}`);
+  const approved = (rows || []).map((c) => ({ ...c, run_id: c.run_id || (c.finding && c.finding.run_id) || null }));
   if (!approved.length) return { tenants: 0, applied: 0, failed: 0 };
 
   const byTenant = new Map();
