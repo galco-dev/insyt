@@ -1,8 +1,1 @@
-deploy: v26 — campaign builder (create-paused/enable), drafts lifecycle, RSA + final-URL rules, My-accounts scoping, performance-led report section (2026-08-21)
-deploy request: v28 premium restyle (silver mono, two themes) - 2026-08-21T20:30:01Z
-deploy request: deep report engine - 2026-08-22T07:52:12Z
-deploy request: brand favicon + og wordmark - 2026-08-22T10:38:18Z
-wordmark header swap 2026-08-22T12:15:20Z
-dash usability batch 2026-08-22T14:06:32Z
-agency demo stateful 2026-08-22T14:55:31Z
-deploy: IA restructure 2026-08-26T19:26:53Z
+deploy request: engine phase 1 (34a5870) — 2026-08-26T21:23:00Z

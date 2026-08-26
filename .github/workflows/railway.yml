@@ -72,7 +72,15 @@ jobs:
             railway status 2>&1 || true
             for SVC in web worker poller cron; do
               echo; echo "===== $SVC ====="
-              railway up --service "$SVC" --detach 2>&1 || echo "UP FAILED rc=$?"
+              # The CLI occasionally fails with "error decoding response body"
+              # (transient API hiccup) — retry up to 3 times before giving up,
+              # so one flake never leaves a service on a stale build.
+              ok=0
+              for ATTEMPT in 1 2 3; do
+                if railway up --service "$SVC" --detach 2>&1; then ok=1; break; fi
+                echo "attempt $ATTEMPT failed; retrying in 15s"; sleep 15
+              done
+              [ "$ok" = 1 ] || echo "UP FAILED after 3 attempts"
             done
           } | tee diagnostics/deploy-log.txt
       - name: Commit transcript
