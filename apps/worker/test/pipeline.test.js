@@ -184,3 +184,31 @@ test('deliver: draft_pass persists registry drafts after findings; watch_close c
   assert.strictEqual(byRule['watch.change_regressed'].mode, 'ask');
   assert.strictEqual(byRule['watch.change_regressed'].reverts_change_id, 'ch1');
 });
+
+test('diff_pass: carries first_seen from open findings, supersedes duplicates, resolves the vanished, feeds since-last-week', async () => {
+  const { runPipeline } = require('../src/pipeline');
+  const saved = {};
+  const ads = { customer_id: '1', spend_30d_usd: 500, campaigns: [], search_terms: [{ term: 'free stuff', campaign_id: 'c', spend_90d_usd: 200, clicks_90d: 100, conversions_90d: 0 }], conversion_actions: [], disapproved: [] };
+  const stages = buildStages({
+    google: { fetchAds: async () => ads }, crawler: {}, model: {},
+    store: {
+      ruleConfig: async () => ({ 'ads.wasted_terms': { default_severity: 'warning', thresholds: {}, fix_tool_id: 'ads.add_negative_keywords', enabled: true } }),
+      priorFindings: async () => [],
+      openFindings: async () => [
+        { id: 'old1', rule_id: 'ads.wasted_terms', entity_key: 'wasted_terms', status: 'open', first_seen_run_id: 'r0', first_seen_at: '2026-08-01T00:00:00Z' },
+        { id: 'gone', rule_id: 'ga4.retention_short', entity_key: 'retention', status: 'open', first_seen_run_id: 'r0', first_seen_at: '2026-08-01T00:00:00Z', title: 'History deleted early' },
+      ],
+      hasPriorRun: async () => true,
+      applyDiff: async (tenantId, runId, d) => { saved.diff = d; },
+    },
+  });
+  const keep = new Set(['fetch_ads', 'rules_pass', 'diff_pass']);
+  const r = await runPipeline({ run: { id: 'r1', tenant_id: 'tn1', type: 'weekly' }, stages: stages.filter((s) => keep.has(s.name)), store: mkStore() });
+  assert.strictEqual(r.status, 'complete');
+  const wasted = r.ctx.findings.find((f) => f.rule_id === 'ads.wasted_terms');
+  assert.deepStrictEqual({ first: wasted.first_seen_run_id, isNew: wasted.is_new, at: wasted.first_seen_at }, { first: 'r0', isNew: false, at: '2026-08-01T00:00:00Z' });
+  assert.ok(wasted.still_open_days >= 20);
+  assert.deepStrictEqual(saved.diff.supersede, ['old1']);
+  assert.deepStrictEqual(saved.diff.resolved.map((x) => x.id), ['gone']);
+  assert.match(r.ctx.diff.line, /1 thing from last time is fixed, 1 still open/);
+});

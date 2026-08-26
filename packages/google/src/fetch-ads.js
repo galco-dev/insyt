@@ -170,4 +170,32 @@ async function fetchWindow({ auth, tenantId, customerId, developerToken, loginCu
   };
 }
 
-module.exports = { fetchAds, fetchWindow, search, gaqlDate, micros, VERSION };
+
+/**
+ * Daily light pass (engine-spec §6.2): not an audit. Eight days of account
+ * spend/conversions (yesterday vs the prior 7-day average), enabled ads
+ * currently disapproved, and today's spend so far. Three small queries.
+ */
+async function fetchPulse({ auth, tenantId, customerId, developerToken, loginCustomerId, now = Date.now() }) {
+  const ctx = { auth, tenantId, customerId, developerToken, loginCustomerId };
+  const today = gaqlDate(0, now); const d8 = gaqlDate(8, now);
+  const [daily, disapproved] = await Promise.all([
+    search({ ...ctx, query: `SELECT segments.date, metrics.cost_micros, metrics.conversions FROM customer WHERE segments.date BETWEEN '${d8}' AND '${today}'` }),
+    search({ ...ctx, query: `SELECT ad_group_ad.ad.id, campaign.id, campaign.name, ad_group_ad.policy_summary.approval_status FROM ad_group_ad WHERE ad_group_ad.policy_summary.approval_status = 'DISAPPROVED' AND ad_group_ad.status = 'ENABLED' AND campaign.status = 'ENABLED'` }),
+  ]);
+  const byDate = new Map();
+  for (const r of daily) {
+    const d = r.segments && r.segments.date; if (!d) continue;
+    const b = byDate.get(d) || { date: d, spend_usd: 0, conversions: 0 };
+    b.spend_usd += micros(r.metrics && r.metrics.costMicros); b.conversions += Number((r.metrics && r.metrics.conversions) || 0);
+    byDate.set(d, b);
+  }
+  const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({ ...d, spend_usd: Math.round(d.spend_usd * 100) / 100, conversions: Math.round(d.conversions * 100) / 100 }));
+  return {
+    days,
+    disapproved: disapproved.map((r) => ({ ad_id: String(r.adGroupAd.ad.id), campaign_id: String(r.campaign.id), campaign_name: r.campaign.name })),
+    fetched_at: new Date(now).toISOString(),
+  };
+}
+
+module.exports = { fetchAds, fetchWindow, fetchPulse, search, gaqlDate, micros, VERSION };

@@ -82,7 +82,7 @@ function findingCard(finding, unlocked) {
     ? `<span style="float:right;font-weight:600;color:${finding.money.direction === 'opportunity' ? TOKENS.success : color};">${finding.money.confidence === 'estimated' ? '~' : ''}${fmtMoney(finding.money.impact_monthly_usd, finding.money.impact_monthly_local)}/mo</span>` : '';
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px 0;border:1px solid ${TOKENS.neutral400};border-left:4px solid ${color};border-radius:${TOKENS.radius};">
     <tr><td style="padding:12px 16px;">
-      <div style="font-family:${TOKENS.font};font-size:11px;font-weight:500;color:${color};text-transform:uppercase;letter-spacing:.04em;">${esc(COPY.severity_labels[finding.severity] || finding.severity)}</div>
+      <div style="font-family:${TOKENS.font};font-size:11px;font-weight:500;color:${color};text-transform:uppercase;letter-spacing:.04em;">${esc(COPY.severity_labels[finding.severity] || finding.severity)}${finding.is_new === false && finding.still_open_days >= 7 ? `<span style="font-weight:400;color:${TOKENS.neutral900};text-transform:none;letter-spacing:0;"> · still open, ${finding.still_open_days} days</span>` : ''}</div>
       <div style="font-family:${TOKENS.font};font-size:16px;font-weight:600;color:${TOKENS.accent};padding:4px 0;">${esc(finding.title || '')}${money}</div>
       <div style="font-family:${TOKENS.font};font-size:14px;color:#333;padding-bottom:8px;">${esc(finding.explanation || '')}</div>
       ${payloadBlock(finding, unlocked)}

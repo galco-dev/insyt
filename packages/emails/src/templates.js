@@ -97,6 +97,10 @@ const TEMPLATES = [
     () => ['Your tracking was working and has now vanished — this usually happens after a site edit or theme change. Until it is back, visits and enquiries are going uncounted.'],
     (v) => ({ label: 'Reinstall in one tap', url: v.guide_url })),
 
+  T('daily_alert', 'transactional', (v) => (v.severity === 'critical' ? 'Something needs a look today' : 'Something moved in your ads account'),
+    (v) => [v.title, 'We check every account daily so nothing waits for the weekly report. Your dashboard has the detail; if a fix is needed, it lands there for your approval.'],
+    (v) => ({ label: 'Open the dashboard', url: v.app_url })),
+
   T('tag_verified', 'transactional', () => '✓ Your tracking is live',
     (v) => [`We checked ${v.pages_checked} pages on your site — your tracking is installed, firing, and recording visits. Nothing more to do.`],
     null),

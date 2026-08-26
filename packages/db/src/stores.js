@@ -22,6 +22,27 @@ function workerStore(db) {
     },
     priorFindings: async (tenantId) => db.select('findings',
       `select=rule_id,entity_key:payload->>entity_key,first_seen_run_id,status&tenant_id=eq.${q(tenantId)}&status=in.(open,approved,suspect)`),
+    // ---- §6.1 diff_pass
+    openFindings: async (tenantId) => db.select('findings',
+      `select=id,rule_id,entity_key:payload->>entity_key,status,title,first_seen_run_id,first_seen_at,created_at&tenant_id=eq.${q(tenantId)}&status=in.(open,approved,suspect)`).catch(() => []),
+    hasPriorRun: async (tenantId, runId) => {
+      const rows = await db.select('runs', `tenant_id=eq.${q(tenantId)}&id=neq.${q(runId)}&status=in.(complete,degraded)&select=id&limit=1`).catch(() => []);
+      return !!(rows && rows.length);
+    },
+    applyDiff: async (tenantId, runId, { supersede = [], resolved = [] }) => {
+      if (supersede.length) {
+        await db.update('findings', `id=in.(${supersede.map(q).join(',')})`, { status: 'superseded' }).catch(() => {});
+      }
+      if (resolved.length) {
+        await db.update('findings', `id=in.(${resolved.map((r) => q(r.id)).join(',')})`, { status: 'resolved', resolved_run_id: runId }).catch(() => {});
+        // One ledger line per resolved finding: it stopped firing without us
+        // applying a change — either it fixed itself or the owner fixed it.
+        await db.insert('ledger', resolved.map((r) => ({
+          tenant_id: tenantId, event: 'finding_resolved', actor: 'system',
+          summary_text: `${r.title ? `"${r.title}"` : r.rule_id.replace(/[._]/g, ' ')} is no longer showing up — it fixed itself or you fixed it. We noticed.`,
+        })), { returning: false }).catch(() => {});
+      }
+    },
     ledgerCumulative: async (tenantId) => db.select('ledger_cumulative', `tenant_id=eq.${q(tenantId)}`, { single: true }),
     saveFindings: async (runId, findings) => {
       if (!findings.length) return;
@@ -34,6 +55,7 @@ function workerStore(db) {
         payload: { ...f.payload, entity_key: f.entity_key },
         fix_available: !!(f.fix && f.fix.available),
         first_seen_run_id: f.first_seen_run_id,
+        first_seen_at: f.first_seen_at || null,
       })), { returning: false });
     },
     saveReport: async (runId, { html_email, html_web, findings_snapshot, tenant_id, type }) => {

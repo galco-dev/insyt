@@ -14,7 +14,8 @@
 //              saveFindings(runId, findings), saveReport(runId, {html_email, html_web, findings}),
 //              saveSnapshots?(tenantId, ads) — campaigns + spend_daily + asset labels,
 //              draftState?(tenantId) + saveDrafts?(runId, tenantId, drafts, skipped)   — §6.1 draft_pass
-//              dueChangeWatches?(tenantId) + closeChangeWatch?({...})                  — §6.1 watch_close }
+//              dueChangeWatches?(tenantId) + closeChangeWatch?({...})                  — §6.1 watch_close
+//              openFindings?(tenantId) + applyDiff?(tenantId, runId, {supersede, resolved}) + hasPriorRun?  — §6.1 diff_pass }
 //   google.fetchWindow?(tenantId, { since, campaignIds, terms })  — watch measurement (§4.4)
 
 const { runRules, healthScore } = require('../../../packages/rules/src/engine');
@@ -31,6 +32,7 @@ const { assembleDeep } = require('../../../packages/report/src/deep');
 const l6 = require('../../../packages/rules/src/layer6-deep');
 const { narrateFinding, narrateSlots } = require('../../../packages/report/src/narration');
 const { draftChanges } = require('../../../packages/registry/src/drafts');
+const { diffFindings, sinceLastWeekLine } = require('../../../packages/rules/src/diff');
 const { judgeWatch } = require('../../../packages/registry/src/watches');
 const { byTool: registryByTool } = require('../../../packages/registry/src/registry');
 const crypto = require('node:crypto');
@@ -120,6 +122,23 @@ function buildStages({ google, crawler, model, store }) {
       },
     },
     {
+      // §6.1 diff_pass: dedupe vs open findings (first_seen carried), close
+      // the ones that no longer fire ("fixed itself / you fixed it — we
+      // noticed"), and compute the deterministic since-last-week numbers.
+      name: 'diff_pass',
+      run: async (ctx) => {
+        const prior = store.openFindings ? await store.openFindings(ctx.run.tenant_id) : [];
+        const firstRun = !prior.length && !(store.hasPriorRun ? await store.hasPriorRun(ctx.run.tenant_id, ctx.run.id) : false);
+        const d = diffFindings({ findings: ctx.findings || [], prior, now: Date.now() });
+        if (store.applyDiff) await store.applyDiff(ctx.run.tenant_id, ctx.run.id, { supersede: d.supersede, resolved: d.resolved });
+        return {
+          findings: d.findings,
+          diff: { ...d.summary, first_run: firstRun, line: sinceLastWeekLine(d.summary, firstRun) },
+          _progress: { new: d.summary.new, still_open: d.summary.still_open, resolved: d.summary.resolved },
+        };
+      },
+    },
+    {
       // §6.1 watch_close: close due per-change watches with a measured window,
       // write outcome + effect sizes, and turn regressions into
       // watch.change_regressed findings that propose the rollback (ask-first;
@@ -192,8 +211,11 @@ function buildStages({ google, crawler, model, store }) {
             findings.push({ ...f, title: f.rule_id.replace(/[._]/g, ' '), explanation: '' });
           }
         }
-        const slots = await narrateSlots({ counts: ctx.counts, totals: { waste: null }, previousWeek: null }, generate)
-          .catch(() => ({ exec_summary: '', since_last_week: '' }));
+        const diffLine = ctx.diff ? ctx.diff.line : '';
+        const slots = await narrateSlots({ counts: ctx.counts, totals: { waste: null }, previousWeek: ctx.diff && !ctx.diff.first_run ? { new: ctx.diff.new, still_open: ctx.diff.still_open, resolved: ctx.diff.resolved } : null }, generate)
+          .catch(() => ({ exec_summary: '', since_last_week: diffLine }));
+        // The since-last-week numbers are engine-computed; the model only restyles.
+        if (!slots.since_last_week) slots.since_last_week = diffLine;
         return { findings, narrativeSlots: slots };
       },
     },
