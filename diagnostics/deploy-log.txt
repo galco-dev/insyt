@@ -1,4 +1,4 @@
-deploy transcript 2026-08-26T21:23:53Z
+deploy transcript 2026-08-26T21:29:49Z
 railway 5.44.1
 
 
@@ -20,7 +20,7 @@ All resources
 
     Services
       - web: ● Online · https://app.tryinsyt.com
-      - worker: ● Online · Building (2m)
+      - worker: ● Online
       - cron: ● Online
       - poller: ● Online
     Databases
@@ -30,19 +30,19 @@ All resources
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=acf8e014-95a5-4578-a6a3-7eb2e2b05e63&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=024d4b61-1bf8-4c96-852b-f8de6dc20306&
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=05e98815-bf6b-4700-8bfa-f94dffe067cb&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=feb10b68-0426-42e9-81f0-92ce324635e6&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=f8da09d9-f26d-4f81-b52f-6ee1305dbc8d&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=31759422-a423-42f6-b39e-562d6e7fbd53&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=1c28d31b-2215-4706-8fc2-90b9438388ed&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=c9ac3d9d-e5d9-47aa-ae84-582a960efc7d&
