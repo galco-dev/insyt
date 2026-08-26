@@ -231,12 +231,22 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           // request-a-change composer. Both write through the store so demo
           // and tests can stub them; both stay no-ops for stores without the
           // methods rather than erroring the whole API.
-          if (sub === '/autopilot' || sub === '/request-change') {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub.startsWith('/dismiss/')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
               let parsed; try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
               try {
+                // §11 telemetry: client-side interactions. Fire-and-forget,
+                // never an error the UI has to handle.
+                if (sub === '/event') {
+                  if (dashStore.trackEvent) dashStore.trackEvent(t, String(parsed.name || ''), parsed.props || {}, parsed.session || null).catch(() => {});
+                  return json(res, 200, { ok: true });
+                }
+                if (sub.startsWith('/dismiss/')) {
+                  await dashStore.dismissChange(t, sub.split('/')[2], { reason: parsed.reason || null, expandedFirst: !!parsed.expanded_first });
+                  return json(res, 200, { ok: true });
+                }
                 if (sub === '/autopilot') {
                   if (!dashStore.setAutopilot) return json(res, 501, { error: 'Not available yet.' });
                   const categories = await dashStore.setAutopilot(t, parsed.categories || parsed);
@@ -254,7 +264,6 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             return;
           }
           if (sub.startsWith('/approve/')) { await dashStore.approveChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
-          if (sub.startsWith('/dismiss/')) { await dashStore.dismissChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
           if (sub.startsWith('/revert/')) { await dashStore.requestRevert(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
           if (sub === '/confirm') { await dashStore.confirmAssets(t); return json(res, 200, { ok: true }); }
         }

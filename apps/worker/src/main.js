@@ -13,6 +13,9 @@ const { createGoogleAuth } = require('../../../packages/google/src/client');
 const { fetchGtmSnapshot } = require('../../../packages/google/src/fetch-gtm');
 const { fetchGa4Config, fetchGa4Data } = require('../../../packages/google/src/fetch-ga4');
 const { fetchAds } = require('../../../packages/google/src/fetch-ads');
+const { fetchAdsDeep } = require('../../../packages/google/src/fetch-ads-deep');
+const { createTelemetry, modelCost } = require('../../../packages/shared/src/telemetry');
+const { MODEL_ID, MODEL_PRICE_IN_PER_MTOK, MODEL_PRICE_OUT_PER_MTOK } = require('../../../packages/shared/src/model-config');
 const { createTransports } = require('../../../packages/tools/src/transports');
 const { scanAndApply } = require('./apply');
 const { start } = require('./service');
@@ -25,10 +28,15 @@ function required(name) {
 
 const db = createClient({ url: required('SUPABASE_URL'), serviceKey: required('SUPABASE_SERVICE_KEY') });
 const q = (s) => encodeURIComponent(s);
-const googleConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+// Railway carries the OAuth client as GOOGLE_OAUTH_CLIENT_ID/SECRET; the
+// older GOOGLE_CLIENT_ID/SECRET names still work.
+const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+const googleConfigured = !!(googleClientId && googleClientSecret);
 const auth = googleConfigured
-  ? createGoogleAuth({ db, clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET })
+  ? createGoogleAuth({ db, clientId: googleClientId, clientSecret: googleClientSecret })
   : null;
+const telemetry = createTelemetry({ db, log: (m) => console.warn(m) });
 const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || null;
 const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '3315824995';
 
@@ -63,6 +71,14 @@ const google = googleConfigured ? {
     if (!developerToken) throw new Error('ads reads not configured (developer token pending)');
     return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId });
   },
+  // Deep blocks (hours, days, devices, share, keywords, monthly, assets,
+  // daily) — the modelled→measured flip. Failure degrades per block.
+  fetchAdsDeep: async (tenantId) => {
+    const a = await linkedAsset(tenantId, 'ads_account');
+    if (!a) throw new Error('no linked Ads asset');
+    if (!developerToken) throw new Error('ads reads not configured (developer token pending)');
+    return fetchAdsDeep({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId });
+  },
 } : {
   fetchGtmSnapshot: notConfigured('gtm fetch'),
   fetchGa4Config: notConfigured('ga4 config fetch'),
@@ -84,15 +100,18 @@ const crawler = {
   },
 };
 
+// Model policy (engine-spec §1): Fable only, model ID is config, every call
+// metered per tenant (§9.9) and attributed. Narration is deterministic-first;
+// a model outage degrades to payload framing (stages.js), never blocks a run.
 const model = {
-  generate: async ({ system, prompt }) => {
+  generate: async ({ system, prompt, tenantId = null, runId = null }) => {
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) throw new Error('narration not configured (no ANTHROPIC_API_KEY)');
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: process.env.NARRATION_MODEL || 'claude-sonnet-4-5',
+        model: MODEL_ID,
         max_tokens: 500,
         system,
         messages: [{ role: 'user', content: prompt }],
@@ -100,6 +119,16 @@ const model = {
     });
     const body = await res.json();
     if (!res.ok) throw new Error(`anthropic: ${res.status} ${JSON.stringify(body).slice(0, 200)}`);
+    const usage = body.usage || {};
+    const cached = Number(usage.cache_read_input_tokens || 0);
+    const inputTokens = Number(usage.input_tokens || 0) + cached + Number(usage.cache_creation_input_tokens || 0);
+    const outputTokens = Number(usage.output_tokens || 0);
+    const costUsd = modelCost({ inputTokens, outputTokens, cachedTokens: cached, priceIn: MODEL_PRICE_IN_PER_MTOK, priceOut: MODEL_PRICE_OUT_PER_MTOK });
+    if (tenantId) {
+      // Per-call row (existing token_metering) + monthly aggregate (§9.9).
+      db.insert('token_metering', [{ tenant_id: tenantId, run_id: runId, model: body.model || MODEL_ID, input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cached, cost_usd: costUsd }], { returning: false }).catch(() => {});
+      telemetry.modelUsage({ tenantId, inputTokens, outputTokens, costUsd });
+    }
     return body.content[0].text;
   },
 };

@@ -68,11 +68,15 @@ if (process.env.REDIS_URL) {
 
 // Google data-scope OAuth deps (§6) — active once the GCP client exists.
 const baseUrl = process.env.APP_BASE_URL || 'https://app.tryinsyt.com';
-const googleAuth = (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) ? {
+// Railway carries the OAuth client as GOOGLE_OAUTH_CLIENT_ID/SECRET; the
+// older GOOGLE_CLIENT_ID/SECRET names still work.
+const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+const googleAuth = (googleClientId && googleClientSecret) ? {
   db,
   config: {
-    clientId: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    clientId: googleClientId,
+    clientSecret: googleClientSecret,
     redirectUri: process.env.OAUTH_REDIRECT_URL || `${baseUrl}/auth/google/callback`,
     developerToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN || null,
     loginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '3315824995',

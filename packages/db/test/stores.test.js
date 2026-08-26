@@ -91,3 +91,68 @@ test('billingStore: upsert on stripe_subscription_id, tenant lookup by customer'
   assert.match(f.calls[0].headers.prefer, /merge-duplicates/);
   assert.strictEqual(await s.tenantIdByCustomer('cus_1'), 'tn7');
 });
+
+// Route-aware stub: answers by table so parallel selects don't depend on order.
+function routedFetch(routes) {
+  const calls = [];
+  const impl = async (url, init) => {
+    calls.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : undefined });
+    const table = /rest\/v1\/([a-z_]+)/.exec(url)[1];
+    const r = routes[table];
+    const body = typeof r === 'function' ? r(url, init) : (r === undefined ? [] : r);
+    const single = init.headers && init.headers.accept === 'application/vnd.pgrst.object+json';
+    if (single && Array.isArray(body) && !body.length) return { ok: false, status: 406, json: async () => ({}), text: async () => '' };
+    return { ok: true, status: 200, json: async () => (single && Array.isArray(body) ? body[0] : body), text: async () => '' };
+  };
+  impl.calls = calls;
+  return impl;
+}
+
+test('dashStore.spendPosition: MTD from spend_daily, budget from daily budgets, honest pace line', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({
+    spend_daily: [{ date: '2026-08-01', spend_usd: '40' }, { date: '2026-08-10', spend_usd: '60' }],
+    account_targets: [],
+    campaigns: [{ budget_daily_usd: '10' }],
+  });
+  const s = dashStore(mkDb(f));
+  const now = new Date('2026-08-16T12:00:00Z'); // day 16 of 31 → 52% of month
+  const spend = await s.spendPosition('t1', now);
+  assert.strictEqual(spend.month_usd, 100);
+  assert.strictEqual(spend.month_budget_usd, 310);
+  assert.strictEqual(spend.budget_source, 'daily_budgets');
+  assert.strictEqual(spend.pace_line, 'Behind pace - 32% spent, 52% of the month gone');
+  assert.strictEqual(spend.as_of, '2026-08-10');
+});
+
+test('dashStore.spendPosition: explicit target wins; no snapshots → null (card stays dark)', async () => {
+  const { dashStore } = require('../src/stores');
+  const s = dashStore(mkDb(routedFetch({ spend_daily: [{ date: '2026-08-02', spend_usd: '500' }], account_targets: [{ monthly_budget_usd: '1000' }], campaigns: [] })));
+  const spend = await s.spendPosition('t1', new Date('2026-08-16T12:00:00Z'));
+  assert.deepStrictEqual({ b: spend.month_budget_usd, src: spend.budget_source }, { b: 1000, src: 'target' });
+  assert.match(spend.pace_line, /^On pace - 50% spent/);
+  const dark = dashStore(mkDb(routedFetch({ spend_daily: [] })));
+  assert.strictEqual(await dark.spendPosition('t1'), null);
+});
+
+test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
+  const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
+  const s = workerStore(mkDb(f));
+  const r = await s.saveSnapshots('t1', {
+    campaigns: [{ id: '11', name: 'Brand', status: 'enabled', budget_daily_usd: 12.345, bidding: { strategy: 'tcpa' } }, { id: 'draft-abc', name: 'x' }],
+    deep: { daily: [{ date: '2026-08-01', cost_usd: 5, conversions: 1, conversion_value_usd: 0 }], assets: [{ text: 'H', type: 'headline', campaign_id: '11', impressions_30d: 3 }] },
+  }, 'run1');
+  assert.deepStrictEqual(r, { campaigns: 1, days: 1, assets: 1 });
+  const camp = f.calls.find((c) => c.url.includes('campaigns?on_conflict=tenant_id,google_campaign_id'));
+  assert.deepStrictEqual({ id: camp.body[0].google_campaign_id, b: camp.body[0].budget_daily_usd, bid: camp.body[0].bidding }, { id: '11', b: 12.35, bid: 'tcpa' });
+  assert.ok(f.calls.some((c) => c.url.includes('spend_daily?on_conflict=tenant_id,date')));
+  assert.ok(f.calls.some((c) => c.url.includes('asset_perf_snapshots?on_conflict=')));
+});
+
+test('dashStore.dismissChange: records the §11.2 dismissal label without breaking the dismissal itself', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({ changes: [{ finding_id: 'f1', finding: { rule_id: 'ads.wasted_terms' } }], findings: [], dismissals: [], telemetry_heartbeat: [] });
+  await dashStore(mkDb(f)).dismissChange('t1', 'c1', { reason: 'not_now', expandedFirst: true });
+  const d = f.calls.find((c) => c.url.endsWith('/dismissals'));
+  assert.deepStrictEqual({ r: d.body[0].reason_tap, e: d.body[0].expanded_first, rule: d.body[0].rule_id }, { r: 'not_now', e: true, rule: 'ads.wasted_terms' });
+});

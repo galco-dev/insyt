@@ -118,3 +118,29 @@ test('stageDataPresent: layers only run when their stage data arrived', () => {
   assert.strictEqual(stageDataPresent({ layer: 3 }, { ga4Data: {} }), false, 'layer 3 needs gtm too');
   assert.strictEqual(stageDataPresent({ layer: 3 }, { ga4Data: {}, gtm: {} }), true);
 });
+
+test('fetch_ads: deep blocks attach as ads.deep, the snapshot stage persists, and a deep failure degrades quietly', async () => {
+  const { runPipeline } = require('../src/pipeline');
+  const snapshots = [];
+  const mk = (deepImpl) => buildStages({
+    google: {
+      fetchAds: async () => ({ customer_id: '1', spend_30d_usd: 10, campaigns: [{ id: '11', name: 'Brand', status: 'enabled', budget_daily_usd: 20, bidding: { strategy: 'max_conversions' } }], search_terms: [], conversion_actions: [], disapproved: [] }),
+      fetchAdsDeep: deepImpl,
+    },
+    crawler: {}, model: {},
+    store: { saveSnapshots: async (tenantId, ads, runId) => { snapshots.push({ tenantId, ads, runId }); return { campaigns: ads.campaigns.length }; } },
+  });
+  const pick = (stages) => stages.filter((s) => s.name === 'fetch_ads' || s.name === 'snapshot');
+  const events = [];
+  const ok = await runPipeline({ run: { id: 'r1', tenant_id: 'tn1' }, stages: pick(mk(async () => ({ hours: [], daily: [{ date: '2026-08-01', cost_usd: 1, conversions: 0 }], currency_code: 'AED', blocks: { hours: { status: 'measured' }, daily: { status: 'measured' } } }))), store: mkStore(), emit: (e) => events.push(e) });
+  assert.strictEqual(ok.status, 'complete');
+  assert.strictEqual(ok.ctx.ads.currency, 'AED');
+  assert.strictEqual(ok.ctx.ads.deep.daily.length, 1);
+  assert.strictEqual(snapshots[0].runId, 'r1');
+  const fetched = events.find((e) => e.stage === 'fetch_ads' && e.state === 'done');
+  assert.strictEqual(fetched.progress.deep_blocks_measured, 2);
+
+  const bad = await runPipeline({ run: { id: 'r2', tenant_id: 'tn1' }, stages: pick(mk(async () => { throw new Error('PERMISSION_DENIED'); })), store: mkStore() });
+  assert.strictEqual(bad.status, 'complete', 'deep failure never fails the ads stage');
+  assert.strictEqual(bad.ctx.ads.deep, undefined);
+});

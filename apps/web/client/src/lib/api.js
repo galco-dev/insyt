@@ -30,3 +30,21 @@ export async function api(path, { method = 'GET', body } = {}) {
 }
 
 export const demoHref = (path) => (isDemo() ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path);
+
+// §11 telemetry: dashboard interactions. Fire-and-forget; silent in demo
+// mode and on any failure. Names are dotted lowercase (screen.view).
+const sessionKey = (() => {
+  try {
+    let k = sessionStorage.getItem('insyt_sk');
+    if (!k) { k = Math.random().toString(36).slice(2, 12); sessionStorage.setItem('insyt_sk', k); }
+    return k;
+  } catch { return null; }
+})();
+export function track(name, props = {}) {
+  if (isDemo()) return;
+  try {
+    const body = JSON.stringify({ name, props, session: sessionKey });
+    if (navigator.sendBeacon) navigator.sendBeacon('/api/app/event', new Blob([body], { type: 'application/json' }));
+    else fetch('/api/app/event', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
+  } catch { /* telemetry never surfaces */ }
+}

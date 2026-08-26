@@ -1,26 +1,39 @@
 // Google Ads fetcher — produces the Layer 4 input contract documented in
 // packages/rules/src/layer4-ads.js, via the Ads REST API (searchStream GAQL).
 // Requires the developer token (env) and login-customer-id (our MCC) headers.
-// Until Basic access lands this only reaches test accounts — the pipeline
-// degrades honestly on PERMISSION_DENIED.
+// Basic Access is granted (manager 331-582-4995); the pipeline still
+// degrades honestly on PERMISSION_DENIED for unlinked accounts.
+// The deep block (hours, days, devices, share, keywords, monthly, assets,
+// daily) lives in fetch-ads-deep.js and is attached by the worker stage.
 
-const VERSION = 'v18';
+// API version is config, not code: Google sunsets versions roughly a year
+// after release, so a bump is an env change (GOOGLE_ADS_API_VERSION).
+const VERSION = process.env.GOOGLE_ADS_API_VERSION || 'v24';
+const MAX_PAGES = 10; // 10k rows per page — enough for any SMB account
 
-function gaqlDate(daysAgo) {
-  return new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+function gaqlDate(daysAgo, now = Date.now()) {
+  return new Date(now - daysAgo * 86_400_000).toISOString().slice(0, 10);
 }
 
+/** GAQL search with paging. Returns the flat results array. */
 async function search({ auth, tenantId, customerId, developerToken, loginCustomerId, query }) {
-  const url = `https://googleads.googleapis.com/${VERSION}/customers/${customerId.replace(/-/g, '')}/googleAds:search`;
-  const body = await auth.api(tenantId, url, {
-    method: 'POST',
-    headers: {
-      'developer-token': developerToken,
-      ...(loginCustomerId ? { 'login-customer-id': String(loginCustomerId).replace(/-/g, '') } : {}),
-    },
-    body: JSON.stringify({ query, pageSize: 10000 }),
-  });
-  return body.results || [];
+  const url = `https://googleads.googleapis.com/${VERSION}/customers/${String(customerId).replace(/-/g, '')}/googleAds:search`;
+  const headers = {
+    'developer-token': developerToken,
+    ...(loginCustomerId ? { 'login-customer-id': String(loginCustomerId).replace(/-/g, '') } : {}),
+  };
+  const out = [];
+  let pageToken;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const body = await auth.api(tenantId, url, {
+      method: 'POST', headers,
+      body: JSON.stringify(pageToken ? { query, pageToken } : { query }),
+    });
+    out.push(...(body.results || []));
+    pageToken = body.nextPageToken;
+    if (!pageToken) break;
+  }
+  return out;
 }
 
 const micros = (v) => Number(v || 0) / 1_000_000;
@@ -124,4 +137,4 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
   };
 }
 
-module.exports = { fetchAds, search };
+module.exports = { fetchAds, search, gaqlDate, micros, VERSION };

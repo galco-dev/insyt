@@ -5,6 +5,7 @@
 // adapters exist to satisfy them against the deployed §1 schema.
 
 const q = (s) => encodeURIComponent(s);
+const createTelemetryBeat = (db, stream) => require('../../shared/src/telemetry').createTelemetry({ db }).beat(stream);
 
 // ---------------------------------------------------------------- worker
 function workerStore(db) {
@@ -40,6 +41,39 @@ function workerStore(db) {
         run_id: runId, tenant_id, type: type || 'weekly',
         html_email, html_web, findings_snapshot: findings_snapshot || [],
       }], { returning: false });
+    },
+    // Snapshot stage (§6.3/6.4/§11.3): campaigns + spend_daily + asset
+    // labels, refreshed by every run so pacing, the spend card and the
+    // creative loop read stored data — never live Google calls.
+    saveSnapshots: async (tenantId, ads, runId = null) => {
+      const out = { campaigns: 0, days: 0, assets: 0 };
+      const nowIso = new Date().toISOString();
+      const camps = (ads.campaigns || []).filter((c) => c && c.id && !String(c.id).startsWith('draft-'));
+      if (camps.length) {
+        await db.upsert('campaigns', camps.map((c) => ({
+          tenant_id: tenantId, google_campaign_id: String(c.id), name: c.name || String(c.id),
+          status: c.status || null, channel: c.channel || 'search',
+          budget_daily_usd: c.budget_daily_usd != null ? Math.round(c.budget_daily_usd * 100) / 100 : null,
+          bidding: c.bidding && c.bidding.strategy ? c.bidding.strategy : null, last_seen_at: nowIso,
+        })), 'tenant_id,google_campaign_id');
+        out.campaigns = camps.length;
+      }
+      const daily = ads.deep && Array.isArray(ads.deep.daily) ? ads.deep.daily : [];
+      if (daily.length) {
+        await db.upsert('spend_daily', daily.map((d) => ({
+          tenant_id: tenantId, date: d.date, spend_usd: d.cost_usd || 0,
+          conversions: d.conversions || 0, conversion_value_usd: d.conversion_value_usd || 0,
+        })), 'tenant_id,date');
+        out.days = daily.length;
+      }
+      const assets = ads.deep && Array.isArray(ads.deep.assets) ? ads.deep.assets : [];
+      if (assets.length) {
+        const { createTelemetry } = require('../../shared/src/telemetry');
+        await createTelemetry({ db }).assetSnapshot({ tenantId, runId, assets });
+        out.assets = assets.length;
+      }
+      if (daily.length) await createTelemetryBeat(db, 'spend_daily');
+      return out;
     },
     // "Against your goals" report section — non-null only when targets are
     // set for this tenant (agency accounts). Month-to-date actuals + pacing.
@@ -151,7 +185,48 @@ function opsStore(db) {
 // package so the dial always matches the report's number.
 function dashStore(db) {
   const { healthScore } = require('../../rules/src/engine');
+  const { createTelemetry } = require('../../shared/src/telemetry');
+  const tel = createTelemetry({ db });
   return {
+    // §11 telemetry: dashboard interactions land in `events`. Best-effort.
+    trackEvent: (tenantId, name, props, sessionKey) => tel.event({ tenantId, name, props, source: 'app', sessionKey }),
+    // Consumer spend card (§6.4). Month-to-date from spend_daily snapshots;
+    // the month budget is the explicit target when one is set, else the sum
+    // of enabled daily budgets across the month. Null until the first
+    // snapshot lands — the card simply does not render.
+    spendPosition: async (tenantId, now = new Date()) => {
+      const monthStart = `${now.toISOString().slice(0, 7)}-01`;
+      const [days, target, camps] = await Promise.all([
+        db.select('spend_daily', `tenant_id=eq.${q(tenantId)}&date=gte.${q(monthStart)}&select=date,spend_usd`).catch(() => []),
+        db.select('account_targets', `tenant_id=eq.${q(tenantId)}&select=monthly_budget_usd`, { single: true }).catch(() => null),
+        db.select('campaigns', `tenant_id=eq.${q(tenantId)}&status=eq.enabled&select=budget_daily_usd`).catch(() => []),
+      ]);
+      if (!days || !days.length) return null;
+      const { pace } = require('../../pacing/src/pacing');
+      const mtd = days.reduce((s, d) => s + Number(d.spend_usd || 0), 0);
+      const dailySum = (camps || []).reduce((s, c) => s + Number(c.budget_daily_usd || 0), 0);
+      const p = pace({ monthlyBudgetUsd: 0, mtdSpendUsd: mtd, nowIso: now.toISOString() });
+      const budget = target && target.monthly_budget_usd != null
+        ? Number(target.monthly_budget_usd)
+        : (dailySum > 0 ? Math.round(dailySum * p.daysInMonth * 100) / 100 : null);
+      const monthPct = Math.round((p.dayOfMonth / p.daysInMonth) * 100);
+      let paceLine = null;
+      if (budget) {
+        const spentPct = Math.round((mtd / budget) * 100);
+        const gap = spentPct - monthPct;
+        const word = gap > 8 ? 'Ahead of pace' : gap < -8 ? 'Behind pace' : 'On pace';
+        paceLine = `${word} - ${spentPct}% spent, ${monthPct}% of the month gone`;
+      } else {
+        paceLine = `${monthPct}% of the month gone; no monthly budget set`;
+      }
+      return {
+        month_usd: Math.round(mtd * 100) / 100,
+        month_budget_usd: budget,
+        pace_line: paceLine,
+        as_of: days.map((d) => d.date).sort().at(-1),
+        budget_source: target && target.monthly_budget_usd != null ? 'target' : (budget ? 'daily_budgets' : null),
+      };
+    },
     healthLatest: async (tenantId) => {
       const [open, past] = await Promise.all([
         db.select('findings', `tenant_id=eq.${q(tenantId)}&status=in.(open,approved,suspect)&select=severity,status`),
@@ -213,6 +288,10 @@ function dashStore(db) {
         summary_text: `You asked: "${clean}". We will draft it as a change for your approval.`,
       }], { returning: false });
       await db.insert('audit_log', [{ tenant_id: tenantId, event: 'change_requested', detail: { text: clean } }], { returning: false }).catch(() => {});
+      // Until the drafting flow (phase 5) maps it, every request is also an
+      // unanswered-log row — the customer-written backlog (§11.4).
+      await tel.unanswered({ tenantId, source: 'composer', text: clean });
+      await tel.event({ tenantId, name: 'approval.request_change', props: { chars: clean.length }, source: 'server' });
     },
     setAutopilot: async (tenantId, categories) => {
       const allowed = ['negatives', 'budgets', 'counting'];
@@ -291,11 +370,18 @@ function dashStore(db) {
     approveChange: async (tenantId, changeId) => {
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}`, { status: 'approved' });
       await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: changeId, channel: 'dashboard' }], { returning: false });
+      await tel.event({ tenantId, name: 'approval.approve', props: { change_id: changeId }, source: 'server' });
     },
-    dismissChange: async (tenantId, changeId) => {
+    dismissChange: async (tenantId, changeId, { reason = null, expandedFirst = false } = {}) => {
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}`, { status: 'failed' });
-      const ch = await db.select('changes', `id=eq.${q(changeId)}&select=finding_id`, { single: true });
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&select=finding_id,finding:findings(rule_id)`, { single: true });
       if (ch) await db.update('findings', `id=eq.${q(ch.finding_id)}`, { status: 'dismissed' });
+      // §11.2 human-judgment label: the optional one-tap reason + whether the
+      // detail was opened first ("finding wrong" vs "explanation failed").
+      await tel.dismissal({
+        tenantId, changeId, findingId: ch ? ch.finding_id : null, ruleId: ch && ch.finding ? ch.finding.rule_id : null,
+        reasonTap: reason, expandedFirst,
+      });
     },
     requestRevert: async (tenantId, changeId) => {
       await db.insert('audit_log', [{ tenant_id: tenantId, event: 'revert_requested', detail: { change_id: changeId } }], { returning: false });
@@ -568,6 +654,13 @@ function agencyStore(db) {
       const ch = await db.select('changes', `id=eq.${q(changeId)}&select=finding_id`, { single: true });
       if (ch) await db.update('findings', `id=eq.${q(ch.finding_id)}`, { status: 'dismissed' });
       await log(agencyId, seatId, 'change_dismissed', { change_id: changeId, reason: reason || null });
+      const full = await db.select('changes', `id=eq.${q(changeId)}&select=tenant_id,finding_id,finding:findings(rule_id)`, { single: true }).catch(() => null);
+      if (full) {
+        await require('../../shared/src/telemetry').createTelemetry({ db }).dismissal({
+          tenantId: full.tenant_id, changeId, findingId: full.finding_id, ruleId: full.finding ? full.finding.rule_id : null,
+          reasonTap: reason, actor: `seat:${seatId}`,
+        });
+      }
     },
 
     // Review queue: nothing reaches a client without a seat's approval.

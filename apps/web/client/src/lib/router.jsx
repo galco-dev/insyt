@@ -1,6 +1,6 @@
 // Tiny history router for the /app SPA. No dependency needed for 12 routes.
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { demoHref } from './api.js';
+import { demoHref, track } from './api.js';
 
 const RouterCtx = createContext({ path: '/app', navigate: () => {} });
 
@@ -11,6 +11,7 @@ export function RouterProvider({ children }) {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+  useEffect(() => { track('screen.view', { path }); }, [path]);
   const navigate = (to) => {
     window.history.pushState({}, '', demoHref(to));
     setPath(to.split('?')[0]);

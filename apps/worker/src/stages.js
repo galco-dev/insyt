@@ -4,11 +4,15 @@
 //
 // buildStages({ google, crawler, model, store }) -> ordered stage array
 //   google:  { fetchGtmSnapshot(tenant), fetchGa4Config(tenant),
-//              fetchGa4Data(tenant), fetchAds(tenant) }   (real API clients later)
+//              fetchGa4Data(tenant), fetchAds(tenant), fetchAdsDeep?(tenant) }
+//            fetchAdsDeep is optional: when present its blocks ride on
+//            ads.deep (measured); when absent or failing, the deep rules see
+//            no block and the report lists the dataset as not yet examined.
 //   crawler: { verificationCrawl(url) }
 //   model:   { generate({system, prompt}) }                (Anthropic client)
 //   store:   { ruleConfig(), priorFindings(tenantId), ledgerCumulative(tenantId),
-//              saveFindings(runId, findings), saveReport(runId, {html_email, html_web, findings}) }
+//              saveFindings(runId, findings), saveReport(runId, {html_email, html_web, findings}),
+//              saveSnapshots?(tenantId, ads) — campaigns + spend_daily + asset labels }
 
 const { runRules, healthScore } = require('../../../packages/rules/src/engine');
 const l1 = require('../../../packages/rules/src/layer1-gtm');
@@ -48,7 +52,27 @@ function buildStages({ google, crawler, model, store }) {
       name: 'fetch_ads',
       run: async (ctx) => {
         const ads = await google.fetchAds(ctx.run.tenant_id);
-        return { ads, _progress: { search_terms_reviewed: (ads.search_terms || []).length } };
+        const progress = { search_terms_reviewed: (ads.search_terms || []).length };
+        if (google.fetchAdsDeep && !ads.deep) {
+          // Deep blocks are additive: a failure here degrades to "not yet
+          // examined" for those datasets and never fails the stage.
+          try {
+            ads.deep = await google.fetchAdsDeep(ctx.run.tenant_id);
+            if (!ads.currency && ads.deep.currency_code) ads.currency = ads.deep.currency_code;
+            progress.deep_blocks_measured = Object.values(ads.deep.blocks || {}).filter((b) => b.status === 'measured').length;
+          } catch (e) {
+            progress.deep_unavailable = String(e && e.message || e).slice(0, 200);
+          }
+        }
+        return { ads, _progress: progress };
+      },
+    },
+    {
+      name: 'snapshot', // campaigns + spend_daily + asset labels; feeds pacing, the spend card, and §11 telemetry
+      run: async (ctx) => {
+        if (!ctx.ads || !store.saveSnapshots) return {};
+        const r = await store.saveSnapshots(ctx.run.tenant_id, ctx.ads, ctx.run.id);
+        return { _progress: r || {} };
       },
     },
     {
@@ -95,16 +119,19 @@ function buildStages({ google, crawler, model, store }) {
       name: 'narration',
       run: async (ctx) => {
         const findings = [];
+        // Tenant + run ride along so the model client can meter usage per
+        // tenant (§9.9) and stamp attribution (§1).
+        const generate = (args) => model.generate({ ...args, tenantId: ctx.run.tenant_id, runId: ctx.run.id });
         for (const f of ctx.findings) {
           try {
-            const { title, explanation } = await narrateFinding(f, model.generate);
+            const { title, explanation } = await narrateFinding(f, generate);
             findings.push({ ...f, title, explanation });
           } catch {
             // Grounding failed twice — fall back to the payload-free fix_detail-less engine framing.
             findings.push({ ...f, title: f.rule_id.replace(/[._]/g, ' '), explanation: '' });
           }
         }
-        const slots = await narrateSlots({ counts: ctx.counts, totals: { waste: null }, previousWeek: null }, model.generate)
+        const slots = await narrateSlots({ counts: ctx.counts, totals: { waste: null }, previousWeek: null }, generate)
           .catch(() => ({ exec_summary: '', since_last_week: '' }));
         return { findings, narrativeSlots: slots };
       },

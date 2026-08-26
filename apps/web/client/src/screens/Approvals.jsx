@@ -94,7 +94,10 @@ export default function Approvals() {
   async function act(kind, id) {
     setBusy(id);
     try {
-      await api(`/api/app/${kind}/${id}`, { method: 'POST' });
+      // Dismissals carry whether the detail was opened first (§11.2 label:
+      // "the finding is wrong" vs "the explanation failed").
+      const body = kind === 'dismiss' ? { expanded_first: !!open[id] } : undefined;
+      await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
       setPending((p) => p.filter((x) => x.id !== id));
     } catch (e) { setError(e.message); }
     setBusy(null);
