@@ -156,3 +156,73 @@ test('dashStore.dismissChange: records the §11.2 dismissal label without breaki
   const d = f.calls.find((c) => c.url.endsWith('/dismissals'));
   assert.deepStrictEqual({ r: d.body[0].reason_tap, e: d.body[0].expanded_first, rule: d.body[0].rule_id }, { r: 'not_now', e: true, rule: 'ads.wasted_terms' });
 });
+
+test('workerStore.saveDrafts: autopilot drafts are born approved with an autopilot approval + ledger; cards are proposed', async () => {
+  const f = routedFetch({
+    changes: (url, init) => JSON.parse(init.body).map((r, i) => ({ id: `ch${i}`, ...r })),
+    approvals: [], ledger: [],
+  });
+  const s = workerStore(mkDb(f));
+  const out = await s.saveDrafts('run1', 't1', [
+    { finding_id: 'f1', tool_id: 'ads.add_negative_keywords', params: { campaign_id: '1', terms: [] }, mode: 'autopilot', change_key: 'k1', target: 'campaign:1:negatives', category: 'negatives', before: { line: 'b' }, after: { line: 'a' }, summary: 'Excluded 2 searches', money_impact_usd: 10, watch: { kind: 'negatives', days: 7 }, baseline: { x: 1 } },
+    { finding_id: 'f2', tool_id: 'ads.pause_campaign', params: { campaign_id: '2' }, mode: 'ask', reason: 'always asks', change_key: 'k2', target: 'campaign:2:status', category: null, before: { line: 'b' }, after: { line: 'a' }, summary: 'Paused X', money_impact_usd: null, watch: { kind: 'budgets', days: 14 }, baseline: {} },
+  ], [{ reason: 'suspect-heavy' }]);
+  assert.deepStrictEqual(out, { cards: 1, autopilot: 1, skipped: 1 });
+  const ins = f.calls.find((c) => c.url.endsWith('/changes')).body;
+  assert.deepStrictEqual({ s0: ins[0].status, a0: ins[0].actor, s1: ins[1].status, r1: ins[1].ask_reason, wp: ins[0].watch_plan.days }, { s0: 'approved', a0: 'autopilot', s1: 'proposed', r1: 'always asks', wp: 7 });
+  const appr = f.calls.find((c) => c.url.endsWith('/approvals'));
+  assert.strictEqual(appr.body[0].channel, 'autopilot');
+  const events = f.calls.filter((c) => c.url.endsWith('/ledger')).map((c) => c.body[0].event);
+  assert.deepStrictEqual(events, ['autopilot_applied', 'fix_proposed', 'engine_paused']);
+});
+
+test('workerStore.closeChangeWatch: writes outcome + effect; tracking breakage auto-reverts', async () => {
+  const f = routedFetch({ watches: [], ledger: [], changes: (url, init) => (init.method === 'POST' ? [{ id: 'rb1' }] : []) });
+  const s = workerStore(mkDb(f));
+  await s.closeChangeWatch({
+    tenantId: 't1', watch: { id: 'w1' }, change: { id: 'c1', tool_id: 'ads.set_action_secondary', params: { conversion_action_id: '5' }, summary_text: 'Set X secondary', change_key: 'k', target: 'ca:5' },
+    verdict: { outcome: 'regressed', effect: { conversions: 0 }, line: 'Conversions fell', tracking_breakage: true },
+    rollback: { tool_id: 'ads.set_action_primary', params: { conversion_action_id: '5' } },
+  });
+  const w = f.calls.find((c) => c.method === 'PATCH' && c.url.includes('watches'));
+  assert.deepStrictEqual({ o: w.body.outcome, e: w.body.effect, st: w.body.status }, { o: 'regressed', e: { conversions: 0 }, st: 'resolved' });
+  const rb = f.calls.find((c) => c.method === 'POST' && c.url.endsWith('/changes')).body[0];
+  assert.deepStrictEqual({ t: rb.tool_id, st: rb.status, a: rb.actor, rev: rb.reverts_change_id }, { t: 'ads.set_action_primary', st: 'approved', a: 'system', rev: 'c1' });
+  const events = f.calls.filter((c) => c.url.endsWith('/ledger')).map((c) => c.body[0].event);
+  assert.deepStrictEqual(events, ['watch_regressed', 'auto_reverted']);
+});
+
+test('dashStore.requestRevert: reverse change born approved; autopilot origin → standing exception; finding suspect', async () => {
+  const { dashStore } = require('../src/stores');
+  const original = { id: 'c1', tenant_id: 't1', status: 'applied', actor: 'autopilot', tool_id: 'ads.add_negative_keywords', finding_id: 'f1', change_key: 'k1', target: 'campaign:1:negatives', summary_text: 'Excluded 2 searches', params: { campaign_id: '1', terms: [] }, after: { resource_names: ['customers/1/campaignCriteria/1~2'], line: 'excluded' }, before: { line: 'running' } };
+  const f = routedFetch({
+    audit_log: [], approvals: [], ledger: [], findings: [], standing_exceptions: [],
+    changes: (url, init) => (init.method === 'POST' ? [{ id: 'rb1' }] : init.method === 'GET' ? [original] : []),
+  });
+  const r = await dashStore(mkDb(f)).requestRevert('t1', 'c1');
+  assert.deepStrictEqual(r, { ok: true, rollback_change_id: 'rb1' });
+  const rb = f.calls.find((c) => c.method === 'POST' && c.url.endsWith('/changes')).body[0];
+  assert.deepStrictEqual({ t: rb.tool_id, names: rb.params.resource_names, st: rb.status, rev: rb.reverts_change_id }, { t: 'ads.remove_negative_keywords', names: ['customers/1/campaignCriteria/1~2'], st: 'approved', rev: 'c1' });
+  assert.ok(f.calls.some((c) => c.url.endsWith('/standing_exceptions') && c.body[0].change_key === 'k1'));
+  assert.ok(f.calls.some((c) => c.method === 'PATCH' && c.url.includes('findings') && c.body.status === 'suspect'));
+  // non-applied → refused
+  const g = routedFetch({ audit_log: [], changes: [{ ...original, status: 'proposed' }] });
+  assert.strictEqual((await dashStore(mkDb(g)).requestRevert('t1', 'c1')).ok, false);
+});
+
+test('workerStore.draftState: consent flags, exception + inflight + recent sets, weekly budget delta', async () => {
+  const f = routedFetch({
+    autopilot_settings: [{ categories: { negatives: true, budgets: false, counting: 'auto' } }],
+    standing_exceptions: [{ change_key: 'ex1' }],
+    changes: (url) => (url.includes('status=in.(proposed,approved)') ? [{ target: 'campaign:1:budget' }]
+      : url.includes('status=eq.applied&applied_at') && !url.includes('adjust_budget') ? [{ change_key: 'r1' }]
+      : url.includes('adjust_budget') ? [{ params: { new_daily_usd: 12, previous_daily_usd: 10 } }]
+      : url.includes('status=eq.reverted') ? [{ id: 'x' }, { id: 'y' }] : []),
+    campaigns: [{ google_campaign_id: '1', budget_daily_usd: '10' }, { google_campaign_id: '2', budget_daily_usd: '10' }],
+  });
+  const st = await workerStore(mkDb(f)).draftState('t1');
+  assert.deepStrictEqual(st.autopilot, { negatives: true, budgets: false, counting: true });
+  assert.ok(st.exceptions.has('ex1') && st.inflight.has('campaign:1:budget') && st.recent.has('r1'));
+  assert.deepStrictEqual({ d: st.bounds.weekly_budget_delta_pct, rv: st.bounds.reverted_30d, tot: st.bounds.account.daily_budget_total_usd }, { d: 10, rv: 2, tot: 20 });
+  assert.strictEqual(st.bounds.campaign('2').budget_daily_usd, 10);
+});

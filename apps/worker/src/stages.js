@@ -12,7 +12,10 @@
 //   model:   { generate({system, prompt}) }                (Anthropic client)
 //   store:   { ruleConfig(), priorFindings(tenantId), ledgerCumulative(tenantId),
 //              saveFindings(runId, findings), saveReport(runId, {html_email, html_web, findings}),
-//              saveSnapshots?(tenantId, ads) — campaigns + spend_daily + asset labels }
+//              saveSnapshots?(tenantId, ads) — campaigns + spend_daily + asset labels,
+//              draftState?(tenantId) + saveDrafts?(runId, tenantId, drafts, skipped)   — §6.1 draft_pass
+//              dueChangeWatches?(tenantId) + closeChangeWatch?({...})                  — §6.1 watch_close }
+//   google.fetchWindow?(tenantId, { since, campaignIds, terms })  — watch measurement (§4.4)
 
 const { runRules, healthScore } = require('../../../packages/rules/src/engine');
 const l1 = require('../../../packages/rules/src/layer1-gtm');
@@ -27,6 +30,10 @@ const { assembleEnvelope } = require('../../../packages/report/src/envelope');
 const { assembleDeep } = require('../../../packages/report/src/deep');
 const l6 = require('../../../packages/rules/src/layer6-deep');
 const { narrateFinding, narrateSlots } = require('../../../packages/report/src/narration');
+const { draftChanges } = require('../../../packages/registry/src/drafts');
+const { judgeWatch } = require('../../../packages/registry/src/watches');
+const { byTool: registryByTool } = require('../../../packages/registry/src/registry');
+const crypto = require('node:crypto');
 const { renderReport } = require('../../../packages/report/src/render');
 
 const ALL_RULES = [...l1.rules, ...l2.rules, ...l3.rules, ...l4.rules, ...l4rsa.rules, ...l5.rules, ...l5urls.rules, ...l6.rules];
@@ -106,7 +113,61 @@ function buildStages({ google, crawler, model, store }) {
           runId: ctx.run.id,
           tenantId: ctx.run.tenant_id,
         });
+        // Stable ids now, so drafted changes (draft_pass) can reference their
+        // finding before anything is persisted.
+        for (const f of findings) if (!f.finding_id) f.finding_id = crypto.randomUUID();
         return { findings, ruleErrors: errors, counts, _progress: { findings: findings.length } };
+      },
+    },
+    {
+      // §6.1 watch_close: close due per-change watches with a measured window,
+      // write outcome + effect sizes, and turn regressions into
+      // watch.change_regressed findings that propose the rollback (ask-first;
+      // tracking breakage auto-reverts, §9.3).
+      name: 'watch_close',
+      run: async (ctx) => {
+        if (!store.dueChangeWatches || !store.closeChangeWatch) return {};
+        const due = await store.dueChangeWatches(ctx.run.tenant_id);
+        if (!due.length) return {};
+        const extra = [];
+        let closed = 0;
+        for (const { watch, change } of due) {
+          const kind = (watch.schedule && watch.schedule.kind) || 'generic';
+          let window = null;
+          if (google.fetchWindow && change) {
+            try {
+              window = await google.fetchWindow(ctx.run.tenant_id, {
+                since: watch.baseline && watch.baseline.applied_at ? watch.baseline.applied_at : watch.created_at,
+                campaignIds: change.params && change.params.campaign_id ? [change.params.campaign_id] : [],
+                terms: change.params && Array.isArray(change.params.terms) ? change.params.terms.map((t) => t.text) : [],
+              });
+            } catch { window = null; }
+          }
+          const verdict = judgeWatch({ kind, baseline: watch.baseline || {}, window });
+          const row = change ? registryByTool(change.tool_id) : null;
+          const rollback = row && row.rollback && change ? row.rollback(change) : null;
+          await store.closeChangeWatch({ watch, change, verdict, rollback, tenantId: ctx.run.tenant_id, runId: ctx.run.id });
+          closed += 1;
+          if (verdict.outcome === 'regressed' && rollback && !verdict.tracking_breakage) {
+            extra.push({
+              schema_version: 1, run_id: ctx.run.id, tenant_id: ctx.run.tenant_id, finding_id: crypto.randomUUID(),
+              rule_id: 'watch.change_regressed', layer: 6, severity: 'warning', status: 'open', category: 'verification',
+              entity_key: `change:${change.id}`, first_seen_run_id: ctx.run.id, title: null, explanation: null,
+              money: { impact_monthly_usd: 0, direction: 'waste', confidence: 'none' },
+              evidence: { metrics: verdict.effect, window_days: window ? window.days : 0, queries: ['watch/change_regressed@v1'] },
+              payload: {
+                locked: false, entities: [], fix_detail: verdict.line,
+                change_id: change.id, rollback: { ...rollback, target: change.target },
+                before_line: `We changed: ${change.summary_text || change.tool_id}. ${verdict.line}`,
+                after_line: 'The change is undone and the account returns to how it was before it',
+                summary: `Undid: ${change.summary_text || change.tool_id}`,
+              },
+              fix: { available: true, tool_id: rollback.tool_id, risk: 'low', reversible: true, approval_scope: 'change' },
+              display: { icon: 'undo', badge_color: 'warning', sort_weight: 60 },
+            });
+          }
+        }
+        return { findings: [...(ctx.findings || []), ...extra], _progress: { watches_closed: closed, regressions: extra.length } };
       },
     },
     {
@@ -171,14 +232,36 @@ function buildStages({ google, crawler, model, store }) {
       required: true,
       run: async (ctx) => {
         await store.saveFindings(ctx.run.id, ctx.findings);
+        // §6.1 draft_pass: registry turns findings into drafted changes;
+        // autopilot-eligible ones within bounds go straight to the apply
+        // loop (ledger actor autopilot), the rest become cards.
+        let drafted = null;
+        if (store.draftState && store.saveDrafts) {
+          const state = await store.draftState(ctx.run.tenant_id);
+          // Fresh run data beats the snapshot for the bounds: live budgets,
+          // live daily total, and the converting-term guard (§4.2).
+          if (ctx.ads) {
+            const camps = ctx.ads.campaigns || [];
+            state.bounds.campaign = (id) => camps.find((c) => String(c.id) === String(id)) || null;
+            state.bounds.account = { daily_budget_total_usd: camps.filter((c) => c.status === 'enabled').reduce((s, c) => s + (c.budget_daily_usd || 0), 0) || state.bounds.account.daily_budget_total_usd };
+            state.bounds.converting_terms = new Set((ctx.ads.search_terms || []).filter((t) => (t.conversions_90d || 0) > 0).map((t) => t.term));
+          }
+          const { drafts, skipped } = draftChanges({
+            findings: ctx.findings,
+            ctx: { ads: ctx.ads, adsDeep: ctx.adsDeep || (ctx.ads && ctx.ads.deep) || null, ga4: ctx.ga4, gtm: ctx.gtm, witness: ctx.witness },
+            state: state.bounds, autopilot: state.autopilot,
+            exceptions: state.exceptions, inflight: state.inflight, recent: state.recent,
+          });
+          drafted = await store.saveDrafts(ctx.run.id, ctx.run.tenant_id, drafts, skipped);
+        }
         await store.saveReport(ctx.run.id, {
           html_email: ctx.html_email,
           html_web: ctx.html_web,
-          findings_snapshot: ctx.envelope.findings,
+          findings_snapshot: ctx.envelope ? ctx.envelope.findings : ctx.findings,
           tenant_id: ctx.run.tenant_id,
           type: ctx.run.type === 'signup_audit' ? 'signup' : ctx.run.type === 'deep' ? 'deep' : 'weekly',
         });
-        return {};
+        return { _progress: drafted || {} };
       },
     },
   ];

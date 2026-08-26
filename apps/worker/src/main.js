@@ -12,7 +12,7 @@ const { discoveryCrawl } = require('../../../packages/crawler/src/crawl');
 const { createGoogleAuth } = require('../../../packages/google/src/client');
 const { fetchGtmSnapshot } = require('../../../packages/google/src/fetch-gtm');
 const { fetchGa4Config, fetchGa4Data } = require('../../../packages/google/src/fetch-ga4');
-const { fetchAds } = require('../../../packages/google/src/fetch-ads');
+const { fetchAds, fetchWindow } = require('../../../packages/google/src/fetch-ads');
 const { fetchAdsDeep } = require('../../../packages/google/src/fetch-ads-deep');
 const { createTelemetry, modelCost } = require('../../../packages/shared/src/telemetry');
 const { MODEL_ID, MODEL_PRICE_IN_PER_MTOK, MODEL_PRICE_OUT_PER_MTOK } = require('../../../packages/shared/src/model-config');
@@ -70,6 +70,12 @@ const google = googleConfigured ? {
     if (!a) throw new Error('no linked Ads asset');
     if (!developerToken) throw new Error('ads reads not configured (developer token pending)');
     return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId });
+  },
+  // Watch-window measurement for watch_close (§4.4).
+  fetchWindow: async (tenantId, { since, campaignIds, terms }) => {
+    const a = await linkedAsset(tenantId, 'ads_account');
+    if (!a) throw new Error('no linked Ads asset');
+    return fetchWindow({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId, since, campaignIds, terms });
   },
   // Deep blocks (hours, days, devices, share, keywords, monthly, assets,
   // daily) — the modelled→measured flip. Failure degrades per block.
@@ -155,9 +161,11 @@ if (googleConfigured) {
       db.select('journey_state', `tenant_id=eq.${q(tenantId)}&select=gates&limit=1`, { single: true }),
       google.fetchGa4Config(tenantId).catch(() => null),
     ]);
-    const pausedByUs = new Set((await db.select('changes',
-      `tenant_id=eq.${q(tenantId)}&tool_id=eq.ads.pause_campaign&status=eq.applied&select=params`))
-      .map((c) => c.params && String(c.params.campaign_id)).filter(Boolean));
+    const applied = await db.select('changes',
+      `tenant_id=eq.${q(tenantId)}&status=in.(applied,reverted)&tool_id=in.(ads.pause_campaign,ads.pause_keyword,ads.add_negative_keywords)&select=tool_id,params,after`);
+    const pausedByUs = new Set(applied.filter((c) => c.tool_id === 'ads.pause_campaign').map((c) => c.params && String(c.params.campaign_id)).filter(Boolean));
+    const pausedKeywordsByUs = new Set(applied.filter((c) => c.tool_id === 'ads.pause_keyword').map((c) => c.params && `${c.params.ad_group_id}~${c.params.criterion_id}`));
+    const negativesByUs = new Set(applied.filter((c) => c.tool_id === 'ads.add_negative_keywords').flatMap((c) => (c.after && c.after.resource_names) || []));
     return {
       account: {
         daily_budget_total_usd: (ads ? ads.campaigns : []).reduce((s, c) => s + (c.budget_daily_usd || 0), 0) || 1,
@@ -166,7 +174,7 @@ if (googleConfigured) {
       },
       campaign: (id) => campaigns.get(String(id)),
       convertingTerms: new Set((ads ? ads.search_terms : []).filter((t) => t.conversions_90d > 0).map((t) => t.term)),
-      pausedByUs,
+      pausedByUs, pausedKeywordsByUs, negativesByUs,
       primaryActionCount: ads ? ads.conversion_actions.filter((a) => a.primary).length : 0,
       keyEventCount: keyEventsCfg ? keyEventsCfg.key_events.length : 0,
       linkedAdsCustomerIds: ads ? [ads.customer_id] : [],

@@ -16,6 +16,7 @@
 //   ctx.campaign(params.campaign_id) = { budget_daily_usd, conversions_30d, bidding: {target} }
 //   ctx.convertingTerms   Set of search terms with conversions (negative blocklist)
 //   ctx.pausedByUs        Set of campaign_ids the ledger says WE paused
+//   ctx.pausedKeywordsByUs Set of 'ad_group_id~criterion_id' WE paused; ctx.negativesByUs Set of criterion resource names WE added
 //   ctx.primaryActionCount, ctx.keyEventCount
 //   ctx.linkedAdsCustomerIds  confirmed ads asset external_ids
 //   ctx.approvals         [{ scope, target_id }]
@@ -34,6 +35,20 @@ const TOOLS = [
       if (badMatch) return `guardrail: match type "${badMatch.match_type}" not allowed — exact and phrase only`;
       const converting = p.terms.find((t) => ctx.convertingTerms && ctx.convertingTerms.has(t.text));
       if (converting) return `guardrail: "${converting.text}" has conversions — refusing to negative a converting term`;
+      return null;
+    },
+  },
+  {
+    // Rollback of add_negative_keywords: removes exactly the criteria we created
+    // (resource names captured in the applied change's `after`).
+    tool_id: 'ads.remove_negative_keywords',
+    entities: (p) => (p.resource_names || []).length,
+    guard(p, ctx) {
+      if (!p.campaign_id || !Array.isArray(p.resource_names) || p.resource_names.length === 0) return 'campaign_id and resource_names[] required';
+      if (p.resource_names.length > 200) return 'guardrail: more than 200 criteria in one run';
+      const bad = p.resource_names.find((r) => !/^customers\/\d+\/campaignCriteria\/\d+~\d+$/.test(String(r)));
+      if (bad) return `guardrail: "${bad}" is not a campaign criterion resource name`;
+      if (ctx.negativesByUs && !p.resource_names.every((r) => ctx.negativesByUs.has(r))) return 'guardrail: only negatives we added can be removed (ledger check)';
       return null;
     },
   },
@@ -83,6 +98,17 @@ const TOOLS = [
     tool_id: 'ads.pause_keyword',
     entities: () => 1,
     guard: (p) => (p.ad_group_id && p.criterion_id ? null : 'ad_group_id and criterion_id required'),
+  },
+  {
+    // Rollback of pause_keyword — only for keywords the ledger says WE paused.
+    tool_id: 'ads.enable_keyword',
+    entities: () => 1,
+    guard(p, ctx) {
+      if (!p.ad_group_id || !p.criterion_id) return 'ad_group_id and criterion_id required';
+      const key = `${p.ad_group_id}~${p.criterion_id}`;
+      if (!ctx.pausedKeywordsByUs || !ctx.pausedKeywordsByUs.has(key)) return 'guardrail: enable only allowed for keywords we paused (ledger check)';
+      return null;
+    },
   },
   {
     tool_id: 'ads.set_action_secondary',

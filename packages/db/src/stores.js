@@ -75,6 +75,106 @@ function workerStore(db) {
       if (daily.length) await createTelemetryBeat(db, 'spend_daily');
       return out;
     },
+    // ---- §6.1 draft_pass state: what the registry must respect this run.
+    draftState: async (tenantId) => {
+      const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
+      const [auto, exc, open, recent, reverted, budgetMoves, camps] = await Promise.all([
+        db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }).catch(() => null),
+        db.select('standing_exceptions', `tenant_id=eq.${q(tenantId)}&cleared_at=is.null&select=change_key`).catch(() => []),
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(proposed,approved)&select=target`).catch(() => []),
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.applied&applied_at=gte.${q(since30)}&select=change_key`).catch(() => []),
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.reverted&applied_at=gte.${q(since30)}&select=id`).catch(() => []),
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&tool_id=eq.ads.adjust_budget&status=eq.applied&applied_at=gte.${q(since7)}&select=params`).catch(() => []),
+        db.select('campaigns', `tenant_id=eq.${q(tenantId)}&status=eq.enabled&select=google_campaign_id,budget_daily_usd`).catch(() => []),
+      ]);
+      const cats = (auto && auto.categories) || {};
+      const dailyTotal = (camps || []).reduce((s, c) => s + Number(c.budget_daily_usd || 0), 0) || 1;
+      const weeklyDelta = (budgetMoves || []).reduce((s, c) => s + Math.abs(Number((c.params || {}).new_daily_usd || 0) - Number((c.params || {}).previous_daily_usd || 0)), 0) / dailyTotal * 100;
+      const campMap = new Map((camps || []).map((c) => [String(c.google_campaign_id), { budget_daily_usd: Number(c.budget_daily_usd || 0) }]));
+      return {
+        autopilot: { negatives: cats.negatives === true || cats.negatives === 'auto', budgets: cats.budgets === true || cats.budgets === 'auto', counting: cats.counting === true || cats.counting === 'auto' },
+        exceptions: new Set((exc || []).map((e) => e.change_key)),
+        inflight: new Set((open || []).map((c) => c.target).filter(Boolean)),
+        recent: new Set((recent || []).map((c) => c.change_key).filter(Boolean)),
+        bounds: {
+          account: { daily_budget_total_usd: dailyTotal },
+          campaign: (id) => campMap.get(String(id)) || null,
+          weekly_budget_delta_pct: Math.round(weeklyDelta * 10) / 10,
+          converting_terms: new Set(), // filled by the executor ctx at apply time; drafts re-check there
+          reverted_30d: (reverted || []).length,
+        },
+      };
+    },
+    // Persist drafted changes. Autopilot drafts are born approved (standing
+    // consent, approvals channel 'autopilot', ledger actor autopilot) and the
+    // apply loop picks them up within a minute; the rest are cards.
+    saveDrafts: async (runId, tenantId, drafts, skipped = []) => {
+      const out = { cards: 0, autopilot: 0, skipped: skipped.length };
+      if (!drafts.length) return out;
+      // Bounds state's converting-term set is empty at draft time; the rule
+      // itself excludes converting terms, and the tool guard re-checks at apply.
+      const rows = drafts.map((d) => ({
+        tenant_id: tenantId, finding_id: d.finding_id, tool_id: d.tool_id, params: d.params,
+        status: d.mode === 'autopilot' ? 'approved' : 'proposed',
+        actor: d.mode === 'autopilot' ? 'autopilot' : 'user',
+        change_key: d.change_key, target: d.target, category: d.category,
+        before: d.before, after: d.after, summary_text: d.summary, money_impact_usd: d.money_impact_usd,
+        ask_reason: d.mode === 'ask' ? d.reason : null,
+        watch_plan: { kind: d.watch ? d.watch.kind : null, days: d.watch ? d.watch.days : null, baseline: d.baseline || {} },
+        reverts_change_id: d.reverts_change_id || null,
+        idempotency_key: `${runId}:${d.change_key}`,
+      }));
+      const inserted = await db.insert('changes', rows);
+      for (const r of inserted || []) {
+        if (r.status === 'approved') {
+          out.autopilot += 1;
+          await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: r.id, channel: 'autopilot' }], { returning: false }).catch(() => {});
+          await db.insert('ledger', [{ tenant_id: tenantId, event: 'autopilot_applied', change_id: r.id, actor: 'autopilot',
+            summary_text: `Autopilot is applying: ${r.summary_text}. Watching it for ${r.watch_plan && r.watch_plan.days ? r.watch_plan.days : 7} days.`, money_impact_usd: r.money_impact_usd }], { returning: false }).catch(() => {});
+        } else {
+          out.cards += 1;
+          await db.insert('ledger', [{ tenant_id: tenantId, event: 'fix_proposed', change_id: r.id, actor: 'system',
+            summary_text: `Ready for your approval: ${r.summary_text}.`, money_impact_usd: r.money_impact_usd }], { returning: false }).catch(() => {});
+        }
+      }
+      if (skipped.some((k) => /suspect-heavy/.test(k.reason || ''))) {
+        await db.insert('ledger', [{ tenant_id: tenantId, event: 'engine_paused', actor: 'system',
+          summary_text: 'Two or more changes were undone recently, so we are pausing new suggestions until a person reviews the account.' }], { returning: false }).catch(() => {});
+      }
+      return out;
+    },
+    // ---- §6.1 watch_close: due per-change watches joined to their change.
+    dueChangeWatches: async (tenantId) => {
+      const nowIso = new Date().toISOString();
+      const watches = await db.select('watches',
+        `tenant_id=eq.${q(tenantId)}&kind=eq.change_verify&status=eq.active&schedule->>until=lte.${q(nowIso)}&select=*`).catch(() => []);
+      if (!watches || !watches.length) return [];
+      const ids = watches.map((w) => w.target_id).filter(Boolean).map(q).join(',');
+      const changes = ids ? await db.select('changes', `id=in.(${ids})&select=id,tool_id,params,target,summary_text,after,actor,change_key`).catch(() => []) : [];
+      const byId = new Map((changes || []).map((c) => [c.id, c]));
+      return watches.map((watch) => ({ watch, change: byId.get(watch.target_id) || null }));
+    },
+    closeChangeWatch: async ({ watch, change, verdict, rollback, tenantId }) => {
+      const nowIso = new Date().toISOString();
+      await db.update('watches', `id=eq.${q(watch.id)}`, { status: 'resolved', outcome: verdict.outcome, effect: verdict.effect, closed_at: nowIso, last_check_at: nowIso });
+      const event = { verified: 'watch_verified', inconclusive: 'watch_inconclusive', regressed: 'watch_regressed' }[verdict.outcome];
+      await db.insert('ledger', [{ tenant_id: tenantId, event, change_id: change ? change.id : null, actor: 'system',
+        summary_text: `${change ? change.summary_text || change.tool_id : 'A change'}: ${verdict.line}` }], { returning: false }).catch(() => {});
+      // Tracking breakage: the one auto-revert (§9.3) — money protection.
+      if (verdict.outcome === 'regressed' && verdict.tracking_breakage && rollback && change) {
+        const [rb] = await db.insert('changes', [{
+          tenant_id: tenantId, finding_id: change.finding_id || null, tool_id: rollback.tool_id, params: rollback.params,
+          status: 'approved', actor: 'system', change_key: `rollback:${change.change_key}`, target: change.target,
+          summary_text: `Auto-reverted: ${change.summary_text || change.tool_id}`, reverts_change_id: change.id,
+          before: { line: verdict.line }, after: { line: 'Counting is back to how it was' },
+          idempotency_key: `rollback:${change.id}`,
+        }]).catch(() => [null]);
+        await db.update('changes', `id=eq.${q(change.id)}`, { status: 'reverted' }).catch(() => {});
+        await db.insert('ledger', [{ tenant_id: tenantId, event: 'auto_reverted', change_id: rb ? rb.id : null, actor: 'system',
+          summary_text: `We undid "${change.summary_text || change.tool_id}" straight away: ${verdict.line}` }], { returning: false }).catch(() => {});
+      }
+    },
     // "Against your goals" report section — non-null only when targets are
     // set for this tenant (agency accounts). Month-to-date actuals + pacing.
     performanceFor: async (tenantId) => {
@@ -265,12 +365,14 @@ function dashStore(db) {
     },
     pendingApprovals: async (tenantId) => {
       const rows = await db.select('changes',
-        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,before,after,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
+        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,before,after,summary_text,money_impact_usd,ask_reason,category,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
       return rows.map((r) => ({
         id: r.id,
-        title: (r.finding && r.finding.title) || 'A fix is ready',
-        money_line: r.finding && r.finding.money_impact_monthly_usd
-          ? `about $${Math.round(r.finding.money_impact_monthly_usd)} a month` : null,
+        title: r.summary_text || (r.finding && r.finding.title) || 'A fix is ready',
+        money_line: (r.money_impact_usd || (r.finding && r.finding.money_impact_monthly_usd))
+          ? `about $${Math.round(r.money_impact_usd || r.finding.money_impact_monthly_usd)} a month` : null,
+        category: r.category || null,
+        ask_reason: r.ask_reason || null,
         // The trust layer: what exactly changes, in plain words, on the card
         // itself. Falls back to the raw before/after when no prose exists.
         explanation: (r.finding && r.finding.explanation) || null,
@@ -383,8 +485,47 @@ function dashStore(db) {
         reasonTap: reason, expandedFirst,
       });
     },
+    // §4.5 revert: the registry derives the reverse change, it is born
+    // approved (the tap IS the approval), the original is marked reverted and
+    // its finding returns as suspect. Undoing an AUTOPILOT change also writes
+    // a standing exception: never re-applied on its own again.
     requestRevert: async (tenantId, changeId) => {
       await db.insert('audit_log', [{ tenant_id: tenantId, event: 'revert_requested', detail: { change_id: changeId } }], { returning: false });
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&select=*`, { single: true }).catch(() => null);
+      if (!ch || ch.status !== 'applied') return { ok: false, reason: 'Only applied changes can be undone.' };
+      const { byTool } = require('../../registry/src/registry');
+      const row = byTool(ch.tool_id);
+      const rollback = row && row.rollback ? row.rollback(ch) : null;
+      if (!rollback) return { ok: false, reason: 'This change cannot be undone automatically; we have logged your request for the team.' };
+      const [rb] = await db.insert('changes', [{
+        tenant_id: tenantId, finding_id: ch.finding_id, tool_id: rollback.tool_id, params: rollback.params,
+        status: 'approved', actor: 'user', change_key: `rollback:${ch.change_key || ch.id}`, target: ch.target,
+        summary_text: `Undid: ${ch.summary_text || ch.tool_id}`, reverts_change_id: ch.id,
+        before: { line: ch.after && ch.after.line ? ch.after.line : 'As changed' }, after: { line: ch.before && ch.before.line ? ch.before.line : 'Back to how it was' },
+        idempotency_key: `rollback:${ch.id}:${Date.now()}`,
+      }]);
+      await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: rb.id, channel: 'dashboard' }], { returning: false }).catch(() => {});
+      await db.update('changes', `id=eq.${q(ch.id)}`, { status: 'reverted' }).catch(() => {});
+      if (ch.finding_id) await db.update('findings', `id=eq.${q(ch.finding_id)}`, { status: 'suspect' }).catch(() => {});
+      await db.insert('ledger', [{ tenant_id: tenantId, event: 'fix_reverted', change_id: ch.id, actor: 'user',
+        summary_text: `You asked us to undo: ${ch.summary_text || ch.tool_id}. It is being reversed now.` }], { returning: false }).catch(() => {});
+      if (ch.actor === 'autopilot' && ch.change_key) {
+        await db.insert('standing_exceptions', [{ tenant_id: tenantId, change_key: ch.change_key, target: ch.target,
+          summary_text: ch.summary_text || ch.tool_id, created_from: 'revert', source_change_id: ch.id }], { returning: false }).catch(() => {});
+        await db.insert('ledger', [{ tenant_id: tenantId, event: 'exception_added', change_id: ch.id, actor: 'user',
+          summary_text: `Noted: autopilot will never re-apply "${ch.summary_text || ch.tool_id}" on its own. You can clear this in Settings.` }], { returning: false }).catch(() => {});
+      }
+      return { ok: true, rollback_change_id: rb.id };
+    },
+    // "What have I told you never to touch?" (§4.5) — listable and clearable.
+    exceptions: async (tenantId) => db.select('standing_exceptions',
+      `tenant_id=eq.${q(tenantId)}&cleared_at=is.null&select=id,summary_text,target,created_from,created_at&order=created_at.desc`).catch(() => []),
+    clearException: async (tenantId, id) => {
+      const rows = await db.update('standing_exceptions', `id=eq.${q(id)}&tenant_id=eq.${q(tenantId)}&cleared_at=is.null`, { cleared_at: new Date().toISOString() }).catch(() => []);
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if (row) await db.insert('ledger', [{ tenant_id: tenantId, event: 'exception_cleared', actor: 'user',
+        summary_text: `Cleared: "${row.summary_text}" may be suggested again (autopilot still asks first the next time).` }], { returning: false }).catch(() => {});
+      return !!row;
     },
   };
 }

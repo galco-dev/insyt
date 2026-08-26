@@ -163,10 +163,22 @@ function customerDemo(path, method, body) {
       base.settings.autopilot = { ...s.autopilot };
       return base;
     }
+    if (p === '/api/app/exceptions') {
+      if (!s.exceptions) {
+        s.exceptions = [{ id: 'ex1', summary_text: 'Excluded 3 wasted searches from "Brand - Dubai"', target: 'campaign:11:negatives', created_from: 'revert', created_at: '2026-08-20T09:12:00Z' }];
+      }
+      return { exceptions: s.exceptions };
+    }
     return undefined;
   }
 
   if (method !== 'POST') return undefined;
+
+  if (/^\/api\/app\/exceptions\/[^/]+\/clear$/.test(p)) {
+    const id = p.split('/')[4];
+    s.exceptions = (s.exceptions || []).filter((e) => e.id !== id);
+    return { ok: true };
+  }
 
   if (p.startsWith('/api/app/approve/')) {
     const id = p.split('/').pop();

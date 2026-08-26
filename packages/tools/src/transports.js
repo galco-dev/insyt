@@ -9,7 +9,7 @@
 
 const GTM = 'https://tagmanager.googleapis.com/tagmanager/v2';
 const ADMIN = 'https://analyticsadmin.googleapis.com/v1beta';
-const ADS_VERSION = 'v18';
+const { VERSION: ADS_VERSION } = require('../../google/src/fetch-ads'); // one env-configured version everywhere
 
 function createTransports({ auth, tenantId, developerToken, loginCustomerId, customerId }) {
   const gtmPath = (p) => `accounts/${p.account_id}/containers/${p.container_id}/workspaces/${p.workspace_id}`;
@@ -112,7 +112,19 @@ function createTransports({ auth, tenantId, developerToken, loginCustomerId, cus
         },
       }));
       const after = await adsMutate('campaignCriteria', ops);
-      return { before: { negative_count_added: 0 }, after: { negative_count_added: p.terms.length, results: (after.results || []).length } };
+      const resourceNames = (after.results || []).map((r) => r.resourceName).filter(Boolean);
+      // resource_names make the change reversible (ads.remove_negative_keywords).
+      return { before: { negative_count_added: 0 }, after: { negative_count_added: p.terms.length, results: resourceNames.length, resource_names: resourceNames } };
+    },
+    'ads.remove_negative_keywords': async (p) => {
+      await adsMutate('campaignCriteria', p.resource_names.map((r) => ({ remove: r })));
+      return { before: { negatives: p.resource_names.length }, after: { negatives: 0, removed: p.resource_names } };
+    },
+    'ads.enable_keyword': async (p) => {
+      await adsMutate('adGroupCriteria', [{
+        update: { resourceName: `customers/${cid()}/adGroupCriteria/${p.ad_group_id}~${p.criterion_id}`, status: 'ENABLED' }, updateMask: 'status',
+      }]);
+      return { before: { status: 'paused' }, after: { status: 'enabled' } };
     },
     'ads.adjust_budget': async (p) => {
       if (!p.budget_resource) throw new Error('budget_resource (campaign budget resource name) required');

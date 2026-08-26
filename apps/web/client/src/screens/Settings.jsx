@@ -2,7 +2,7 @@
 // and the your-data actions the legal pages promise (export, delete,
 // disconnect). Autopilot toggles write through /api/app/autopilot.
 import React, { useEffect, useState } from 'react';
-import { CreditCard01 as CreditCard, Link01 as Link2, Zap, ShieldTick as ShieldCheck } from '@untitledui/icons';
+import { CreditCard01 as CreditCard, Link01 as Link2, Zap, ShieldTick as ShieldCheck, Lock01 as Lock } from '@untitledui/icons';
 import clsx from 'clsx';
 import { api, isDemo } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
@@ -37,6 +37,40 @@ function Toggle({ on, busy, onClick, label }) {
         )}
       />
     </button>
+  );
+}
+
+// §4.5 standing exceptions: what the owner has told us never to touch.
+function Exceptions() {
+  const [items, setItems] = useState(null);
+  const [busy, setBusy] = useState(null);
+  useEffect(() => { api('/api/app/exceptions').then((d) => setItems(d.exceptions || [])).catch(() => setItems([])); }, []);
+  if (!items || !items.length) return null;
+  async function clear(id) {
+    setBusy(id);
+    try { await api(`/api/app/exceptions/${id}/clear`, { method: 'POST' }); setItems((xs) => xs.filter((x) => x.id !== id)); } catch { /* stays listed */ }
+    setBusy(null);
+  }
+  return (
+    <Card className="mt-3 p-5">
+      <div className="flex items-start gap-3">
+        <Lock size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
+        <div className="flex-1">
+          <MonoLabel>Never touch</MonoLabel>
+          <p className="mt-0.5 text-small text-neutral-900">
+            Changes you undid. Autopilot will not re-apply these on its own; if the numbers change we may ask you again, and say why.
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {items.map((x) => (
+              <li key={x.id} className="flex items-center justify-between gap-3 text-small">
+                <span>{x.summary_text}</span>
+                <Button variant="secondary" onClick={() => clear(x.id)} disabled={busy === x.id} className="!px-3 !py-1.5">Allow again</Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -138,6 +172,8 @@ export default function Settings() {
           </div>
         </div>
       </Card>
+
+      <Exceptions />
 
       <Card className="mt-3 p-5">
         <div className="flex items-start gap-3">

@@ -54,7 +54,8 @@ async function fetchAdsDeep({ auth, tenantId, customerId, developerToken, loginC
     customer: `SELECT customer.currency_code, customer.time_zone FROM customer`,
     keywords: `
       SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
-             ad_group_criterion.quality_info.quality_score, campaign.id, ad_group.name,
+             ad_group_criterion.quality_info.quality_score, ad_group_criterion.criterion_id,
+             campaign.id, ad_group.id, ad_group.name,
              metrics.cost_micros, metrics.clicks, metrics.conversions
       FROM keyword_view WHERE ${between(d90)} AND ad_group_criterion.status != 'REMOVED'`,
     hours: `SELECT segments.hour, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d30)}`,
@@ -100,6 +101,8 @@ async function fetchAdsDeep({ auth, tenantId, customerId, developerToken, loginC
         keyword: r.adGroupCriterion.keyword.text,
         match: MATCH[r.adGroupCriterion.keyword.matchType] || String(r.adGroupCriterion.keyword.matchType || '').toLowerCase(),
         campaign_id: String(r.campaign.id), ad_group: r.adGroup && r.adGroup.name,
+        ad_group_id: r.adGroup && r.adGroup.id != null ? String(r.adGroup.id) : null,
+        criterion_id: r.adGroupCriterion.criterionId != null ? String(r.adGroupCriterion.criterionId) : null, // ads.pause_keyword target
         cost_usd: 0, clicks: 0, conversions: 0,
         quality_score: r.adGroupCriterion.qualityInfo && r.adGroupCriterion.qualityInfo.qualityScore != null
           ? Number(r.adGroupCriterion.qualityInfo.qualityScore) : null,

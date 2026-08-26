@@ -144,3 +144,43 @@ test('fetch_ads: deep blocks attach as ads.deep, the snapshot stage persists, an
   assert.strictEqual(bad.status, 'complete', 'deep failure never fails the ads stage');
   assert.strictEqual(bad.ctx.ads.deep, undefined);
 });
+
+test('deliver: draft_pass persists registry drafts after findings; watch_close closes due watches and injects regressions', async () => {
+  const { runPipeline } = require('../src/pipeline');
+  const saved = {};
+  const ads = {
+    customer_id: '1', spend_30d_usd: 500, ads_conversions_30d: 10,
+    campaigns: [{ id: 'c', name: 'Camp', status: 'enabled', budget_daily_usd: 20, budget_resource: 'customers/1/campaignBudgets/9', spend_30d_usd: 500, conversions_30d: 10 }],
+    search_terms: [{ term: 'free stuff', campaign_id: 'c', spend_90d_usd: 200, clicks_90d: 100, conversions_90d: 0 }],
+    conversion_actions: [], disapproved: [],
+  };
+  const dueWatch = { id: 'w1', target_id: 'ch1', schedule: { kind: 'negatives', until: '2026-08-01T00:00:00Z' }, baseline: { applied_at: '2026-07-25T00:00:00Z' }, created_at: '2026-07-25T00:00:00Z' };
+  const dueChange = { id: 'ch1', tool_id: 'ads.add_negative_keywords', params: { campaign_id: 'c', terms: [{ text: 'x', match_type: 'exact' }] }, target: 'campaign:c:negatives', summary_text: 'Excluded 1 search', after: { resource_names: ['customers/1/campaignCriteria/c~1'] } };
+  const stages = buildStages({
+    google: { fetchAds: async () => ads, fetchWindow: async () => ({ days: 7, spend_usd: 100, conversions: 2, prior: { spend_usd: 100, conversions: 10 }, blocked_terms_spend_usd: 0 }) },
+    crawler: {}, model: {},
+    store: {
+      ruleConfig: async () => ({ 'ads.wasted_terms': { default_severity: 'warning', thresholds: {}, fix_tool_id: 'ads.add_negative_keywords', enabled: true } }),
+      priorFindings: async () => [], ledgerCumulative: async () => null,
+      saveFindings: async (runId, f) => { saved.findings = f; }, saveReport: async () => {},
+      dueChangeWatches: async () => [{ watch: dueWatch, change: dueChange }],
+      closeChangeWatch: async (args) => { saved.closed = args; },
+      draftState: async () => ({ autopilot: { negatives: true }, exceptions: new Set(), inflight: new Set(), recent: new Set(), bounds: { account: { daily_budget_total_usd: 20 }, campaign: () => null, weekly_budget_delta_pct: 0, converting_terms: new Set(), reverted_30d: 0 } }),
+      saveDrafts: async (runId, tenantId, drafts, skipped) => { saved.drafts = drafts; saved.skipped = skipped; return { cards: drafts.filter((d) => d.mode === 'ask').length, autopilot: drafts.filter((d) => d.mode === 'autopilot').length }; },
+    },
+  });
+  const keep = new Set(['fetch_ads', 'rules_pass', 'watch_close', 'money_math', 'deliver']);
+  const r = await runPipeline({ run: { id: 'r1', tenant_id: 'tn1', type: 'weekly' }, stages: stages.filter((s) => keep.has(s.name)), store: mkStore() });
+  assert.strictEqual(r.status, 'complete');
+  assert.ok(saved.findings.every((f) => f.finding_id), 'findings carry ids before persistence');
+  // watch closed as regressed (conversions 10 → 2) and the rollback was proposed as a finding
+  assert.strictEqual(saved.closed.verdict.outcome, 'regressed');
+  assert.strictEqual(saved.closed.rollback.tool_id, 'ads.remove_negative_keywords');
+  const reg = saved.findings.find((f) => f.rule_id === 'watch.change_regressed');
+  assert.ok(reg, 'regressed finding injected into the run');
+  // drafts: wasted terms → autopilot negatives; regression → ask-first rollback card
+  const byRule = Object.fromEntries(saved.drafts.map((d) => [d.rule_id, d]));
+  assert.strictEqual(byRule['ads.wasted_terms'].mode, 'autopilot');
+  assert.strictEqual(byRule['watch.change_regressed'].mode, 'ask');
+  assert.strictEqual(byRule['watch.change_regressed'].reverts_change_id, 'ch1');
+});

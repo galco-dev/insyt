@@ -220,6 +220,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/plan') return json(res, 200, { plan: await dashStore.planOptions(t) });
           if (sub === '/first-fix') return json(res, 200, { fix: await dashStore.firstFix(t) });
           if (sub === '/journey') return json(res, 200, { journey: await dashStore.journey(t) });
+          // §4.5 "what have I told you never to touch?"
+          if (sub === '/exceptions') return json(res, 200, { exceptions: dashStore.exceptions ? await dashStore.exceptions(t) : [] });
           if (sub.startsWith('/report/')) {
             const r = await dashStore.reportData(t, sub.split('/')[2]);
             if (!r) return json(res, 404, { error: 'Report not found.' });
@@ -264,7 +266,14 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             return;
           }
           if (sub.startsWith('/approve/')) { await dashStore.approveChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
-          if (sub.startsWith('/revert/')) { await dashStore.requestRevert(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (sub.startsWith('/revert/')) {
+            const r = await dashStore.requestRevert(t, sub.split('/')[2]);
+            return json(res, 200, r && r.ok === false ? { ok: false, reason: r.reason } : { ok: true });
+          }
+          if (/^\/exceptions\/[^/]+\/clear$/.test(sub)) {
+            const ok = dashStore.clearException ? await dashStore.clearException(t, sub.split('/')[2]) : false;
+            return json(res, ok ? 200 : 404, { ok });
+          }
           if (sub === '/confirm') { await dashStore.confirmAssets(t); return json(res, 200, { ok: true }); }
         }
         return json(res, 404, { error: 'not found' });

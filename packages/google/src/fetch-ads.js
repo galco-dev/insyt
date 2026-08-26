@@ -47,7 +47,7 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
     search({ ...ctx, query: `
       SELECT campaign.id, campaign.name, campaign.status, campaign.bidding_strategy_type,
              campaign.target_cpa.target_cpa_micros, campaign.target_roas.target_roas,
-             campaign_budget.amount_micros, metrics.cost_micros, metrics.conversions,
+             campaign_budget.amount_micros, campaign_budget.resource_name, metrics.cost_micros, metrics.conversions,
              metrics.search_budget_lost_impression_share
       FROM campaign WHERE segments.date BETWEEN '${d30}' AND '${today}'` }),
     search({ ...ctx, query: `
@@ -81,6 +81,7 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
           target: c.targetCpa ? micros(c.targetCpa.targetCpaMicros) : (c.targetRoas ? Number(c.targetRoas.targetRoas) : undefined),
         },
         budget_daily_usd: r.campaignBudget ? micros(r.campaignBudget.amountMicros) : 0,
+        budget_resource: r.campaignBudget ? r.campaignBudget.resourceName || null : null, // ads.adjust_budget target
         budget_lost_is_pct: 0, spend_30d_usd: 0, conversions_30d: 0,
       });
     }
@@ -137,4 +138,36 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
   };
 }
 
-module.exports = { fetchAds, search, gaqlDate, micros, VERSION };
+
+/**
+ * Watch-window measurement (engine-spec §4.4): account + optional campaign
+ * totals since a date, the same-length window before it, and spend on a
+ * named set of search terms since the date. One call per watch close.
+ */
+async function fetchWindow({ auth, tenantId, customerId, developerToken, loginCustomerId, since, campaignIds = [], terms = [], now = Date.now() }) {
+  const ctx = { auth, tenantId, customerId, developerToken, loginCustomerId };
+  const today = gaqlDate(0, now);
+  const sinceMs = Date.parse(`${since.slice(0, 10)}T00:00:00Z`);
+  const days = Math.max(1, Math.round((Date.parse(`${today}T00:00:00Z`) - sinceMs) / 86_400_000));
+  const priorFrom = new Date(sinceMs - days * 86_400_000).toISOString().slice(0, 10);
+  const priorTo = new Date(sinceMs - 86_400_000).toISOString().slice(0, 10);
+  const sum = (rows) => rows.reduce((a, r) => ({ spend_usd: a.spend_usd + micros(r.metrics && r.metrics.costMicros), conversions: a.conversions + Number((r.metrics && r.metrics.conversions) || 0) }), { spend_usd: 0, conversions: 0 });
+  const cidList = campaignIds.map((c) => `'${String(c).replace(/\D/g, '')}'`).join(',');
+  const [cur, prior, camp, termRows] = await Promise.all([
+    search({ ...ctx, query: `SELECT metrics.cost_micros, metrics.conversions FROM customer WHERE segments.date BETWEEN '${since.slice(0, 10)}' AND '${today}'` }),
+    search({ ...ctx, query: `SELECT metrics.cost_micros, metrics.conversions FROM customer WHERE segments.date BETWEEN '${priorFrom}' AND '${priorTo}'` }),
+    cidList ? search({ ...ctx, query: `SELECT campaign.id, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${since.slice(0, 10)}' AND '${today}' AND campaign.id IN (${cidList})` }) : Promise.resolve(null),
+    terms.length ? search({ ...ctx, query: `SELECT search_term_view.search_term, metrics.cost_micros FROM search_term_view WHERE segments.date BETWEEN '${since.slice(0, 10)}' AND '${today}'` }) : Promise.resolve(null),
+  ]);
+  const termSet = new Set(terms.map((t) => String(t).toLowerCase()));
+  const blocked = termRows ? termRows.filter((r) => termSet.has(String(r.searchTermView.searchTerm).toLowerCase())).reduce((s, r) => s + micros(r.metrics && r.metrics.costMicros), 0) : null;
+  const c = sum(cur); const p = sum(prior); const cs = camp ? sum(camp) : null;
+  return {
+    days, spend_usd: Math.round(c.spend_usd * 100) / 100, conversions: Math.round(c.conversions * 100) / 100,
+    prior: { spend_usd: Math.round(p.spend_usd * 100) / 100, conversions: Math.round(p.conversions * 100) / 100 },
+    campaign: cs ? { spend_usd: Math.round(cs.spend_usd * 100) / 100, conversions: Math.round(cs.conversions * 100) / 100 } : null,
+    blocked_terms_spend_usd: blocked == null ? null : Math.round(blocked * 100) / 100,
+  };
+}
+
+module.exports = { fetchAds, fetchWindow, search, gaqlDate, micros, VERSION };
