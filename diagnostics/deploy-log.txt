@@ -1,31 +1,48 @@
-deploy transcript 2026-08-26T20:59:55Z
+deploy transcript 2026-08-26T21:23:53Z
 railway 5.44.1
 
-Failed to fetch: error decoding response body
 
-Caused by:
-    0: error decoding response body
-    1: expected value at line 1 column 1
+Workspace:       galco-dev's Projects
+
+Project:         insyt
+Project ID:      d6255fed-897f-4f9d-a600-08c2c62aca74
+
+Environment:     production
+Environment ID:  273a616e-7005-433f-894f-230d1ff5cda2
+
+Linked service
+
+    Service:         None
+
+────────────────────────────────────────────────
+
+All resources
+
+    Services
+      - web: ● Online · https://app.tryinsyt.com
+      - worker: ● Online · Building (2m)
+      - cron: ● Online
+      - poller: ● Online
+    Databases
+      - redis: ● Online · redis-volume
+
 
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=277a4f3b-4d14-4eb6-8e6a-576704f72777&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=acf8e014-95a5-4578-a6a3-7eb2e2b05e63&
 
 ===== worker =====
-Failed to fetch: error decoding response body
-
-Caused by:
-    0: error decoding response body
-    1: expected value at line 1 column 1
-UP FAILED rc=1
+Indexing...
+Uploading...
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=05e98815-bf6b-4700-8bfa-f94dffe067cb&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=67c2e7b4-f58e-4cba-b35f-07940045cbd8&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=f8da09d9-f26d-4f81-b52f-6ee1305dbc8d&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=75603031-90fa-49e3-aa43-18fc6440b1c5&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=1c28d31b-2215-4706-8fc2-90b9438388ed&
