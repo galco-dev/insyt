@@ -23,6 +23,19 @@ const store = {
   activeTenants: ops.activeTenants,
   connectionsForSweep: ops.connectionsForSweep,
   runExists: async (key) => !!(await db.select('runs', `idempotency_key=eq.${q(key)}&select=id`, { single: true })),
+  // Active tenants with at least one linked asset and no completed or in-flight run.
+  signupAuditCandidates: async () => {
+    const tenants = await db.select('tenants', 'select=id&status=eq.active');
+    const out = [];
+    for (const t of tenants) {
+      const linked = await db.select('assets', `tenant_id=eq.${q(t.id)}&linked=eq.true&select=id&limit=1`, { single: true });
+      if (!linked) continue;
+      const done = await db.select('runs', `tenant_id=eq.${q(t.id)}&status=in.(complete,degraded,queued,running)&select=id&limit=1`, { single: true });
+      if (done) continue;
+      out.push(t);
+    }
+    return out;
+  },
   insertRun: async (row) => { const [r] = await db.insert('runs', [row]); return r; },
   subscriptionFor: async (tenantId) => db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status&limit=1`, { single: true }),
   lastDeepRunAt: async (tenantId) => {
@@ -65,7 +78,7 @@ async function learningTick() {
   const done = await db.select('learning_reviews', `month=eq.${month}&select=month`, { single: true }).catch(() => null);
   if (done) return;
   const r = await runLearningJob({ db, month });
-  console.log(`learning job ${month}: ${r.proposals.length} tunings proposed, ${r.backlog.length} backlog items, ${r.carried.length} carried, ${r.rejected.length} refused, ${r.incidents.length} telemetry incidents`);
+  console.log(`learning job ${month}: ${r.proposals.length} tunings proposed, ${r.backlog.length} backlog items, ${r.carried.length} carried, ${r.rejected.length} refused, ​${r.incidents.length} telemetry incidents`);
 }
 setInterval(() => learningTick().catch((e) => console.error('learning job failed:', e.message)), 6 * 60 * 60_000);
 setTimeout(() => learningTick().catch((e) => console.error('learning job failed:', e.message)), 120_000);

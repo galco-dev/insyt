@@ -1,1 +1,1 @@
-deploy request: worker stages receive the store (snapshot/rules/report never had a db) — 2026-08-27T11:32:26Z
+deploy request: cron queues the first audit for confirmed tenants with no completed run (3 attempts/day) — 2026-08-27T11:47:21Z
