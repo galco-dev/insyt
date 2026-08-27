@@ -1,4 +1,4 @@
-deploy transcript 2026-08-27T06:16:21Z
+deploy transcript 2026-08-27T06:35:19Z
 railway 5.45.0
 
 
@@ -30,19 +30,19 @@ All resources
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=e287b753-204a-4c4b-81e5-e190d6158158&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=a00cd25c-b307-460d-988d-828ad2989877&
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=d24a23a9-d713-4ec0-8535-e934eddb0df4&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=25581748-8a96-4975-a5bf-349b4919a392&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=95843229-1014-42e0-87ad-347922e29ade&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=818492ed-2763-4798-9715-888f4630d7fe&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=144db1f1-df4c-41ae-85b7-7c9de00f4e3f&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=b1b1f6e4-87f7-4eb6-ac30-9fdf4269d80b&
