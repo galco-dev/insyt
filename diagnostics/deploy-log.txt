@@ -1,5 +1,5 @@
-deploy transcript 2026-08-27T11:03:51Z
-railway 5.45.1
+deploy transcript 2026-08-27T11:33:21Z
+railway 5.45.2
 
 
 Workspace:       galco-dev's Projects
@@ -30,19 +30,19 @@ All resources
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=6e2eea5c-3931-4e15-ac34-9b6c6bfd68ed&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=262f5a1c-6222-48a7-a9e6-a69c732cacf7&
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=c055545d-33be-4661-8615-44ecaad332b1&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=a7b1ca87-655a-4278-b681-e85dae67479e&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=3c1fd9c4-b7f7-4828-8116-f7f60c48c1d0&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=34f56d3a-645f-4aa5-9e55-2d3ace10c55e&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=ddf6f148-1670-4266-a76c-d311cb602096&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=efd30a73-fd3b-48be-938d-cf64710a98c4&
