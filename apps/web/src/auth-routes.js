@@ -106,7 +106,9 @@ async function handleGoogleAuth(req, res, u, session, deps) {
   }
 
   if (req.method === 'GET' && path === '/auth/google/callback') {
-    if (u.searchParams.get('error')) return redirect('/app?connect=declined');
+    // Declined consent: a signed-in user lands on the dashboard with a note; a
+    // signed-out visitor goes back to the start page (not a sign-in loop).
+    if (u.searchParams.get('error')) return redirect(session ? '/app?connect=declined' : '/app/start?declined=1');
     const st = readState(u.searchParams.get('state'), sessionSecret, now());
     if (!st) return fail('This connection link expired — start again from your dashboard.');
     const code = u.searchParams.get('code');

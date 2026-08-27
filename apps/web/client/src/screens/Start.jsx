@@ -42,6 +42,7 @@ export default function Start() {
     const params = new URLSearchParams(window.location.search);
     const fromHero = params.get('url');
     const resume = params.get('crawl');
+    if (params.get('declined')) setError('No problem - nothing was connected. Paste your address whenever you want to try again.');
     if (resume) {
       // An in-flight or finished check (old /check/:id links): pick it up,
       // never ask for the address again.
