@@ -15,7 +15,7 @@ const STAGES = [
 ];
 
 const DEMO_STRIP = {
-  headline: 'Found: Google tracking installed, 2 issues visible from the outside',
+  headline: '2 things worth fixing, visible from the outside',
   items: [
     'Google tracking installed',
     'Outdated tracking still running - it stopped collecting data in 2023',
@@ -93,17 +93,47 @@ export default function Start() {
     }
   }
 
+  const site = url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+
   return (
     <div className="mx-auto max-w-m2 px-5 pb-24">
       <section className="pt-14 text-center">
-        <MonoLabel>Free check · 3 minutes · no email needed</MonoLabel>
-        <h1 className="mx-auto mt-3 max-w-[26ch] text-h1 tracking-tight">
-          Your Google Ads, watched and fixed every week.
-        </h1>
-        <p className="mx-auto mt-3 max-w-[48ch] text-body text-neutral-900">
-          Paste your website. We read it like a customer would, check your tracking from the outside, and show you
-          what we find - before you sign in to anything.
-        </p>
+        {state === 'idle' && (
+          <>
+            <MonoLabel>Free check · 3 minutes · no email needed</MonoLabel>
+            <h1 className="mx-auto mt-3 max-w-[26ch] text-h1 tracking-tight">
+              Your Google Ads, watched and fixed every week.
+            </h1>
+            <p className="mx-auto mt-3 max-w-[48ch] text-body text-neutral-900">
+              Paste your website. We read it like a customer would, check your tracking from the outside, and show you
+              what we find - before you sign in to anything.
+            </p>
+          </>
+        )}
+        {state === 'crawling' && (
+          <>
+            <MonoLabel>Free check · step 1 of 3</MonoLabel>
+            <h1 className="mx-auto mt-3 max-w-[26ch] text-h1 tracking-tight">Checking {site || 'your website'}</h1>
+            <p className="mx-auto mt-3 max-w-[48ch] text-body text-neutral-900">
+              Reading your site the way a customer would. Nothing to do here - your results appear on this page.
+            </p>
+          </>
+        )}
+        {state === 'done' && (
+          <>
+            <MonoLabel>Free check · step 2 of 3</MonoLabel>
+            <h1 className="mx-auto mt-3 max-w-[26ch] text-h1 tracking-tight">Here's what we found on {site || 'your website'}</h1>
+            <p className="mx-auto mt-3 max-w-[48ch] text-body text-neutral-900">
+              This is only what any visitor can see. The full check reads your Google Ads and tracking from the inside.
+            </p>
+          </>
+        )}
+        {state === 'failed' && (
+          <>
+            <MonoLabel>Free check</MonoLabel>
+            <h1 className="mx-auto mt-3 max-w-[26ch] text-h1 tracking-tight">We couldn't reach {site || 'that website'}</h1>
+          </>
+        )}
       </section>
 
       {state === 'idle' && (
@@ -197,8 +227,9 @@ export default function Start() {
 
       {state === 'failed' && (
         <div className="mx-auto mt-8 max-w-s2">
-          <ErrorNote message="We couldn't reach that website. Check the address and try again - or try without www." />
-          <Button variant="secondary" className="mt-4 w-full" onClick={() => setState('idle')}>Try again</Button>
+          <ErrorNote message="Check the address and try again - or try without www. If your site is behind a password or a bot-check, the free check can't read it, but the full check still can." />
+          <Button variant="secondary" className="mt-4 w-full" onClick={() => setState('idle')}>Try another address</Button>
+          <Button href="/auth/google/start?step=discovery" className="mt-2 w-full">Skip ahead - run the full check with Google</Button>
         </div>
       )}
     </div>
