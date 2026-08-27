@@ -9,7 +9,7 @@
 
 const GTM = 'https://tagmanager.googleapis.com/tagmanager/v2';
 const ADMIN = 'https://analyticsadmin.googleapis.com/v1beta';
-const ADS_VERSION = 'v18';
+const { VERSION: ADS_VERSION } = require('./fetch-ads');
 
 function createListClients({ accessToken, developerToken, loginCustomerId, fetchImpl = fetch }) {
   async function api(url, init = {}) {

@@ -222,6 +222,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/journey') return json(res, 200, { journey: await dashStore.journey(t) });
           // §4.5 "what have I told you never to touch?"
           if (sub === '/exceptions') return json(res, 200, { exceptions: dashStore.exceptions ? await dashStore.exceptions(t) : [] });
+          // §5 consumer door + §5.1 setup checklist
+          if (sub === '/drafts') return json(res, 200, { drafts: dashStore.drafts ? await dashStore.drafts(t) : [] });
+          if (sub === '/setup') return json(res, 200, dashStore.setupSteps ? await dashStore.setupSteps(t) : { steps: [] });
           if (sub.startsWith('/report/')) {
             const r = await dashStore.reportData(t, sub.split('/')[2]);
             if (!r) return json(res, 404, { error: 'Report not found.' });
@@ -233,7 +236,13 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           // request-a-change composer. Both write through the store so demo
           // and tests can stub them; both stay no-ops for stores without the
           // methods rather than erroring the whole API.
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub.startsWith('/dismiss/')) {
+          if (sub === '/setup/provision') {
+            try {
+              const r = dashStore.provisionSetup ? await dashStore.provisionSetup(t) : { error: 'Not available yet.' };
+              return json(res, r.error ? 501 : 200, r);
+            } catch (e) { return json(res, 500, { error: 'We could not finish the setup automatically. We logged it and will follow up.' }); }
+          }
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -248,6 +257,20 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                 if (sub.startsWith('/dismiss/')) {
                   await dashStore.dismissChange(t, sub.split('/')[2], { reason: parsed.reason || null, expandedFirst: !!parsed.expanded_first });
                   return json(res, 200, { ok: true });
+                }
+                if (sub === '/drafts') {
+                  if (!dashStore.createDraft) return json(res, 501, { error: 'Not available yet.' });
+                  const draft = await dashStore.createDraft(t, { template: parsed.template || 'generic', inputs: parsed.inputs || {} });
+                  return json(res, 200, { ok: true, draft });
+                }
+                {
+                  const m = /^\/drafts\/([^/]+)\/(approve|enable|dismiss|edit)$/.exec(sub);
+                  if (m) {
+                    const r = dashStore.draftAction ? await dashStore.draftAction(t, m[1], m[2], parsed) : null;
+                    if (!r) return json(res, 404, { error: 'Unknown draft.' });
+                    if (r.error) return json(res, 409, { error: r.error, ...(r.steps ? { steps: r.steps } : {}) });
+                    return json(res, 200, { ok: true, ...r });
+                  }
                 }
                 if (sub === '/autopilot') {
                   if (!dashStore.setAutopilot) return json(res, 501, { error: 'Not available yet.' });
@@ -338,12 +361,14 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             return json(res, 200, { ok: true, draft: row });
           }
           {
-            const m = /^\/drafts\/([^/]+)\/(approve|enable|dismiss)$/.exec(sub);
+            const m = /^\/drafts\/([^/]+)\/(approve|enable|dismiss|edit)$/.exec(sub);
             if (m) {
-              const r = await agencyStore.draftAction(ag, seat.id, m[1], m[2]);
+              const r = m[2] === 'edit'
+                ? await agencyStore.editDraft(ag, seat.id, m[1], parsed.ad_groups || [])
+                : await agencyStore.draftAction(ag, seat.id, m[1], m[2]);
               if (!r) return json(res, 404, { error: 'Unknown draft.' });
-              if (r.error) return json(res, 409, { error: r.error });
-              return json(res, 200, { ok: true, status: r.status });
+              if (r.error) return json(res, 409, { error: r.error, ...(r.steps ? { steps: r.steps } : {}) });
+              return json(res, 200, { ok: true, ...r });
             }
           }
           if (/^\/report\/[^/]+\/approve$/.test(sub)) { await agencyStore.approveReport(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }

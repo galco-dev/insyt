@@ -22,6 +22,14 @@ function workerStore(db) {
     },
     priorFindings: async (tenantId) => db.select('findings',
       `select=rule_id,entity_key:payload->>entity_key,first_seen_run_id,status&tenant_id=eq.${q(tenantId)}&status=in.(open,approved,suspect)`),
+    // §5.1 journey/setup input for journeyB.setup_incomplete
+    setupState: async (tenantId) => {
+      const [j, assets] = await Promise.all([
+        db.select('journey_state', `tenant_id=eq.${q(tenantId)}&select=journey,gates&limit=1`, { single: true }).catch(() => null),
+        db.select('assets', `tenant_id=eq.${q(tenantId)}&linked=eq.true&select=kind`).catch(() => []),
+      ]);
+      return { journey: j ? j.journey : 'A', gates: (j && j.gates) || { tag: true, billing: true, approval: true }, linked: (assets || []).map((a) => a.kind) };
+    },
     // ---- §6.1 diff_pass
     openFindings: async (tenantId) => db.select('findings',
       `select=id,rule_id,entity_key:payload->>entity_key,status,title,first_seen_run_id,first_seen_at,created_at&tenant_id=eq.${q(tenantId)}&status=in.(open,approved,suspect)`).catch(() => []),
@@ -305,11 +313,33 @@ function opsStore(db) {
 // ---------------------------------------------------------------- dashboard (§11 screens)
 // Consumed by apps/web server routes. healthScore comes from the rules
 // package so the dial always matches the report's number.
-function dashStore(db) {
+function dashStore(db, deps = {}) {
   const { healthScore } = require('../../rules/src/engine');
   const { createTelemetry } = require('../../shared/src/telemetry');
+  const { createDraftService } = require('../../campaigns/src/service');
+  const { renderPlain } = require('../../campaigns/src/builder');
   const tel = createTelemetry({ db });
+  const draftsSvc = createDraftService({ db, google: deps.google || null, model: deps.model || null, modelId: deps.modelId || null });
+  const plainDraft = (d) => ({ id: d.id, status: d.status, template: d.template, plain: renderPlain(d.spec), gates: d.spec.gates || null, budget_daily_usd: d.spec.budget_daily_usd, name: d.spec.name, ad_groups: d.spec.ad_groups.map((g) => ({ name: g.name, rsa: g.rsa })), created_at: d.created_at });
   return {
+    // ---- §5 consumer door: "your ad" drafts in the customer register.
+    drafts: async (tenantId) => (await db.select('campaign_drafts', `tenant_id=eq.${q(tenantId)}&agency_id=is.null&status=neq.dismissed&select=*&order=created_at.desc&limit=20`).catch(() => [])).map(plainDraft),
+    createDraft: async (tenantId, { template, inputs }) => plainDraft(await draftsSvc.create({ tenantId, template, inputs: inputs || {} })),
+    draftAction: async (tenantId, draftId, action, body = {}) => {
+      if (action === 'edit') return draftsSvc.edit({ tenantId, draftId, adGroups: body.ad_groups || [] });
+      if (action === 'approve') return draftsSvc.approve({ tenantId, draftId, actor: 'user' });
+      if (action === 'enable') return draftsSvc.enable({ tenantId, draftId, actor: 'user' });
+      if (action === 'dismiss') return draftsSvc.dismiss({ tenantId, draftId });
+      return { error: `Unknown action ${action}.` };
+    },
+    setupSteps: async (tenantId) => draftsSvc.gatesFor(tenantId),
+    // §5.1: one tap → we create what is missing (GA4 property, GTM container).
+    provisionSetup: async (tenantId) => {
+      if (!deps.provisioner) return { error: 'Not available yet.' };
+      const r = await deps.provisioner.provision(tenantId);
+      await tel.event({ tenantId, name: 'setup.provisioned', props: { ga4: !!r.ga4, gtm: !!r.gtm, guides: r.guides.length }, source: 'server' });
+      return r;
+    },
     // §11 telemetry: dashboard interactions land in `events`. Best-effort.
     trackEvent: (tenantId, name, props, sessionKey) => tel.event({ tenantId, name, props, source: 'app', sessionKey }),
     // Consumer spend card (§6.4). Month-to-date from spend_daily snapshots;
@@ -555,9 +585,11 @@ function dashStore(db) {
 // ---------------------------------------------------------------- agency (master §13)
 // Binding: no auto-apply, no auto-publish. Every mutation logs to
 // agency_audit_log with the acting seat — the agency's own dispute record.
-function agencyStore(db) {
+function agencyStore(db, deps = {}) {
   const { healthScore } = require('../../rules/src/engine');
   const { pace, sortPacing, targetStatus } = require('../../pacing/src/pacing');
+  const { createDraftService } = require('../../campaigns/src/service');
+  const drafts = createDraftService({ db, google: deps.google || null, model: deps.model || null, modelId: deps.modelId || null });
   const log = async (agencyId, seatId, event, detail) => {
     await db.insert('agency_audit_log', [{ agency_id: agencyId, seat_id: seatId, event, detail: detail || {} }], { returning: false }).catch(() => {});
   };
@@ -671,58 +703,36 @@ function agencyStore(db) {
       }));
     },
     createDraft: async (agencyId, seatId, { account_id, template, inputs, source_finding }) => {
-      const { buildCampaignSpec } = require('../../campaigns/src/builder');
       const acc = await db.select('agency_accounts',
         `id=eq.${q(account_id)}&agency_id=eq.${q(agencyId)}&select=tenant_id,display_name`, { single: true });
       if (!acc) return null;
-      const existing = await db.select('campaigns',
-        `tenant_id=eq.${q(acc.tenant_id)}&select=name`).catch(() => []);
-      const spec = buildCampaignSpec({
-        template,
-        business: (inputs && inputs.business) || acc.display_name,
-        services: (inputs && inputs.services) || [],
-        location: (inputs && inputs.location) || null,
-        budget_daily_usd: inputs && inputs.budget_daily_usd,
-        conversion_goal: (inputs && inputs.conversion_goal) || null,
-        existing_campaign_names: (existing || []).map((c) => c.name),
-      });
-      const [row] = await db.insert('campaign_drafts', [{
-        tenant_id: acc.tenant_id, agency_id: agencyId, created_by: seatId,
-        source_finding: source_finding || null, template: spec.template, spec,
-      }]);
-      await log(agencyId, seatId, 'draft_created', { draft_id: row.id, account_id, template: spec.template, name: spec.name });
+      const row = await drafts.create({ tenantId: acc.tenant_id, agencyId, seatId, template, inputs: { ...(inputs || {}), business: (inputs && inputs.business) || acc.display_name }, sourceFinding: source_finding || null });
+      await log(agencyId, seatId, 'draft_created', { draft_id: row.id, account_id, template: row.spec.template, name: row.spec.name, copy_source: row.spec.copy && row.spec.copy.source });
       return { ...row, account: acc.display_name, account_id };
+    },
+    // Edit-before-approve (§5, §11.3): the diff vs the drafted copy is the label.
+    editDraft: async (agencyId, seatId, draftId, adGroups) => {
+      const d = await db.select('campaign_drafts', `id=eq.${q(draftId)}&agency_id=eq.${q(agencyId)}&select=tenant_id`, { single: true });
+      if (!d) return null;
+      const r = await drafts.edit({ tenantId: d.tenant_id, draftId, adGroups });
+      if (r && r.ok) await log(agencyId, seatId, 'draft_edited', { draft_id: draftId, groups: (adGroups || []).map((g) => g.name) });
+      return r;
     },
     draftAction: async (agencyId, seatId, draftId, action) => {
       const d = await db.select('campaign_drafts',
-        `id=eq.${q(draftId)}&agency_id=eq.${q(agencyId)}&select=*`, { single: true });
+        `id=eq.${q(draftId)}&agency_id=eq.${q(agencyId)}&select=tenant_id,spec`, { single: true });
       if (!d) return null;
-      const allowed = { approve: ['draft'], enable: ['created_paused'], dismiss: ['draft', 'approved', 'created_paused'] };
-      if (!allowed[action] || !allowed[action].includes(d.status)) return { error: `Cannot ${action} a ${d.status} draft.` };
-      if (action === 'approve') {
-        // Executor path (credential-gated) creates the real campaign PAUSED;
-        // until then the draft is queued and the snapshot row is provisional.
-        const placeholder = `draft-${String(draftId).slice(0, 8)}`;
-        await db.update('campaign_drafts', `id=eq.${q(draftId)}`, { status: 'created_paused', google_campaign_id: placeholder, updated_at: new Date().toISOString() });
-        await db.insert('campaigns', [{
-          tenant_id: d.tenant_id, google_campaign_id: placeholder,
-          name: d.spec.name, status: 'paused', channel: d.spec.channel,
-          budget_daily_usd: d.spec.budget_daily_usd, bidding: d.spec.bidding,
-        }], { returning: false }).catch(() => {});
-        await log(agencyId, seatId, 'draft_approved_created_paused', { draft_id: draftId, name: d.spec.name });
-        return { status: 'created_paused' };
+      const actor = 'user';
+      const r = action === 'approve' ? await drafts.approve({ tenantId: d.tenant_id, draftId, actor, agencyId, seatId })
+        : action === 'enable' ? await drafts.enable({ tenantId: d.tenant_id, draftId, actor, agencyId, seatId })
+        : action === 'dismiss' ? await drafts.dismiss({ tenantId: d.tenant_id, draftId })
+        : { error: `Unknown action ${action}.` };
+      if (!r) return null;
+      if (!r.error) {
+        const ev = { approve: r.status === 'staged' ? 'draft_staged' : 'draft_approved_created_paused', enable: 'draft_enabled', dismiss: 'draft_dismissed' }[action];
+        await log(agencyId, seatId, ev, { draft_id: draftId, name: d.spec.name, ...(r.campaign_id ? { campaign_id: r.campaign_id } : {}), ...(r.blockers ? { blockers: r.blockers } : {}) });
       }
-      if (action === 'enable') {
-        await db.update('campaign_drafts', `id=eq.${q(draftId)}`, { status: 'enabled', updated_at: new Date().toISOString() });
-        if (d.google_campaign_id) {
-          await db.update('campaigns', `tenant_id=eq.${q(d.tenant_id)}&google_campaign_id=eq.${q(d.google_campaign_id)}`, { status: 'enabled' }).catch(() => {});
-        }
-        await log(agencyId, seatId, 'draft_enabled', { draft_id: draftId, name: d.spec.name });
-        return { status: 'enabled' };
-      }
-      await db.update('campaign_drafts', `id=eq.${q(draftId)}`, { status: 'dismissed', updated_at: new Date().toISOString() });
-      await log(agencyId, seatId, 'draft_dismissed', { draft_id: draftId, name: d.spec.name });
-      return { status: 'dismissed' };
+      return r;
     },
 
     // ---- P0: budget pacing + performance targets (agency's OWN operating

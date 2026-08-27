@@ -30,6 +30,7 @@ const { computeVolumeDrops } = require('../../../packages/rules/src/layer3-fire'
 const { assembleEnvelope } = require('../../../packages/report/src/envelope');
 const { assembleDeep } = require('../../../packages/report/src/deep');
 const l6 = require('../../../packages/rules/src/layer6-deep');
+const lj = require('../../../packages/rules/src/journey');
 const { narrateFinding, narrateSlots } = require('../../../packages/report/src/narration');
 const { draftChanges } = require('../../../packages/registry/src/drafts');
 const { diffFindings, sinceLastWeekLine } = require('../../../packages/rules/src/diff');
@@ -38,7 +39,7 @@ const { byTool: registryByTool } = require('../../../packages/registry/src/regis
 const crypto = require('node:crypto');
 const { renderReport } = require('../../../packages/report/src/render');
 
-const ALL_RULES = [...l1.rules, ...l2.rules, ...l3.rules, ...l4.rules, ...l4rsa.rules, ...l5.rules, ...l5urls.rules, ...l6.rules];
+const ALL_RULES = [...l1.rules, ...l2.rules, ...l3.rules, ...l4.rules, ...l4rsa.rules, ...l5.rules, ...l5urls.rules, ...l6.rules, ...lj.rules];
 
 function buildStages({ google, crawler, model, store }) {
   return [
@@ -109,6 +110,8 @@ function buildStages({ google, crawler, model, store }) {
             eventVolumeDrops, silentGa4Events,
             gtmPublishDates: (ctx.gtm && ctx.gtm.publish_dates) || [],
             previouslyVerified: !!ctx.run.tag_previously_verified,
+            // §5.1 setup checklist input (journey + linked assets), when the store provides it
+            setup: store.setupState ? await store.setupState(ctx.run.tenant_id).catch(() => null) : null,
             now,
           },
           priorFindings: await store.priorFindings(ctx.run.tenant_id),

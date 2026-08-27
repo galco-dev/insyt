@@ -21,17 +21,26 @@ function createTransports({ auth, tenantId, developerToken, loginCustomerId, cus
     return auth.api(tenantId, `${GTM}/${gtmPath(p)}/tags/${p.tag_id}`, { method: 'PUT', body: JSON.stringify(tag) });
   }
 
-  async function adsMutate(resourcePath, operations) {
+  const adsHeaders = () => ({
+    'developer-token': developerToken,
+    ...(loginCustomerId ? { 'login-customer-id': String(loginCustomerId).replace(/-/g, '') } : {}),
+  });
+  // resourcePath 'googleAds' = the cross-resource endpoint (MutateOperation
+  // list, atomic by default) used by campaign creation; anything else is a
+  // per-resource service.
+  async function adsMutate(resourcePath, operations, { atomic = false } = {}) {
     if (!developerToken) throw new Error('ads writes not configured (developer token pending)');
     const cid = String(customerId).replace(/-/g, '');
+    const body = resourcePath === 'googleAds'
+      ? { mutateOperations: operations, partialFailure: !atomic }
+      : { operations };
     return auth.api(tenantId, `https://googleads.googleapis.com/${ADS_VERSION}/customers/${cid}/${resourcePath}:mutate`, {
-      method: 'POST',
-      headers: {
-        'developer-token': developerToken,
-        ...(loginCustomerId ? { 'login-customer-id': String(loginCustomerId).replace(/-/g, '') } : {}),
-      },
-      body: JSON.stringify({ operations }),
+      method: 'POST', headers: adsHeaders(), body: JSON.stringify(body),
     });
+  }
+  async function adsSearch(query) {
+    const { search } = require('../../google/src/fetch-ads');
+    return search({ auth, tenantId, customerId, developerToken, loginCustomerId, query });
   }
 
   const cid = () => String(customerId).replace(/-/g, '');
@@ -164,7 +173,13 @@ function createTransports({ auth, tenantId, developerToken, loginCustomerId, cus
       }]);
       return { before: { primary: false }, after: { primary: true } };
     },
-    'ads.create_campaign_draft': async () => { throw new Error('campaign creation lands with Journey B build phase'); },
+    // Campaign creation — the biggest possible change. Always PAUSED; the
+    // executor returns every created resource so enable/teardown are exact.
+    'ads.create_campaign_draft': async (p) => {
+      const { createCampaignPaused } = require('../../campaigns/src/executor');
+      const r = await createCampaignPaused({ spec: p.spec, adsMutate, adsSearch, customerId, finalUrl: p.final_url });
+      return { before: { campaign: null }, after: { campaign_id: r.campaign_id, status: 'paused', resources: r.resources, geo_target_ids: r.geo_target_ids, warnings: r.warnings } };
+    },
     'ads.unpause_launch': async (p) => {
       const after = await adsMutate('campaigns', [{
         update: { resourceName: `customers/${cid()}/campaigns/${p.campaign_id}`, status: 'ENABLED' }, updateMask: 'status',

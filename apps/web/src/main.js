@@ -83,6 +83,54 @@ const googleAuth = (googleClientId && googleClientSecret) ? {
   },
 } : null;
 
+// Campaign executor deps (engine-spec §5): live Ads transports per tenant
+// and the Fable copy path. Both optional — without them drafts stay
+// provisional and copy comes from the deterministic builder.
+const { createGoogleAuth } = require('../../../packages/google/src/client');
+const { fetchAds } = require('../../../packages/google/src/fetch-ads');
+const { createTransports } = require('../../../packages/tools/src/transports');
+const { MODEL_ID } = require('../../../packages/shared/src/model-config');
+const qd = (s) => encodeURIComponent(s);
+let draftGoogle = null;
+if (googleAuth && googleAuth.config.developerToken) {
+  const auth = createGoogleAuth({ db, clientId: googleClientId, clientSecret: googleClientSecret });
+  const { developerToken, loginCustomerId } = googleAuth.config;
+  const adsAsset = async (tenantId) => db.select('assets', `tenant_id=eq.${qd(tenantId)}&kind=eq.ads_account&linked=eq.true&select=external_id&limit=1`, { single: true });
+  draftGoogle = {
+    fetchAds: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId }); },
+    transportsFor: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return createTransports({ auth, tenantId, developerToken, loginCustomerId, customerId: a.external_id }); },
+  };
+}
+const draftModel = process.env.ANTHROPIC_API_KEY ? {
+  generate: async ({ system, prompt, tenantId = null }) => {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: MODEL_ID, max_tokens: 900, system, messages: [{ role: 'user', content: prompt }] }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(`anthropic: ${res.status}`);
+    const usage = body.usage || {};
+    if (tenantId) {
+      const { createTelemetry, modelCost } = require('../../../packages/shared/src/telemetry');
+      const { MODEL_PRICE_IN_PER_MTOK, MODEL_PRICE_OUT_PER_MTOK } = require('../../../packages/shared/src/model-config');
+      createTelemetry({ db }).modelUsage({ tenantId, inputTokens: Number(usage.input_tokens || 0), outputTokens: Number(usage.output_tokens || 0), costUsd: modelCost({ inputTokens: Number(usage.input_tokens || 0), outputTokens: Number(usage.output_tokens || 0), priceIn: MODEL_PRICE_IN_PER_MTOK, priceOut: MODEL_PRICE_OUT_PER_MTOK }) });
+    }
+    return body.content[0].text;
+  },
+} : null;
+// §5.1: Insyt creates the missing GA4 property / GTM container on the write grant.
+const provisioner = googleAuth ? {
+  provision: async (tenantId) => {
+    const { provisionMissing } = require('../../../packages/google/src/provision');
+    const auth = createGoogleAuth({ db, clientId: googleClientId, clientSecret: googleClientSecret });
+    const t = await db.select('tenants', `id=eq.${qd(tenantId)}&select=name,website_url`, { single: true });
+    if (!t || !t.website_url) throw new Error('tenant has no website on file');
+    return provisionMissing({ auth, db, tenantId, websiteUrl: t.website_url, displayName: t.name || t.website_url });
+  },
+} : null;
+const draftDeps = { google: draftGoogle, model: draftModel, modelId: MODEL_ID, provisioner };
+
 // Stripe checkout deps (§10) — active once STRIPE_SECRET_KEY exists.
 let checkout = null;
 if (process.env.STRIPE_SECRET_KEY) {
@@ -118,8 +166,8 @@ const app = createApp({
   store,
   crawler: { discoveryCrawl },
   opsStore: opsStore(db),
-  dashStore: dashStore(db),
-  agencyStore: agencyStore(db),
+  dashStore: dashStore(db, draftDeps),
+  agencyStore: agencyStore(db, draftDeps),
   queue,
   opsToken: process.env.OPS_TOKEN || null,
   sessionSecret: required('SESSION_SECRET'),

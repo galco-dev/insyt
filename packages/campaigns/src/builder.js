@@ -76,6 +76,8 @@ function serviceAdGroup({ business, service, location }) {
  *   budget_daily_usd: number,
  *   conversion_goal: 'booking_confirmed',  // the key event bidding steers to
  *   existing_campaign_names: [ ... ],      // collision-safe naming
+ *   final_url: 'https://…',                // landing page (tenant site by default)
+ *   sourced_keywords: [{ text, match }],   // optional: sourceKeywords() output replaces the generic seeds
  * }
  */
 function buildCampaignSpec(input) {
@@ -117,6 +119,13 @@ function buildCampaignSpec(input) {
     const list = services.length ? services : ['Main service'];
     name = `${list[0]}${location ? ` — ${location}` : ''}`;
     adGroups = list.map((service) => serviceAdGroup({ business, service, location }));
+    // Sourced keywords (§5): winners land in the first ad group as exact
+    // match; service seeds stay with their groups.
+    if (Array.isArray(input.sourced_keywords) && input.sourced_keywords.length && adGroups[0]) {
+      const winners = input.sourced_keywords.filter((k) => k.source === 'winner');
+      const seen = new Set(adGroups[0].keywords.map((k) => k.text));
+      for (const w of winners) if (!seen.has(w.text)) adGroups[0].keywords.push({ text: w.text, match: w.match });
+    }
   }
 
   // Collision-safe naming against the live snapshot.
@@ -131,6 +140,7 @@ function buildCampaignSpec(input) {
     budget_daily_usd: budget,
     bidding,
     conversion_goal: input.conversion_goal || null,
+    final_url: input.final_url || null,
     settings: {
       geo: location || 'account default',
       language: 'account default',
@@ -214,4 +224,45 @@ function renderPlain(spec) {
   };
 }
 
-module.exports = { buildCampaignSpec, validateSpec, renderBrief, renderPlain, TEMPLATES };
+/**
+ * Keyword sourcing — engine-spec §5. Deterministic, inspectable:
+ *   seed (services × location, brand terms)
+ *   ∪ search-term winners (conversions > 0 and CPA under target / account median)
+ *   − standing exceptions − known negatives
+ * Returns { keywords: [{ text, match, source }], excluded: [{ text, reason }] }.
+ */
+function sourceKeywords({ business, services = [], location = null, searchTerms = [], cpaTargetUsd = null, accountMedianCpaUsd = null, exceptions = [], negatives = [] }) {
+  const kw = (t, match, source) => ({ text: match === 'exact' ? `[${t}]` : match === 'phrase' ? `"${t}"` : t, match, source });
+  const out = []; const excluded = [];
+  const seen = new Set();
+  const push = (t, match, source) => {
+    const key = `${t.toLowerCase()}::${match}`;
+    if (seen.has(key)) return;
+    seen.add(key); out.push(kw(t.toLowerCase(), match, source));
+  };
+  const blocked = new Set([...(exceptions || []), ...(negatives || [])].map((n) => String(n).toLowerCase()));
+  const isBlocked = (t) => [...blocked].some((b) => t.toLowerCase().includes(b));
+
+  if (business) { push(slug(business), 'phrase', 'brand'); push(slug(business), 'exact', 'brand'); }
+  for (const s of services.map(slug).filter(Boolean)) {
+    push(`${s}${location ? ` ${slug(location)}` : ''}`, 'phrase', 'service');
+    push(`${s} near me`, 'phrase', 'service');
+  }
+  const target = cpaTargetUsd || accountMedianCpaUsd || null;
+  for (const t of searchTerms) {
+    const conv = t.conversions_90d || 0; const spend = t.spend_90d_usd || 0;
+    if (conv <= 0) continue;
+    const cpa = spend / conv;
+    if (target != null && cpa > target) { excluded.push({ text: t.term, reason: `cost per result $${Math.round(cpa)} above target $${Math.round(target)}` }); continue; }
+    if (isBlocked(t.term)) { excluded.push({ text: t.term, reason: 'matches a standing exception or negative' }); continue; }
+    push(t.term, 'exact', 'winner');
+  }
+  const final = out.filter((k) => {
+    const bare = k.text.replace(/^\[|\]$|^"|"$/g, '');
+    if (isBlocked(bare)) { excluded.push({ text: bare, reason: 'matches a standing exception or negative' }); return false; }
+    return true;
+  });
+  return { keywords: final, excluded };
+}
+
+module.exports = { buildCampaignSpec, validateSpec, renderBrief, renderPlain, sourceKeywords, TEMPLATES };

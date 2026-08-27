@@ -163,6 +163,17 @@ function customerDemo(path, method, body) {
       base.settings.autopilot = { ...s.autopilot };
       return base;
     }
+    if (p === '/api/app/drafts') {
+      if (!s.drafts) {
+        s.drafts = [{ id: 'd1', status: 'draft', template: 'generic', name: 'Gel nails - Dubai', budget_daily_usd: 25,
+          plain: { headline: 'Your ad: Gel nails - Dubai', who_sees_it: 'This shows to people searching for what you offer near Dubai.', what_it_says: '', what_you_pay: 'Up to $25 a day. You only pay when someone clicks. It starts switched off - nothing spends until you say go.', safety_line: 'We checked your setup first, so every click gets counted correctly from day one.' },
+          gates: { ok: true, blockers: [], steps: [] },
+          ad_groups: [{ name: 'Gel nails', rsa: { headlines: ['Gel Nails in Dubai', 'Book Gel Nails Today', 'The Nail DXB - Gel Nails', 'See Prices & Availability', 'Rated by Real Customers', 'Fast, Friendly Service', 'Easy Online Booking', 'Get a Quote in Minutes'], descriptions: ['Looking for gel nails in Dubai? The Nail DXB makes booking simple - clear prices, real reviews.', 'Book online in under a minute, or message us with any question.', 'Local, reliable and rated by customers like you.'], pinned: {} } }],
+          created_at: '2026-08-26T09:00:00Z' }];
+      }
+      return { drafts: s.drafts };
+    }
+    if (p === '/api/app/setup') return { steps: [{ key: 'ga4', label: 'Visit tracking', done: true }, { key: 'gtm', label: 'Tracking code on your site', done: true }, { key: 'goal', label: 'Counting customer actions', done: true }, { key: 'billing', label: 'Ad money connected to Google', done: true }], journey: 'A' };
     if (p === '/api/app/exceptions') {
       if (!s.exceptions) {
         s.exceptions = [{ id: 'ex1', summary_text: 'Excluded 3 wasted searches from "Brand - Dubai"', target: 'campaign:11:negatives', created_from: 'revert', created_at: '2026-08-20T09:12:00Z' }];
@@ -174,6 +185,18 @@ function customerDemo(path, method, body) {
 
   if (method !== 'POST') return undefined;
 
+  {
+    const m = /^\/api\/app\/drafts\/([^/]+)\/(approve|enable|dismiss|edit)$/.exec(p);
+    if (m) {
+      const d = (s.drafts || []).find((x) => x.id === m[1]);
+      if (!d) return { ok: false };
+      if (m[2] === 'approve') { d.status = 'created_paused'; s.ledger.unshift({ id: `l-${Date.now()}`, event: 'fix_applied', actor: 'user', summary_text: `Created "${d.name}" in Google Ads. It is paused and spends nothing until you switch it on.`, created_at: cnow() }); }
+      if (m[2] === 'enable') { d.status = 'enabled'; s.ledger.unshift({ id: `l-${Date.now()}`, event: 'campaign_launched', actor: 'user', summary_text: `"${d.name}" is live. Up to $${d.budget_daily_usd} a day; one tap pauses it any time.`, created_at: cnow() }); }
+      if (m[2] === 'dismiss') d.status = 'dismissed';
+      if (m[2] === 'edit' && body && body.ad_groups) { for (const g of body.ad_groups) { const t = d.ad_groups.find((x) => x.name === g.name); if (t) t.rsa = { ...t.rsa, ...g.rsa }; } return { ok: true, spec: { ad_groups: d.ad_groups } }; }
+      return { ok: true, status: d.status };
+    }
+  }
   if (/^\/api\/app\/exceptions\/[^/]+\/clear$/.test(p)) {
     const id = p.split('/')[4];
     s.exceptions = (s.exceptions || []).filter((e) => e.id !== id);
