@@ -38,10 +38,18 @@ const auth = googleConfigured
   : null;
 const telemetry = createTelemetry({ db, log: (m) => console.warn(m) });
 const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || null;
-const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '3315824995';
+const mccId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '3315824995';
 
 async function linkedAsset(tenantId, kind) {
   return db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.${kind}&linked=eq.true&select=external_id,metadata&limit=1`, { single: true });
+}
+
+// login-customer-id: Google wants the id the user is acting AS. A customer's
+// own account (their OAuth token, their account) must use its own id; our MCC
+// header only applies to accounts that sit under the MCC (Journey B creates,
+// agency imports). Sending the MCC for an unrelated account = USER_PERMISSION_DENIED.
+function loginFor(a) {
+  return a && a.metadata && a.metadata.under_mcc ? mccId : (a ? a.external_id : mccId);
 }
 
 const notConfigured = (what) => async () => { throw new Error(`${what} not configured yet (needs Google OAuth client)`); };
@@ -69,13 +77,13 @@ const google = googleConfigured ? {
     const a = await linkedAsset(tenantId, 'ads_account');
     if (!a) throw new Error('no linked Ads asset');
     if (!developerToken) throw new Error('ads reads not configured (developer token pending)');
-    return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId });
+    return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: loginFor(a) });
   },
   // Watch-window measurement for watch_close (§4.4).
   fetchWindow: async (tenantId, { since, campaignIds, terms }) => {
     const a = await linkedAsset(tenantId, 'ads_account');
     if (!a) throw new Error('no linked Ads asset');
-    return fetchWindow({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId, since, campaignIds, terms });
+    return fetchWindow({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: loginFor(a), since, campaignIds, terms });
   },
   // Deep blocks (hours, days, devices, share, keywords, monthly, assets,
   // daily) — the modelled→measured flip. Failure degrades per block.
@@ -83,7 +91,7 @@ const google = googleConfigured ? {
     const a = await linkedAsset(tenantId, 'ads_account');
     if (!a) throw new Error('no linked Ads asset');
     if (!developerToken) throw new Error('ads reads not configured (developer token pending)');
-    return fetchAdsDeep({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId });
+    return fetchAdsDeep({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: loginFor(a) });
   },
 } : {
   fetchGtmSnapshot: notConfigured('gtm fetch'),
@@ -149,7 +157,7 @@ start({
 if (googleConfigured) {
   const makeApi = async (tenantId) => {
     const a = await linkedAsset(tenantId, 'ads_account');
-    return createTransports({ auth, tenantId, developerToken, loginCustomerId, customerId: a ? a.external_id : null });
+    return createTransports({ auth, tenantId, developerToken, loginCustomerId: loginFor(a), customerId: a ? a.external_id : null });
   };
   const makeCtx = async (tenantId) => {
     // Guardrail context from live data where reachable; conservative otherwise.

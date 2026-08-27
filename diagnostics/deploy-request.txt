@@ -1,1 +1,1 @@
-deploy request: confirm starts the first audit (signup queue); home shows first-check state — 2026-08-27T10:43:49Z
+deploy request: ads login-customer-id = the customer's own account (MCC only for accounts under it); runs carry the tenant website for the live witness — 2026-08-27T11:02:03Z

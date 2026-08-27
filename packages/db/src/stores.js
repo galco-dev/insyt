@@ -10,6 +10,10 @@ const createTelemetryBeat = (db, stream) => require('../../shared/src/telemetry'
 // ---------------------------------------------------------------- worker
 function workerStore(db) {
   return {
+    tenantWebsite: async (tenantId) => {
+      const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=website_url`, { single: true });
+      return t ? t.website_url : null;
+    },
     saveCheckpoint: async (runId, checkpoint) => {
       await db.update('runs', `id=eq.${q(runId)}`, { checkpoint });
     },

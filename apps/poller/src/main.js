@@ -59,9 +59,11 @@ if (googleClientId && googleClientSecret && developerToken) {
   const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '3315824995';
   pulseGoogle = {
     fetchPulse: async (tenantId) => {
-      const a = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&linked=eq.true&select=external_id&limit=1`, { single: true });
+      const a = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&linked=eq.true&select=external_id,metadata&limit=1`, { single: true });
       if (!a) throw new Error('no linked Ads asset');
-      return fetchPulse({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId });
+      // Customer's own account acts as itself; the MCC header only for accounts under it.
+      const login = a.metadata && a.metadata.under_mcc ? loginCustomerId : a.external_id;
+      return fetchPulse({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: login });
     },
   };
 }

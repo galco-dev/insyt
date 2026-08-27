@@ -101,10 +101,11 @@ let draftGoogle = null;
 if (googleAuth && googleAuth.config.developerToken) {
   const auth = createGoogleAuth({ db, clientId: googleClientId, clientSecret: googleClientSecret });
   const { developerToken, loginCustomerId } = googleAuth.config;
-  const adsAsset = async (tenantId) => db.select('assets', `tenant_id=eq.${qd(tenantId)}&kind=eq.ads_account&linked=eq.true&select=external_id&limit=1`, { single: true });
+  const adsAsset = async (tenantId) => db.select('assets', `tenant_id=eq.${qd(tenantId)}&kind=eq.ads_account&linked=eq.true&select=external_id,metadata&limit=1`, { single: true });
   draftGoogle = {
-    fetchAds: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId }); },
-    transportsFor: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return createTransports({ auth, tenantId, developerToken, loginCustomerId, customerId: a.external_id }); },
+    // Customer's own account acts as itself; the MCC header only for accounts under it.
+    fetchAds: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? loginCustomerId : a.external_id }); },
+    transportsFor: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return createTransports({ auth, tenantId, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? loginCustomerId : a.external_id, customerId: a.external_id }); },
   };
 }
 const draftModel = process.env.ANTHROPIC_API_KEY ? {

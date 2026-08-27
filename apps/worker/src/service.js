@@ -28,6 +28,10 @@ async function start({ clients, store, redisUrl = process.env.REDIS_URL }) {
 
   const process_ = async (job) => {
     const run = job.data.run;
+    // Runs are queued with just ids; the live witness needs the tenant's site.
+    if (!run.website_url && store.tenantWebsite) {
+      try { run.website_url = await store.tenantWebsite(run.tenant_id); } catch { /* witness stage reports it */ }
+    }
     return runPipeline({
       run,
       stages,
