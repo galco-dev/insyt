@@ -170,10 +170,17 @@ function renderTemplate(id, vars = {}) {
   const t = byId[id];
   if (!t) throw new Error(`unknown template: ${id}`);
   const subject = t.subject(vars);
-  return {
+  const out = {
     id, stream: t.stream, subject,
     html: shell({ subject, paragraphs: t.paragraphs(vars), cta: t.cta ? t.cta(vars) : null }),
   };
+  // A template rendered with a missing variable must never reach a customer:
+  // "undefined" in a subject line is worse than no email. Callers (the send
+  // loop) treat this as a failed send and log it.
+  if (/\bundefined\b|\bNaN\b|href="undefined"/.test(`${subject} ${out.html}`)) {
+    throw new Error(`template ${id}: missing variable (would render "undefined")`);
+  }
+  return out;
 }
 
 module.exports = { TEMPLATES, byId, renderTemplate };

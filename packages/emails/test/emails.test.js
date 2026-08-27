@@ -53,7 +53,7 @@ test('single-CTA rule: every rendered template has at most one link button', () 
     fix_summary: 'f', verify_detail: 'v', reverted_at: 'today', revert_url: 'u', guide_url: 'u', video_url: 'u',
     handoff_url: 'u', pages_checked: 4, corrective_line: 'c', conversion_line: 'c', stage_line: 's', resume_url: 'u',
     billing_url: 'u', launched_at: 'today', dashboard_url: 'u', reconnect_url: 'u', attempt: 1, next_retry_days: 3,
-    portal_url: 'u', conversions_30d: 31, plan_url: 'u', pulse_line: 'p',
+    portal_url: 'u', conversions_30d: 31, plan_url: 'u', pulse_line: 'p', title: 't', app_url: 'u', severity: 'warning',
   };
   for (const t of TEMPLATES) {
     const { html, subject } = renderTemplate(t.id, vars);

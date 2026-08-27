@@ -15,7 +15,8 @@
     "start:poller": "node apps/poller/src/main.js",
     "start:cron": "node apps/cron/src/main.js",
     "lint:jargon": "node scripts/jargon-lint.js",
-    "crawl": "node packages/crawler/cli.js"
+    "crawl": "node packages/crawler/cli.js",
+    "smoke": "node scripts/smoke.js"
   },
   "engines": {
     "node": ">=22"

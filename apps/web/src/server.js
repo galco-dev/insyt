@@ -100,9 +100,28 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
     return json(res, 202, { id });
   }
 
+  // Per-IP ceiling on the public crawl endpoint (the per-domain limits cover
+  // one site; this covers one visitor hammering many). In-memory, per process.
+  const crawlHits = new Map();
+  function crawlAllowed(ip) {
+    const t = now();
+    const hits = (crawlHits.get(ip) || []).filter((x) => t - x < 3_600_000);
+    if (hits.length >= 12) { crawlHits.set(ip, hits); return false; }
+    hits.push(t); crawlHits.set(ip, hits);
+    if (crawlHits.size > 5000) crawlHits.clear();
+    return true;
+  }
+
   return http.createServer(async (req, res) => {
     const u = new URL(req.url, 'http://x');
     const path = u.pathname;
+    // Baseline security headers on every response (CSP is deferred: the SPA
+    // and email-safe report markup use inline styles).
+    res.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.setHeader('x-frame-options', 'DENY');
+    res.setHeader('referrer-policy', 'strict-origin-when-cross-origin');
+    res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=()');
 
     try {
       if (req.method === 'GET' && path === '/healthz') return json(res, 200, { ok: true });
@@ -135,13 +154,16 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         let parsed;
         try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
         if (!parsed.url) return json(res, 400, { error: 'url required' });
+        const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+        if (!crawlAllowed(ip)) return json(res, 429, { error: 'That is a lot of checks in one hour - try again a little later.' });
         return handleCrawlRequest(res, parsed.url);
       }
 
       if (req.method === 'GET' && path.startsWith('/api/crawl/')) {
         const c = await store.getCrawl(path.split('/')[3]);
         if (!c) return json(res, 404, { error: 'unknown crawl' });
-        return json(res, 200, { status: c.status, strip: c.strip || null });
+        // A failed crawl has a placeholder strip; the funnel must show its failure state, not a result card.
+        return json(res, 200, { status: c.status, strip: c.status === 'complete' ? (c.strip || null) : null });
       }
 
       if (req.method === 'GET' && path.startsWith('/check/')) {

@@ -1,1 +1,1 @@
-deploy request: false-positive fixes (id_mismatch AW-, conversion_silent system actions, dual_primary event parsing), Check again now, narration repair — 2026-08-27T15:00:51Z
+deploy request: crawl failure state, security headers, per-IP crawl limit, template guard, smoke script — 2026-08-27T15:11:47Z
