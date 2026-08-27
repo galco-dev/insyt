@@ -298,6 +298,7 @@ function billingStore(db) {
 // ---------------------------------------------------------------- ops / scheduling
 function opsStore(db) {
   return {
+    learningReviews: async () => db.select('learning_reviews', 'select=month,body_md,proposals,incidents,created_at&order=month.desc&limit=12').catch(() => []),
     tenants: async () => db.select('tenants', 'select=id,business_name,website_url,status,size_band,created_at&order=created_at.desc'),
     subscriptions: async () => db.select('subscriptions', 'select=tenant_id,tier,size_band,price_usd,status'),
     recentRuns: async (limit = 50) => db.select('runs', `select=id,tenant_id,type,status,started_at,finished_at,cogs_usd&order=started_at.desc.nullslast&limit=${limit}`),

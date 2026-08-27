@@ -37,6 +37,16 @@ async function handleOps(req, res, u, { opsStore, queue, opsToken }) {
     return html(401, page('locked', '<p>Bearer token required.</p>')), true;
   }
 
+  // §11.9 monthly review artefact, rendered as-is (internal register).
+  if (req.method === 'GET' && path === '/ops/learning') {
+    const rows = opsStore.learningReviews ? await opsStore.learningReviews() : [];
+    const body = rows.length
+      ? rows.map((r) => `<h3>${esc(r.month)}</h3><p>${(r.incidents || []).length} telemetry incident(s) · ${((r.proposals || {}).chosen || []).length} tuning(s) proposed</p><pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;border:1px solid #ddd;padding:12px;">${esc(r.body_md)}</pre>`).join('')
+      : '<p>No learning review yet. The job runs monthly on the cron service.</p>';
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(page('Learning reviews', body));
+    return true;
+  }
   if (req.method === 'GET' && path === '/ops') {
     const [tenants, subs, cogs] = await Promise.all([opsStore.tenants(), opsStore.subscriptions(), opsStore.cogsByTenant()]);
     const subBy = new Map(subs.map((s) => [s.tenant_id, s]));

@@ -57,4 +57,16 @@ if (process.env.RESEND_API_KEY) {
 } else {
   console.log('email drain idle: no RESEND_API_KEY');
 }
-console.log('cron running (5-minute tick)');
+// §10.6 learning job — once per calendar month (first tick after the 1st),
+// idempotent via learning_reviews(month). Proposes; never applies.
+const { runLearningJob } = require('../../../packages/learning/src/job');
+async function learningTick() {
+  const month = `${new Date().toISOString().slice(0, 7)}-01`;
+  const done = await db.select('learning_reviews', `month=eq.${month}&select=month`, { single: true }).catch(() => null);
+  if (done) return;
+  const r = await runLearningJob({ db, month });
+  console.log(`learning job ${month}: ${r.proposals.length} tunings proposed, ${r.backlog.length} backlog items, ${r.carried.length} carried, ${r.rejected.length} refused, ${r.incidents.length} telemetry incidents`);
+}
+setInterval(() => learningTick().catch((e) => console.error('learning job failed:', e.message)), 6 * 60 * 60_000);
+setTimeout(() => learningTick().catch((e) => console.error('learning job failed:', e.message)), 120_000);
+console.log('cron running (5-minute tick); learning job monthly');
