@@ -78,7 +78,7 @@ async function learningTick() {
   const done = await db.select('learning_reviews', `month=eq.${month}&select=month`, { single: true }).catch(() => null);
   if (done) return;
   const r = await runLearningJob({ db, month });
-  console.log(`learning job ${month}: ${r.proposals.length} tunings proposed, ${r.backlog.length} backlog items, ${r.carried.length} carried, ${r.rejected.length} refused, ​${r.incidents.length} telemetry incidents`);
+  console.log(`learning job ${month}: ${r.proposals.length} tunings proposed, ${r.backlog.length} backlog items, ${r.carried.length} carried, ${r.rejected.length} refused, ${r.incidents.length} telemetry incidents`);
 }
 setInterval(() => learningTick().catch((e) => console.error('learning job failed:', e.message)), 6 * 60 * 60_000);
 setTimeout(() => learningTick().catch((e) => console.error('learning job failed:', e.message)), 120_000);
