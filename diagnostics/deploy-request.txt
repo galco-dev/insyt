@@ -1,1 +1,1 @@
-deploy request: ads login-customer-id = the customer's own account (MCC only for accounts under it); runs carry the tenant website for the live witness — 2026-08-27T11:02:03Z
+deploy request: worker stages receive the store (snapshot/rules/report never had a db) — 2026-08-27T11:32:26Z

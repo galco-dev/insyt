@@ -24,7 +24,7 @@ async function start({ clients, store, redisUrl = process.env.REDIS_URL }) {
   // eslint-disable-next-line global-require
   const { Worker } = require('bullmq');
   const connection = { url: redisUrl };
-  const stages = buildStages(clients);
+  const stages = buildStages({ ...clients, store });
 
   const process_ = async (job) => {
     const run = job.data.run;
