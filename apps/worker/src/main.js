@@ -123,6 +123,7 @@ const model = {
     if (!key) throw new Error('narration not configured (no ANTHROPIC_API_KEY)');
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal: AbortSignal.timeout(45_000), // one slow call must never eat the whole stage budget
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: MODEL_ID,

@@ -1,1 +1,1 @@
-deploy request: cron queues the first audit for confirmed tenants with no completed run (3 attempts/day) — 2026-08-27T11:47:21Z
+deploy request: narration 4-wide with 45s call timeout and 8-min stage budget; fatal stage errors recorded on the run — 2026-08-27T12:07:01Z

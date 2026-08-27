@@ -200,20 +200,26 @@ function buildStages({ google, crawler, model, store }) {
     },
     {
       name: 'narration',
+      timeoutMs: 8 * 60_000, // many findings × grounded retries; calls run 4-wide below
       run: async (ctx) => {
-        const findings = [];
         // Tenant + run ride along so the model client can meter usage per
         // tenant (§9.9) and stamp attribution (§1).
         const generate = (args) => model.generate({ ...args, tenantId: ctx.run.tenant_id, runId: ctx.run.id });
-        for (const f of ctx.findings) {
+        const narrateOne = async (f) => {
           try {
             const { title, explanation } = await narrateFinding(f, generate);
-            findings.push({ ...f, title, explanation });
+            return { ...f, title, explanation };
           } catch {
             // Grounding failed twice — fall back to the payload-free fix_detail-less engine framing.
-            findings.push({ ...f, title: f.rule_id.replace(/[._]/g, ' '), explanation: '' });
+            return { ...f, title: f.rule_id.replace(/[._]/g, ' '), explanation: '' };
           }
-        }
+        };
+        // Small worker pool: order preserved, four model calls in flight.
+        const findings = new Array(ctx.findings.length);
+        let next = 0;
+        await Promise.all(Array.from({ length: Math.min(4, ctx.findings.length) }, async () => {
+          while (next < ctx.findings.length) { const i = next++; findings[i] = await narrateOne(ctx.findings[i]); }
+        }));
         const diffLine = ctx.diff ? ctx.diff.line : '';
         const slots = await narrateSlots({ counts: ctx.counts, totals: { waste: null }, previousWeek: ctx.diff && !ctx.diff.first_run ? { new: ctx.diff.new, still_open: ctx.diff.still_open, resolved: ctx.diff.resolved } : null }, generate)
           .catch(() => ({ exec_summary: '', since_last_week: diffLine }));

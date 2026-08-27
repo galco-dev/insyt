@@ -65,6 +65,12 @@ async function runPipeline({ run, stages, store, emit = () => {}, timeoutMs = DE
     if (lastErr) {
       // A required stage failing sinks the run; anything else degrades it.
       if (stage.required) {
+        // Record WHY before sinking the run - a fatal with no reason is undebuggable.
+        degradedReasons.push(`${stage.name} (fatal): ${String(lastErr.message || lastErr)}`);
+        checkpoint.completed[stage.name] = 'failed';
+        checkpoint.degraded_reasons = degradedReasons;
+        checkpoint.fatal = { stage: stage.name, error: String(lastErr.stack || lastErr.message || lastErr).slice(0, 2000) };
+        await store.saveCheckpoint(run.id, checkpoint).catch(() => {});
         await store.finishRun(run.id, { status: 'failed', finished_at: new Date().toISOString() });
         emit({ stage: stage.name, state: 'failed_fatal' });
         return { status: 'failed', degraded_reasons: degradedReasons, ctx };
