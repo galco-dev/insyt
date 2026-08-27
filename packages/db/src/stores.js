@@ -71,9 +71,12 @@ function workerStore(db) {
       })), { returning: false });
     },
     saveReport: async (runId, { html_email, html_web, findings_snapshot, tenant_id, type, summary = null }) => {
+      // Once the audit fee is paid every later report is born unlocked.
+      const paid = await db.select('payments', `tenant_id=eq.${q(tenant_id)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=id&limit=1`, { single: true }).catch(() => null);
       await db.insert('reports', [{
         run_id: runId, tenant_id, type: type || 'weekly',
         html_email, html_web, findings_snapshot: findings_snapshot || [], summary,
+        ...(paid ? { unlocked: true, unlocked_at: new Date().toISOString() } : {}),
       }], { returning: false });
     },
     // Snapshot stage (§6.3/6.4/§11.3): campaigns + spend_daily + asset
@@ -283,7 +286,14 @@ function billingStore(db) {
     markSubscription: async (stripeSubId, patch) => {
       await db.update('subscriptions', `stripe_subscription_id=eq.${q(stripeSubId)}`, patch);
     },
-    recordPayment: async (row) => { await db.insert('payments', [row], { returning: false }); },
+    recordPayment: async (row) => {
+      await db.insert('payments', [row], { returning: false });
+      // The $20 (or large-account) audit fee unlocks every report the tenant
+      // has and will have: reports are rendered locked, the flag opens them.
+      if (['audit_unlock', 'large_audit', 'setup_bundle'].includes(row.kind)) {
+        await db.update('reports', `tenant_id=eq.${q(row.tenant_id)}`, { unlocked: true, unlocked_at: new Date().toISOString() }).catch(() => {});
+      }
+    },
     ledger: async (entry) => { await db.insert('ledger', [entry], { returning: false }); },
     audit: async (entry) => { await db.insert('audit_log', [entry], { returning: false }); },
     scheduleEmail: async (templateId, tenantId, vars) => {
