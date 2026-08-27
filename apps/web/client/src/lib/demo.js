@@ -161,7 +161,12 @@ function customerDemo(path, method, body) {
     if (p === '/api/app/settings') {
       const base = structuredClone(DEMO['GET /api/app/settings']);
       base.settings.autopilot = { ...s.autopilot };
+      base.settings.assistant_enabled = true; // demo consoles first (§7.6)
       return base;
+    }
+    if (p === '/api/app/chat') {
+      if (!s.chat) s.chat = [];
+      return { conversation_id: 'demo', messages: s.chat, usage: { pct: 12, consented: false, included_usd: 30 } };
     }
     if (p === '/api/app/drafts') {
       if (!s.drafts) {
@@ -197,6 +202,31 @@ function customerDemo(path, method, body) {
       return { ok: true, status: d.status };
     }
   }
+  if (p === '/api/app/chat') {
+    const t = String((body && body.text) || '');
+    if (!s.chat) s.chat = [];
+    s.chat.push({ id: `u-${Date.now()}`, role: 'user', text: t });
+    let reply; let card = null;
+    const m = /(lower|raise|set|change).*?(\d+)/i.exec(t);
+    if (/budget/i.test(t) && m) {
+      const amt = Number(m[2]);
+      card = { id: `c-${Date.now()}`, summary: `${/lower|reduce|cut/i.test(t) ? 'Lower' : 'Set'} "Brand - Dubai" daily budget $25 → $${amt}`, before_line: '"Brand - Dubai" runs on $25 a day', after_line: `"Brand - Dubai" runs on $${amt} a day` };
+      s.pending.unshift({ id: card.id, title: card.summary, money_line: null, explanation: `You asked: "${t}"`, before_line: card.before_line, after_line: card.after_line, ask_reason: 'you asked for it in chat' });
+      reply = `Drafted: ${card.summary}. The card is in your approvals; nothing changes until you tap it.`;
+    } else if (/pause|stop/i.test(t) && /autopilot/i.test(t)) {
+      s.autopilot = { negatives: false, budgets: false, counting: false };
+      reply = 'Done. Autopilot is off for everything; we will ask before every change from now on.';
+    } else if (/spend|spent|pace|budget/i.test(t)) {
+      reply = 'As of today you have spent $1,240 of a $1,950 month budget. On pace: 64% spent with 68% of the month gone. This is sample data.';
+    } else if (/history|last week|changed/i.test(t)) {
+      reply = `The most recent change on record: ${s.ledger[0] ? s.ledger[0].summary_text : 'nothing yet'}. This is sample data.`;
+    } else {
+      reply = 'This is the sample console, so answers come from sample data. In your own account I answer from your stored numbers and say when they are from.';
+    }
+    s.chat.push({ id: `a-${Date.now()}`, role: 'assistant', text: reply, card });
+    return { conversation_id: 'demo', reply, card, system_cards: [], model_version: 'demo' };
+  }
+  if (p === '/api/app/chat/consent') return { ok: true };
   if (/^\/api\/app\/exceptions\/[^/]+\/clear$/.test(p)) {
     const id = p.split('/')[4];
     s.exceptions = (s.exceptions || []).filter((e) => e.id !== id);

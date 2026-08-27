@@ -24,7 +24,7 @@ function createDraftService({ db, google = null, model = null, modelId = null })
   const tel = createTelemetry({ db });
 
   async function tenantRow(tenantId) {
-    return db.select('tenants', `id=eq.${q(tenantId)}&select=id,name,website_url&limit=1`, { single: true }).catch(() => null);
+    return db.select('tenants', `id=eq.${q(tenantId)}&select=id,business_name,website_url&limit=1`, { single: true }).catch(() => null);
   }
 
   /** §5 gates + §5.1 setup checklist. Never a dead end: each blocker carries its next step. */
@@ -60,7 +60,7 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     let ads = null;
     if (google && google.fetchAds) { try { ads = await google.fetchAds(tenantId); } catch { ads = null; } }
     const exceptions = (await db.select('standing_exceptions', `tenant_id=eq.${q(tenantId)}&cleared_at=is.null&select=summary_text`).catch(() => [])) || [];
-    const business = inputs.business || (tenant && tenant.name) || 'Your business';
+    const business = inputs.business || (tenant && tenant.business_name) || 'Your business';
     const cpas = ads ? (ads.campaigns || []).filter((c) => c.conversions_30d > 0).map((c) => c.spend_30d_usd / c.conversions_30d).sort((a, b) => a - b) : [];
     const median = cpas.length ? cpas[Math.floor(cpas.length / 2)] : null;
     const sourced = sourceKeywords({

@@ -124,12 +124,23 @@ const provisioner = googleAuth ? {
   provision: async (tenantId) => {
     const { provisionMissing } = require('../../../packages/google/src/provision');
     const auth = createGoogleAuth({ db, clientId: googleClientId, clientSecret: googleClientSecret });
-    const t = await db.select('tenants', `id=eq.${qd(tenantId)}&select=name,website_url`, { single: true });
+    const t = await db.select('tenants', `id=eq.${qd(tenantId)}&select=business_name,website_url`, { single: true });
     if (!t || !t.website_url) throw new Error('tenant has no website on file');
-    return provisionMissing({ auth, db, tenantId, websiteUrl: t.website_url, displayName: t.name || t.website_url });
+    return provisionMissing({ auth, db, tenantId, websiteUrl: t.website_url, displayName: t.business_name || t.website_url });
   },
 } : null;
-const draftDeps = { google: draftGoogle, model: draftModel, modelId: MODEL_ID, provisioner };
+// §7 assistant: read-only tools + interpreter + chat over the same model client.
+const { createReadTools } = require('../../../packages/assistant/src/tools');
+const { createAssistant } = require('../../../packages/assistant/src/chat');
+const dashForTools = dashStore(db, {});
+const assistant = draftModel ? createAssistant({
+  db, generate: draftModel.generate, modelId: MODEL_ID,
+  tools: createReadTools({ db, dashStore: dashForTools }), dashStore: dashForTools,
+  // Stripe metered item lands when billing keys are configured (§10.5); until
+  // then consent is recorded + ledgered and nothing is charged.
+  usage: process.env.STRIPE_SECRET_KEY ? null : null,
+}) : null;
+const draftDeps = { google: draftGoogle, model: draftModel, modelId: MODEL_ID, provisioner, assistant };
 
 // Stripe checkout deps (§10) — active once STRIPE_SECRET_KEY exists.
 let checkout = null;

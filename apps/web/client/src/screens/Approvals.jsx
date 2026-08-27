@@ -28,6 +28,85 @@ function Detail({ p }) {
   );
 }
 
+// §7 assistant: pull-only, never speaks first, never executes. Requests
+// become cards in the list above; questions are answered from stored data
+// with their as-of time. System cards (usage) appear here, not as chat.
+function Assistant({ onCard }) {
+  const [thread, setThread] = useState(null);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [convId, setConvId] = useState(null);
+  const [systemCards, setSystemCards] = useState([]);
+  useEffect(() => {
+    api('/api/app/chat').then((d) => { setThread(d.messages || []); setConvId(d.conversation_id || null); if (d.usage && d.usage.pct >= 100 && !d.usage.consented) setSystemCards([{ kind: 'usage_consent', included_usd: d.usage.included_usd, text: `You have used this month's included assistant allowance ($${d.usage.included_usd}). Continue with usage billed to your card on file, at cost?` }]); }).catch(() => setThread([]));
+  }, []);
+  if (!thread) return null;
+
+  async function send() {
+    const t = text.trim();
+    if (!t || busy) return;
+    setBusy(true); setText('');
+    setThread((m) => [...m, { id: `u-${Date.now()}`, role: 'user', text: t }]);
+    try {
+      const r = await api('/api/app/chat', { method: 'POST', body: { text: t, conversation_id: convId } });
+      if (r.conversation_id) setConvId(r.conversation_id);
+      setThread((m) => [...m, { id: `a-${Date.now()}`, role: 'assistant', text: r.reply, card: r.card || null }]);
+      if (r.system_cards && r.system_cards.length) setSystemCards(r.system_cards);
+      if (r.card && onCard) onCard(r.card);
+    } catch (e) {
+      setThread((m) => [...m, { id: `e-${Date.now()}`, role: 'assistant', text: e.message }]);
+    }
+    setBusy(false);
+  }
+  async function consent() {
+    try { await api('/api/app/chat/consent', { method: 'POST', body: {} }); setSystemCards([]); setThread((m) => [...m, { id: `s-${Date.now()}`, role: 'system', text: 'Thanks. Usage beyond the included allowance is billed at cost from now until the end of the month, as its own line on your invoice.' }]); } catch { /* keep */ }
+  }
+
+  return (
+    <Card className="mt-8 p-5">
+      <MonoLabel>Ask for anything</MonoLabel>
+      <p className="mt-1 text-small text-neutral-900">
+        Ask about your spend, your history, or what a finding means, or say what you would like changed. Changes become cards above; nothing is applied until you approve.
+      </p>
+      {thread.length > 0 && (
+        <div className="mt-3 flex max-h-[26rem] flex-col gap-2 overflow-y-auto rounded border border-neutral-300 bg-neutral-50 p-3 text-small">
+          {thread.map((m) => (
+            <div key={m.id} className={clsx('rounded px-3 py-2', m.role === 'user' ? 'self-end bg-page' : m.role === 'system' ? 'border border-neutral-300 bg-neutral-100 text-neutral-900' : 'bg-neutral-100')}>
+              {m.text}
+              {m.card && <div className="mt-1 font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">Card added above: {m.card.summary}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {systemCards.map((c) => (
+        <div key={c.kind} className="mt-3 rounded border border-neutral-300 bg-neutral-50 p-4 text-small">
+          <div>{c.text}</div>
+          {c.kind === 'usage_consent' && (
+            <div className="mt-2 flex gap-2">
+              <Button onClick={consent} className="!px-4 !py-2">Continue, billed at cost</Button>
+              <span className="self-center text-tiny text-neutral-900">No tap, no charge; the assistant rests until next month.</span>
+            </div>
+          )}
+        </div>
+      ))}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+        rows={2}
+        maxLength={1000}
+        placeholder="For example: how much have I spent this month? Or: lower the Brand budget to 20 a day"
+        aria-label="Ask the assistant"
+        className="mt-3 w-full resize-none rounded border border-neutral-300 bg-page p-3 text-body outline-none focus:border-neutral-500"
+      />
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <span className="text-tiny text-neutral-900">Answers use your stored numbers and say when they are from. The assistant cannot change anything itself.</span>
+        <Button onClick={send} disabled={busy || !text.trim()} className="!px-5 !py-2.5">{busy ? 'Thinking' : 'Send'}</Button>
+      </div>
+    </Card>
+  );
+}
+
 function RequestComposer() {
   const [text, setText] = useState('');
   const [state, setState] = useState('idle'); // idle | busy | sent | error
@@ -188,9 +267,10 @@ export default function Approvals() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [open, setOpen] = useState({});
+  const [assistant, setAssistant] = useState(false);
 
   const load = () => api('/api/app/approvals').then((d) => setPending(d.pending)).catch((e) => setError(e.message));
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); api('/api/app/settings').then((d) => setAssistant(!!(d.settings && d.settings.assistant_enabled))).catch(() => {}); }, []);
 
   async function act(kind, id) {
     setBusy(id);
@@ -253,7 +333,7 @@ export default function Approvals() {
       )}
 
       <YourAds />
-      <RequestComposer />
+      {assistant ? <Assistant onCard={() => load()} /> : <RequestComposer />}
     </div>
   );
 }

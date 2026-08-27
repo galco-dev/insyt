@@ -85,6 +85,7 @@ function workerStore(db) {
           status: c.status || null, channel: c.channel || 'search',
           budget_daily_usd: c.budget_daily_usd != null ? Math.round(c.budget_daily_usd * 100) / 100 : null,
           bidding: c.bidding && c.bidding.strategy ? c.bidding.strategy : null, last_seen_at: nowIso,
+          budget_resource: c.budget_resource || null,
         })), 'tenant_id,google_campaign_id');
         out.campaigns = camps.length;
       }
@@ -432,10 +433,23 @@ function dashStore(db, deps = {}) {
         after_line: r.after ? (r.after.line || JSON.stringify(r.after).slice(0, 140)) : null,
       }));
     },
+    // ---- §7 assistant. The composer is the bot's entry point (§7.4.8): when
+    // the assistant is wired, a composer request becomes a chat turn.
+    assistantEnabled: async (tenantId) => {
+      const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=assistant_enabled`, { single: true }).catch(() => null);
+      return !!(t && t.assistant_enabled) && !!deps.assistant;
+    },
+    chat: async (tenantId, text, conversationId) => (deps.assistant ? deps.assistant.turn({ tenantId, text, conversationId }) : null),
+    chatTranscript: async (tenantId, conversationId) => (deps.assistant ? deps.assistant.transcript(tenantId, conversationId) : null),
+    chatConsent: async (tenantId) => (deps.assistant ? deps.assistant.consent(tenantId) : { ok: false }),
     // User-initiated request (dashboard composer). Recorded to the ledger so
-    // it is on the record immediately; the drafting flow picks it up and turns
-    // it into a proposed change through the normal approve pipeline.
+    // it is on the record immediately; with the assistant wired it is drafted
+    // into a card right away, otherwise it waits for the team.
     requestChange: async (tenantId, text) => {
+      if (deps.assistant) {
+        const r = await deps.assistant.turn({ tenantId, text });
+        return { drafted: !!r.card, reply: r.reply, card: r.card };
+      }
       const clean = String(text || '').slice(0, 500);
       await db.insert('ledger', [{
         tenant_id: tenantId, event: 'change_requested', actor: 'user',
@@ -478,6 +492,7 @@ function dashStore(db, deps = {}) {
         plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check — no plan yet',
         autopilot: (auto && auto.categories) || {},
         connection_status: conn && conn.status === 'valid' ? 'Google connection healthy.' : 'Google connection pending.',
+        assistant_enabled: !!deps.assistant && !!(await db.select('tenants', `id=eq.${q(tenantId)}&select=assistant_enabled`, { single: true }).catch(() => null) || {}).assistant_enabled,
       };
     },
     discovery: async (tenantId) => {
@@ -522,6 +537,20 @@ function dashStore(db, deps = {}) {
       return { ...j, instruction_line: next };
     },
     approveChange: async (tenantId, changeId) => {
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&select=tool_id,params`, { single: true }).catch(() => null);
+      if (ch && ch.tool_id === 'settings.autopilot_on') {
+        // A settings card, not an Ads write: the tap IS the flip (§7.2 lane 2).
+        const cur = await db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }).catch(() => null);
+        const next = { ...((cur && cur.categories) || {}) };
+        for (const c of (ch.params && ch.params.categories) || []) next[c] = true;
+        const clean = { negatives: !!next.negatives, budgets: !!next.budgets, counting: !!next.counting };
+        if (cur) await db.update('autopilot_settings', `tenant_id=eq.${q(tenantId)}`, { categories: clean });
+        else await db.insert('autopilot_settings', [{ tenant_id: tenantId, categories: clean }], { returning: false });
+        await db.update('changes', `id=eq.${q(changeId)}`, { status: 'applied', applied_at: new Date().toISOString() });
+        await db.insert('ledger', [{ tenant_id: tenantId, event: 'fix_applied', actor: 'user', change_id: changeId, summary_text: `Autopilot is on for ${((ch.params && ch.params.categories) || []).join(', ')}. Everything it does stays reversible and lands in your history.` }], { returning: false }).catch(() => {});
+        await tel.event({ tenantId, name: 'approval.approve', props: { change_id: changeId, settings: true }, source: 'server' });
+        return;
+      }
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}`, { status: 'approved' });
       await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: changeId, channel: 'dashboard' }], { returning: false });
       await tel.event({ tenantId, name: 'approval.approve', props: { change_id: changeId }, source: 'server' });

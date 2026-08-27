@@ -224,6 +224,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/exceptions') return json(res, 200, { exceptions: dashStore.exceptions ? await dashStore.exceptions(t) : [] });
           // §5 consumer door + §5.1 setup checklist
           if (sub === '/drafts') return json(res, 200, { drafts: dashStore.drafts ? await dashStore.drafts(t) : [] });
+          // §7 assistant (per-tenant flag)
+          if (sub === '/chat') {
+            if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
+            return json(res, 200, await dashStore.chatTranscript(t, u.searchParams.get('conversation') || null));
+          }
           if (sub === '/setup') return json(res, 200, dashStore.setupSteps ? await dashStore.setupSteps(t) : { steps: [] });
           if (sub.startsWith('/report/')) {
             const r = await dashStore.reportData(t, sub.split('/')[2]);
@@ -242,7 +247,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               return json(res, r.error ? 501 : 200, r);
             } catch (e) { return json(res, 500, { error: 'We could not finish the setup automatically. We logged it and will follow up.' }); }
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/chat/consent') {
+            if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
+            return json(res, 200, await dashStore.chatConsent(t));
+          }
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -250,6 +259,13 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               try {
                 // §11 telemetry: client-side interactions. Fire-and-forget,
                 // never an error the UI has to handle.
+                if (sub === '/chat') {
+                  if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
+                  const text = String(parsed.text || '').trim();
+                  if (!text) return json(res, 400, { error: 'Say what you would like to know or change.' });
+                  const r = await dashStore.chat(t, text, parsed.conversation_id || null);
+                  return json(res, 200, r);
+                }
                 if (sub === '/event') {
                   if (dashStore.trackEvent) dashStore.trackEvent(t, String(parsed.name || ''), parsed.props || {}, parsed.session || null).catch(() => {});
                   return json(res, 200, { ok: true });
@@ -280,8 +296,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                 const text = String(parsed.text || '').trim();
                 if (!text) return json(res, 400, { error: 'Tell us what you would like changed.' });
                 if (!dashStore.requestChange) return json(res, 501, { error: 'Not available yet.' });
-                await dashStore.requestChange(t, text);
-                return json(res, 200, { ok: true });
+                const rc = await dashStore.requestChange(t, text);
+                return json(res, 200, { ok: true, ...(rc && typeof rc === 'object' ? rc : {}) });
               } catch {
                 return json(res, 500, { error: 'Something went wrong. Try again.' });
               }
