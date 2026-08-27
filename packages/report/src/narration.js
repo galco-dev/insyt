@@ -20,15 +20,16 @@ function narrationInput(finding) {
   return safe;
 }
 
-/** Every number in `text` must appear in the input object. */
+/** Every number in `text` must appear in the input object - compared as
+ * values, so "1692.00" in the data grounds "$1,692" in the prose. */
 function numbersAreGrounded(text, input) {
   const source = JSON.stringify(input);
-  const sourceNumbers = new Set((source.match(/\d[\d,.]*/g) || []).map((n) => n.replace(/[,.]$/, '').replace(/,/g, '')));
-  // Also allow each grounded number's thousands-separated rendering.
-  const numbers = (text.match(/\d[\d,.]*/g) || []).map((n) => n.replace(/[,.]$/, '').replace(/,/g, ''));
-  return numbers.every((n) => sourceNumbers.has(n)
-    // "1249.00"-style decimals ground on their integer part too
-    || (n.includes('.') && sourceNumbers.has(n.split('.')[0])));
+  const toValue = (n) => Number(n.replace(/[,.]$/, '').replace(/,/g, ''));
+  const sourceValues = new Set((source.match(/\d[\d,.]*/g) || []).map(toValue).filter(Number.isFinite));
+  const numbers = (text.match(/\d[\d,.]*/g) || []).map(toValue).filter(Number.isFinite);
+  return numbers.every((v) => sourceValues.has(v)
+    // A percentage or count rounded to an integer of a decimal in the data is still the data's number.
+    || (Number.isInteger(v) && [...sourceValues].some((s) => Math.round(s) === v)));
 }
 
 /** Models fence and preface JSON; take the outermost object and parse that. */
