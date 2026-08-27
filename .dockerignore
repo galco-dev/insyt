@@ -1,0 +1,8 @@
+node_modules
+.git
+diagnostics
+deploy
+apps/web/public/app
+*.log
+.env
+.env.*
