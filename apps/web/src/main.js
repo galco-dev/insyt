@@ -45,8 +45,14 @@ const store = {
   },
   crawlCountForDomain(domain, sinceMs) {
     // Local window guard; the durable §5 limit rides on the crawls table and
-    // is enforced again at the worker.
-    return [...crawlCache.values()].filter((c) => c.domain === domain && c.created_at >= sinceMs).length;
+    // is enforced again at the worker. Failed checks never count.
+    return [...crawlCache.values()].filter((c) => c.domain === domain && c.created_at >= sinceMs && c.status !== 'failed').length;
+  },
+  recentCrawlForDomain(domain, sinceMs) {
+    const hits = [...crawlCache.entries()].filter(([, c]) => c.domain === domain && c.created_at >= sinceMs && c.status !== 'failed');
+    if (!hits.length) return null;
+    const [id, c] = hits.sort((a, b) => b[1].created_at - a[1].created_at)[0];
+    return { id, status: c.status };
   },
   getReportHtml: (id) => supa.getReportHtml(id),
   magicLinks: supa.magicLinks,

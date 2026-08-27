@@ -3,6 +3,12 @@
 Four services from this one repo, plus a Redis addon. Each service sets
 **Root Directory = repo root** and differs only in start command.
 
+**Build: the root `Dockerfile`** (official Playwright image, browser + system
+libraries included) builds every service; per-service custom build commands
+are ignored. Keep the image tag equal to the `playwright` version in
+package.json. Deploys are triggered by changing `diagnostics/deploy-request.txt`
+(workflow `railway.yml`), not by ordinary pushes.
+
 | Service  | Start command            | Notes |
 |----------|--------------------------|-------|
 | `web`    | `npm run start:web`      | Public. Attach domain `app.tryinsyt.com` (Cloudflare CNAME → Railway). Health: `/healthz`. |

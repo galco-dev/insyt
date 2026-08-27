@@ -11,7 +11,11 @@ function mkStore() {
     getCrawl(id) { return crawls.get(id); },
     patchCrawl(id, patch) { Object.assign(crawls.get(id), patch); },
     crawlCountForDomain(domain, since) {
-      return [...crawls.values()].filter((c) => c.domain === domain && c.created_at >= since).length;
+      return [...crawls.values()].filter((c) => c.domain === domain && c.created_at >= since && c.status !== 'failed').length;
+    },
+    recentCrawlForDomain(domain, since) {
+      const hit = [...crawls.entries()].filter(([, c]) => c.domain === domain && c.created_at >= since && c.status !== 'failed').pop();
+      return hit ? { id: hit[0], status: hit[1].status } : null;
     },
     getReportHtml(id) { return id === 'rep1' ? { html_web: '<!doctype html><p>report body</p>' } : null; },
     magicLinks: {
@@ -46,15 +50,25 @@ test('journey A slice: paste URL -> crawl -> findings strip', async () => {
   });
 });
 
-test('rate limits: second crawl of a domain within the hour is refused politely', async () => {
+test('repeat checks: a recent check of the same domain is shown again (same id), never refused; a failed check never locks the visitor out', async () => {
   const store = mkStore();
   await withApp({ store, crawler: okCrawler }, async (base) => {
-    const first = await fetch(`${base}/api/crawl`, { method: 'POST', body: JSON.stringify({ url: 'x.com' }) });
-    assert.strictEqual(first.status, 202);
+    const first = await (await fetch(`${base}/api/crawl`, { method: 'POST', body: JSON.stringify({ url: 'x.com' }) })).json();
+    await new Promise((r) => setTimeout(r, 30));
     const second = await fetch(`${base}/api/crawl`, { method: 'POST', body: JSON.stringify({ url: 'https://x.com/page' }) });
-    assert.strictEqual(second.status, 429);
+    assert.strictEqual(second.status, 202);
     const body = await second.json();
-    assert.ok(!/rate limit/i.test(body.error), 'register: no infra jargon in the refusal');
+    assert.deepStrictEqual({ id: body.id, reused: body.reused }, { id: first.id, reused: true });
+  });
+  const failing = { discoveryCrawl: async () => { throw new Error('browser died'); } };
+  const store2 = mkStore();
+  await withApp({ store: store2, crawler: failing }, async (base) => {
+    await fetch(`${base}/api/crawl`, { method: 'POST', body: JSON.stringify({ url: 'y.com' }) });
+    await new Promise((r) => setTimeout(r, 30));
+    const retry = await fetch(`${base}/api/crawl`, { method: 'POST', body: JSON.stringify({ url: 'y.com' }) });
+    assert.strictEqual(retry.status, 202, 'retry after a failure is allowed');
+    const body = await retry.json();
+    assert.ok(!body.reused);
   });
 });
 

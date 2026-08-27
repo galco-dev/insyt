@@ -59,6 +59,14 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       return json(res, 400, { error: 'That does not look like a website address.' });
     }
     const domain = target.hostname;
+    // A check that already finished in the last hour is simply shown again
+    // (same id, instant result) — never a refusal. A check still running is
+    // joined. Only completed checks count against the per-domain limits;
+    // failed ones never lock a visitor out of retrying.
+    if (store.recentCrawlForDomain) {
+      const recent = await store.recentCrawlForDomain(domain, now() - 3_600_000);
+      if (recent && (recent.status === 'complete' || recent.status === 'running')) return json(res, 202, { id: recent.id, reused: true });
+    }
     if (await store.crawlCountForDomain(domain, now() - 3_600_000) >= LIMITS.perHour
       || await store.crawlCountForDomain(domain, now() - 86_400_000) >= LIMITS.perDay) {
       return json(res, 429, { error: 'This site was checked very recently — try again in a little while.' });
@@ -67,7 +75,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
     // Fire and record; progress endpoint reflects state.
     crawler.discoveryCrawl(target.href)
       .then((result) => store.patchCrawl(id, { status: result.status, result, strip: findingsStrip(result) }))
-      .catch((err) => store.patchCrawl(id, { status: 'failed', error: String(err.message || err) }));
+      .catch((err) => {
+        // The visitor sees a plain message; the real reason goes to the service log.
+        console.error(`crawl failed for ${domain}: ${String(err.message || err).split('\n')[0].slice(0, 300)}`);
+        return store.patchCrawl(id, { status: 'failed', error: String(err.message || err) });
+      });
     return json(res, 202, { id });
   }
 
