@@ -39,18 +39,25 @@ export default function Start() {
   // check immediately - the visitor already typed their address once.
   useEffect(() => {
     if (autoRef.current) return;
-    const fromHero = new URLSearchParams(window.location.search).get('url');
-    if (fromHero && fromHero.trim()) {
+    const params = new URLSearchParams(window.location.search);
+    const fromHero = params.get('url');
+    const resume = params.get('crawl');
+    if (resume) {
+      // An in-flight or finished check (old /check/:id links): pick it up,
+      // never ask for the address again.
+      autoRef.current = true;
+      setTimeout(() => begin(null, resume), 0);
+    } else if (fromHero && fromHero.trim()) {
       autoRef.current = true;
       setUrl(fromHero.trim());
       setTimeout(() => begin(fromHero.trim()), 0);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function begin(given) {
+  async function begin(given, resumeId = null) {
     const target = (typeof given === 'string' ? given : url).trim();
     setError(null);
-    if (!target) { setError('Type your website address - like glowstudio.ae'); return; }
+    if (!target && !resumeId) { setError('Type your website address - like glowstudio.ae'); return; }
     setState('crawling'); setStage(0);
     const stageTimer = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 2600);
 
@@ -59,15 +66,26 @@ export default function Start() {
       return;
     }
     try {
-      const { id } = await api('/api/crawl', { method: 'POST', body: { url: target } });
+      const { id } = resumeId ? { id: resumeId } : await api('/api/crawl', { method: 'POST', body: { url: target } });
+      const startedAt = Date.now();
       pollRef.current = setInterval(async () => {
         try {
           const c = await api(`/api/crawl/${id}`);
           if (c.status && c.status !== 'running') {
             clearInterval(pollRef.current); clearInterval(stageTimer);
             if (c.strip) { setStrip(c.strip); setState('done'); } else { setState('failed'); }
+          } else if (Date.now() - startedAt > 4 * 60_000) {
+            // Never spin forever: after four minutes, say so and offer a retry.
+            clearInterval(pollRef.current); clearInterval(stageTimer);
+            setState('failed');
           }
-        } catch { /* keep polling briefly */ }
+        } catch (e) {
+          if (e && e.status === 404) {
+            // Expired or unknown check (old link, server restart): back to the address, once.
+            clearInterval(pollRef.current); clearInterval(stageTimer);
+            setState('idle'); setError('That check has expired - paste your address and we will run it again.');
+          }
+        }
       }, 1500);
     } catch (e) {
       clearInterval(stageTimer);

@@ -89,7 +89,13 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
 
     try {
       if (req.method === 'GET' && path === '/healthz') return json(res, 200, { ok: true });
-      if (req.method === 'GET' && path === '/') return html(res, 200, landingPage());
+      // One funnel: the React /app/start flow (paste → check → strip → Google).
+      // The server-rendered landing and progress pages only serve when the
+      // client build is absent (tests, cold deploys).
+      if (req.method === 'GET' && path === '/') {
+        if (hasClient()) { res.writeHead(302, { location: `/app/start${u.search}` }); return res.end(); }
+        return html(res, 200, landingPage());
+      }
 
       // Stripe webhooks — §10. Signature verified before anything is parsed.
       if (req.method === 'POST' && path === '/api/stripe/webhook' && billing) {
@@ -122,6 +128,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       }
 
       if (req.method === 'GET' && path.startsWith('/check/')) {
+        // Old links resume the same check inside the one funnel — never a second address prompt.
+        if (hasClient()) { res.writeHead(302, { location: `/app/start?crawl=${encodeURIComponent(path.split('/')[2])}` }); return res.end(); }
         return html(res, 200, progressPage(path.split('/')[2]));
       }
 
