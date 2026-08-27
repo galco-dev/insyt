@@ -1,0 +1,46 @@
+name: learning-review
+# Engine-spec §11.9: tunings arrive as pull requests. On the 2nd of each
+# month (after the cron service has written the review), render the latest
+# learning review into diagnostics/ and open a PR carrying it plus the
+# proposal JSON. Nothing is applied by merging this PR alone; a tuning is
+# applied by a follow-up config change reviewed with these receipts.
+on:
+  schedule:
+    - cron: '17 6 2 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Render the latest review
+        env:
+          SUPABASE_URL: https://riwkekblrvarvfyqmdpq.supabase.co
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          set -o pipefail
+          MONTH=$(date -u +%Y-%m-01)
+          mkdir -p diagnostics/learning
+          node scripts/learning/review.js > "diagnostics/learning/review-$MONTH.md"
+          mv learning-proposals.json "diagnostics/learning/proposals-$MONTH.json"
+          echo "MONTH=$MONTH" >> "$GITHUB_ENV"
+      - name: Open the review PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name 'insyt-learning-bot'
+          git config user.email 'noreply@tryinsyt.com'
+          BR="learning/review-$MONTH"
+          git checkout -b "$BR"
+          git add diagnostics/learning
+          git commit -m "learning: review $MONTH (proposals only, nothing applied)" || { echo 'no change'; exit 0; }
+          git push -u origin "$BR"
+          gh pr create --title "Learning review $MONTH" --body-file "diagnostics/learning/review-$MONTH.md" --base main --head "$BR"
