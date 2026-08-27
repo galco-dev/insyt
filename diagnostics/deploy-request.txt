@@ -1,1 +1,1 @@
-deploy request: webhooks acknowledge tenant-less events instead of 500 — 2026-08-27T10:37:19Z
+deploy request: confirm starts the first audit (signup queue); home shows first-check state — 2026-08-27T10:43:49Z

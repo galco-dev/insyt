@@ -53,12 +53,17 @@ export default function Home() {
   return (
     <div className="mx-auto max-w-m2 px-5 pb-24 pt-10">
       <Card className="flex items-center gap-5 p-5">
-        <MiniDial score={health.score} />
+        {latest ? <MiniDial score={health.score} /> : (
+          <div className="flex h-[100px] w-[100px] shrink-0 items-center justify-center" aria-hidden>
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-400 border-t-(--ui-cta-a)" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <MonoLabel>Account health</MonoLabel>
           <div className="mt-0.5 text-h5">
-            {health.score < 50 ? 'Needs work - fixes waiting below.' : health.score < 70 ? 'Getting better every week.' : 'Healthy - we keep watch.'}
+            {!latest ? 'Your first check is running.' : health.score < 50 ? 'Needs work - fixes waiting below.' : health.score < 70 ? 'Getting better every week.' : 'Healthy - we keep watch.'}
           </div>
+          {!latest && <p className="mt-1 text-small text-neutral-900">We are reading your Google Ads, Analytics and tracking from the inside. Your report lands here in about ten minutes - we will email you too.</p>}
           {latest && (
             <Link to={`/app/report/${latest.id}`} className="mt-1 inline-flex items-center gap-1 text-small underline underline-offset-2">
               Latest report <ArrowRight size={13} aria-hidden />
@@ -133,7 +138,7 @@ export default function Home() {
         </div>
         {pending.length === 0 ? (
           <div className="mt-3">
-            <EmptyState title="Nothing waiting" body="Your next weekly check will bring anything worth fixing straight here." />
+            <EmptyState title={latest ? 'Nothing waiting' : 'Your first check is on its way'} body={latest ? 'Your next weekly check will bring anything worth fixing straight here.' : 'Anything worth fixing will appear here the moment the first check finishes.'} />
           </div>
         ) : (
           <div className="mt-3 flex flex-col gap-2">

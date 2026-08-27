@@ -38,6 +38,23 @@ function html(res, code, body) {
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
 function createApp({ store, crawler, now = Date.now, dashStore = null, agencyStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null, clientDir = null }) {
+  // Confirming assets is the moment the first audit starts (§8 signup queue,
+  // immediate priority). Idempotent per tenant: a second confirm never queues
+  // a second first-audit.
+  async function confirmAndStart(tenantId) {
+    await dashStore.confirmAssets(tenantId);
+    if (!opsStore || !queue) return null;
+    try {
+      const run = await opsStore.enqueueRun({ tenant_id: tenantId, type: 'signup_audit', status: 'queued', idempotency_key: `signup:${tenantId}` });
+      if (run) await queue.enqueue('runs-signup', run);
+      return run;
+    } catch (e) {
+      // Unique idempotency_key = already queued once; anything else is logged, never a dead end for the customer.
+      if (!/duplicate|23505|409/.test(String(e && e.message))) console.error(`signup audit enqueue failed for ${tenantId}: ${e && e.message}`);
+      return null;
+    }
+  }
+
   // React client build (apps/web/client → public/app). When present, GET
   // /app* serves the SPA; the server-rendered screens remain the fallback
   // (tests, and any deploy that predates the client build).
@@ -336,7 +353,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             const ok = dashStore.clearException ? await dashStore.clearException(t, sub.split('/')[2]) : false;
             return json(res, ok ? 200 : 404, { ok });
           }
-          if (sub === '/confirm') { await dashStore.confirmAssets(t); return json(res, 200, { ok: true }); }
+          if (sub === '/confirm') { const run = await confirmAndStart(t); return json(res, 200, { ok: true, run_id: run ? run.id : null }); }
         }
         return json(res, 404, { error: 'not found' });
       }
@@ -486,7 +503,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (path.startsWith('/app/approve/')) { await dashStore.approveChange(t, path.split('/')[3]); return redirect('/app/approvals'); }
           if (path.startsWith('/app/dismiss/')) { await dashStore.dismissChange(t, path.split('/')[3]); return redirect('/app/approvals'); }
           if (path.startsWith('/app/revert/')) { await dashStore.requestRevert(t, path.split('/')[3]); return redirect('/app/ledger'); }
-          if (path === '/app/confirm') { await dashStore.confirmAssets(t); return redirect('/app'); }
+          if (path === '/app/confirm') { await confirmAndStart(t); return redirect('/app'); }
         }
         return json(res, 404, { error: 'not found' });
       }
