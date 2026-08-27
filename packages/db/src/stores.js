@@ -70,10 +70,10 @@ function workerStore(db) {
         first_seen_at: f.first_seen_at || null,
       })), { returning: false });
     },
-    saveReport: async (runId, { html_email, html_web, findings_snapshot, tenant_id, type }) => {
+    saveReport: async (runId, { html_email, html_web, findings_snapshot, tenant_id, type, summary = null }) => {
       await db.insert('reports', [{
         run_id: runId, tenant_id, type: type || 'weekly',
-        html_email, html_web, findings_snapshot: findings_snapshot || [],
+        html_email, html_web, findings_snapshot: findings_snapshot || [], summary,
       }], { returning: false });
     },
     // Snapshot stage (§6.3/6.4/§11.3): campaigns + spend_daily + asset
@@ -422,11 +422,15 @@ function dashStore(db, deps = {}) {
       };
     },
     pendingApprovals: async (tenantId) => {
+      // Change summaries are written for the ledger (past tense: "Excluded…").
+      // On a card that is still waiting for a yes they must read as proposals.
+      const PROPOSE = [[/^Excluded /, 'Exclude '], [/^Raised /, 'Raise '], [/^Lowered /, 'Lower '], [/^Paused /, 'Pause '], [/^Linked /, 'Link '], [/^Undid /, 'Undo '], [/^Set /, 'Set '], [/^Added /, 'Add '], [/^Removed /, 'Remove '], [/^Enabled /, 'Enable '], [/^Created /, 'Create ']];
+      const asProposal = (t) => { for (const [re, to] of PROPOSE) if (re.test(t)) return t.replace(re, to); return t; };
       const rows = await db.select('changes',
         `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,before,after,summary_text,money_impact_usd,ask_reason,category,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
       return rows.map((r) => ({
         id: r.id,
-        title: r.summary_text || (r.finding && r.finding.title) || 'A fix is ready',
+        title: r.summary_text ? asProposal(r.summary_text) : ((r.finding && r.finding.title) || 'A fix is ready'),
         money_line: (r.money_impact_usd || (r.finding && r.finding.money_impact_monthly_usd))
           ? `about $${Math.round(r.money_impact_usd || r.finding.money_impact_monthly_usd)} a month` : null,
         category: r.category || null,
@@ -482,7 +486,7 @@ function dashStore(db, deps = {}) {
     reports: async (tenantId) => db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id,type,created_at,viewed_at&order=created_at.desc&limit=50`),
     reportData: async (tenantId, reportId) => {
       const r = await db.select('reports',
-        `id=eq.${q(reportId)}&tenant_id=eq.${q(tenantId)}&select=id,type,created_at,findings_snapshot,unlocked`, { single: true });
+        `id=eq.${q(reportId)}&tenant_id=eq.${q(tenantId)}&select=id,type,created_at,findings_snapshot,unlocked,summary`, { single: true });
       if (r) await db.update('reports', `id=eq.${q(reportId)}`, { viewed_at: new Date().toISOString() }).catch(() => {});
       return r;
     },

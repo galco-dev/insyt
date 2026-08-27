@@ -231,31 +231,87 @@ function RealReport({ reportId }) {
   if (error) return <div className="mx-auto max-w-l2 px-5 pt-14"><ErrorNote message={error} /></div>;
   if (!report) return <Spinner label="Loading your report" />;
 
-  const findings = (report.findings_snapshot || []).map((f) => ({
-    severity: SNAPSHOT_SEV[f.severity] || 'info',
-    title: f.title,
-    money: f.money_impact_monthly_usd ? `about $${Math.round(f.money_impact_monthly_usd)} / month` : null,
-    body: f.explanation,
-  }));
   const locked = report.unlocked === false;
+  const summary = report.summary || {};
+  const ORDER = { critical: 0, warning: 1, opportunity: 2, info: 3 };
+  const snapshot = (report.findings_snapshot || []).filter((f) => f.status !== 'dismissed' && f.status !== 'resolved');
+  const findings = snapshot.map((f) => {
+    const usd = f.money && f.money.impact_monthly_usd != null ? f.money.impact_monthly_usd : f.money_impact_monthly_usd;
+    const p = f.payload || {};
+    const entities = Array.isArray(p.entities) ? p.entities.length : 0;
+    // Titles fall back to the rule name while narration is still being written.
+    const title = f.title && !/^[a-z0-9]+ [a-z0-9 ]+$/.test(f.title) ? f.title : (f.title || '').replace(/^\w/, (c) => c.toUpperCase());
+    return {
+      id: f.finding_id || f.id || `${f.rule_id}:${f.entity_key || ''}`,
+      severity: SNAPSHOT_SEV[f.severity] || 'info',
+      rawSeverity: f.severity,
+      title,
+      campaign: f.campaign_name || null,
+      money: usd ? `about $${Math.round(usd).toLocaleString()} / month` : null,
+      usd: usd || 0,
+      body: f.explanation || '',
+      fix: p.fix_detail || (entities ? `${entities} item${entities === 1 ? '' : 's'} to fix - the full report lists each one.` : undefined),
+      lockedFix: !!p.locked && locked,
+    };
+  }).sort((a, b) => (ORDER[a.rawSeverity] ?? 3) - (ORDER[b.rawSeverity] ?? 3) || b.usd - a.usd);
+
+  const counts = summary.counts || snapshot.reduce((c, f) => ({ ...c, [f.severity]: (c[f.severity] || 0) + 1 }), {});
+  const waste = summary.waste_monthly_usd != null ? Math.round(summary.waste_monthly_usd) : Math.round(findings.filter((f) => f.rawSeverity === 'warning' || f.rawSeverity === 'critical').reduce((s, f) => s + f.usd, 0));
+  const health = summary.health_score != null ? Math.round(summary.health_score) : null;
+  const healthLabel = health == null ? '' : health < 50 ? 'Needs work' : health < 70 ? 'Needs attention' : 'Healthy';
+  const kicker = report.type === 'weekly' ? 'Weekly report' : report.type === 'deep' ? 'Deep review' : 'Your audit';
+  const dateLabel = new Date(report.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const chips = [['critical', counts.critical || 0], ['warning', counts.warning || 0], ['info', (counts.info || 0) + (counts.opportunity || 0)]].filter(([, n]) => n > 0);
 
   return (
-    <main className="mx-auto max-w-l2 px-5 pb-32">
-      <section className="pt-10">
-        <MonoLabel>{report.type === 'weekly' ? 'Weekly report' : report.type === 'deep' ? 'Deep review' : 'Your audit'} · {new Date(report.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</MonoLabel>
-        <h1 className="mt-2 text-h2 tracking-tight">
-          {findings.length === 0 ? 'All clear this week.' : `${findings.length} finding${findings.length === 1 ? '' : 's'}, biggest money first.`}
-        </h1>
-      </section>
-      {findings.length === 0 ? (
-        <div className="mt-8"><EmptyState title="Nothing needed your attention" body="We checked everything on schedule. The next report lands in a week." /></div>
-      ) : (
-        <div className="mt-6 flex flex-col gap-3">
-          {findings.map((f, i) => <FindingCard key={f.title} f={f} locked={locked} index={i} />)}
-        </div>
-      )}
+    <div className={clsx('pb-32', locked && 'locked')}>
+      <main className="mx-auto max-w-l2 px-5">
+        <section className="flex flex-col gap-8 pt-10 sm:flex-row sm:items-center">
+          {health != null && <HealthDial score={health} label={healthLabel} />}
+          <div>
+            <MonoLabel>{kicker} · {dateLabel}</MonoLabel>
+            <h1 className="mt-2 text-h2 tracking-tight">
+              {findings.length === 0
+                ? 'All clear this week.'
+                : waste > 0
+                  ? <>About <span className="text-critical">${waste.toLocaleString()} a month</span> is going to waste.</>
+                  : `${findings.length} finding${findings.length === 1 ? '' : 's'}, biggest money first.`}
+            </h1>
+            <p className="mt-2 max-w-m2 text-body text-neutral-900">
+              {summary.exec_summary || 'We checked your ads, your tracking and your counting, line by line.'}
+              {health != null && <> Health score <strong>{health}/100 - {healthLabel.toLowerCase()}</strong>.</>}
+            </p>
+            {chips.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {chips.map(([sev, n]) => (
+                  <span key={sev} className={clsx('inline-flex items-center gap-1.5 rounded-full px-3 py-1', COLOR[severityMeta[sev].color].tint)}>
+                    <SeverityBadge severity={sev} />
+                    <span className="text-small font-semibold">{n}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {findings.length === 0 ? (
+          <div className="mt-8"><EmptyState title="Nothing needed your attention" body="We checked everything on schedule. The next report lands in a week." /></div>
+        ) : (
+          <>
+            <SectionHead kicker="What we found" title={`${findings.length} finding${findings.length === 1 ? '' : 's'}, biggest money first`} />
+            <div className="flex flex-col gap-3">
+              {findings.map((f, i) => (
+                <FindingCard key={f.id} index={i} locked={f.lockedFix} f={{ ...f, title: f.campaign ? `${f.title} - ${f.campaign}` : f.title }} />
+              ))}
+            </div>
+          </>
+        )}
+        {summary.since_last_week && (
+          <p className="mt-10 text-small text-neutral-900"><span className="font-mono text-tiny uppercase tracking-[0.12em]">Since last week</span> · {summary.since_last_week}</p>
+        )}
+      </main>
       <UnlockBar visible={locked} />
-    </main>
+    </div>
   );
 }
 

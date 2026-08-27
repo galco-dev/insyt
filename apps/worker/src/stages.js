@@ -291,6 +291,13 @@ function buildStages({ google, crawler, model, store }) {
           findings_snapshot: ctx.envelope ? ctx.envelope.findings : ctx.findings,
           tenant_id: ctx.run.tenant_id,
           type: ctx.run.type === 'signup_audit' ? 'signup' : ctx.run.type === 'deep' ? 'deep' : 'weekly',
+          summary: ctx.envelope ? {
+            health_score: ctx.health_score ?? null,
+            waste_monthly_usd: ctx.envelope.totals ? ctx.envelope.totals.waste_monthly_usd : null,
+            counts: ctx.envelope.counts || null,
+            exec_summary: ctx.envelope.narrative_slots ? ctx.envelope.narrative_slots.exec_summary : '',
+            since_last_week: ctx.envelope.narrative_slots ? ctx.envelope.narrative_slots.since_last_week : '',
+          } : null,
         });
         return { _progress: drafted || {} };
       },
