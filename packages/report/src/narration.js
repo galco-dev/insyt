@@ -47,6 +47,7 @@ function parseJsonObject(raw) {
  */
 async function narrateFinding(finding, generate, retries = 2) {
   const input = narrationInput(finding);
+  let why = 'no reply';
   for (let attempt = 0; attempt <= retries; attempt++) {
     const raw = await generate({
       system: SYSTEM_PROMPT,
@@ -58,10 +59,12 @@ async function narrateFinding(finding, generate, retries = 2) {
       ].filter(Boolean).join('\n'),
     });
     const parsed = parseJsonObject(raw);
-    if (!parsed || typeof parsed.title !== 'string' || typeof parsed.explanation !== 'string') continue;
+    if (!parsed) { why = `unparseable reply: ${String(raw).slice(0, 80)}`; continue; }
+    if (typeof parsed.title !== 'string' || typeof parsed.explanation !== 'string') { why = `wrong shape: ${Object.keys(parsed).join(',')}`; continue; }
     if (numbersAreGrounded(parsed.title + ' ' + parsed.explanation, input)) return parsed;
+    why = `ungrounded number in: ${(parsed.title + ' ' + parsed.explanation).slice(0, 80)}`;
   }
-  throw new Error(`narration ungrounded after ${retries + 1} attempts: ${finding.rule_id}`);
+  throw new Error(`narration failed after ${retries + 1} attempts (${why}): ${finding.rule_id}`);
 }
 
 /** Narrate the envelope slots from engine-computed aggregates only. */

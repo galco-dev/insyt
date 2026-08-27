@@ -144,7 +144,10 @@ const model = {
       db.insert('token_metering', [{ tenant_id: tenantId, run_id: runId, model: body.model || MODEL_ID, input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cached, cost_usd: costUsd }], { returning: false }).catch(() => {});
       telemetry.modelUsage({ tenantId, inputTokens, outputTokens, costUsd });
     }
-    return body.content[0].text;
+    // Fable can return thinking blocks before the text; take every text block.
+    const text = (body.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+    if (!text) throw new Error(`anthropic: no text block in reply (${(body.content || []).map((b) => b.type).join(',') || 'empty'})`);
+    return text;
   },
 };
 
