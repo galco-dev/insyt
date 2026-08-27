@@ -1,1 +1,1 @@
-deploy request: narration 4-wide with 45s call timeout and 8-min stage budget; fatal stage errors recorded on the run — 2026-08-27T12:07:01Z
+deploy request: narration parses fenced JSON (every finding fell back to raw rule ids) — 2026-08-27T14:38:45Z

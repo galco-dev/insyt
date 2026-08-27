@@ -31,6 +31,15 @@ function numbersAreGrounded(text, input) {
     || (n.includes('.') && sourceNumbers.has(n.split('.')[0])));
 }
 
+/** Models fence and preface JSON; take the outermost object and parse that. */
+function parseJsonObject(raw) {
+  if (typeof raw !== 'string') return null;
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try { return JSON.parse(raw.slice(start, end + 1)); } catch { return null; }
+}
+
 /**
  * Narrate one finding. Returns { title, explanation } or throws after
  * `retries` ungrounded attempts (caller degrades: engine-side fallback copy).
@@ -47,8 +56,7 @@ async function narrateFinding(finding, generate, retries = 2) {
         JSON.stringify(input),
       ].filter(Boolean).join('\n'),
     });
-    let parsed;
-    try { parsed = JSON.parse(raw); } catch { continue; }
+    const parsed = parseJsonObject(raw);
     if (!parsed || typeof parsed.title !== 'string' || typeof parsed.explanation !== 'string') continue;
     if (numbersAreGrounded(parsed.title + ' ' + parsed.explanation, input)) return parsed;
   }
@@ -66,11 +74,12 @@ async function narrateSlots({ counts, totals, previousWeek }, generate) {
       JSON.stringify(input),
     ].join('\n'),
   });
-  const parsed = JSON.parse(raw);
-  if (!numbersAreGrounded(parsed.exec_summary + ' ' + parsed.since_last_week, input)) {
+  const parsed = parseJsonObject(raw);
+  if (!parsed || typeof parsed.exec_summary !== 'string') throw new Error('slot narration unparseable');
+  if (!numbersAreGrounded(parsed.exec_summary + ' ' + (parsed.since_last_week || ''), input)) {
     throw new Error('slot narration ungrounded');
   }
   return parsed;
 }
 
-module.exports = { narrationInput, numbersAreGrounded, narrateFinding, narrateSlots, SYSTEM_PROMPT };
+module.exports = { narrationInput, numbersAreGrounded, parseJsonObject, narrateFinding, narrateSlots, SYSTEM_PROMPT };
