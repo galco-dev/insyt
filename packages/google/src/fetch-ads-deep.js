@@ -62,7 +62,7 @@ async function fetchAdsDeep({ auth, tenantId, customerId, developerToken, loginC
     days: `SELECT segments.day_of_week, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d90)}`,
     devices: `SELECT segments.device, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d90)}`,
     share: `
-      SELECT campaign.id, metrics.search_click_share, metrics.search_exact_match_impression_share,
+      SELECT campaign.id, campaign.name, metrics.search_click_share, metrics.search_exact_match_impression_share,
              metrics.search_budget_lost_impression_share, metrics.invalid_click_rate, metrics.cost_micros
       FROM campaign WHERE ${between(d30)} AND campaign.advertising_channel_type = 'SEARCH' AND campaign.status = 'ENABLED'`,
     monthly: `
@@ -139,6 +139,7 @@ async function fetchAdsDeep({ auth, tenantId, customerId, developerToken, loginC
       const m = r.metrics || {};
       return {
         campaign_id: String(r.campaign.id),
+        campaign_name: r.campaign.name || null,
         click_share_pct: pct(m.searchClickShare),
         exact_match_is_pct: pct(m.searchExactMatchImpressionShare),
         lost_is_budget_pct: pct(m.searchBudgetLostImpressionShare) || 0,

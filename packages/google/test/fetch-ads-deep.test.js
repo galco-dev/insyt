@@ -73,7 +73,7 @@ test('fetchAdsDeep: measured blocks in the layer-6 contract shape', async () => 
   assert.strictEqual(d.hours.length, 24);
   assert.deepStrictEqual(d.days.map((x) => x.dow), [0, 1, 6]);
   assert.deepStrictEqual(d.devices.map((x) => x.device).sort(), ['desktop', 'mobile']);
-  assert.deepStrictEqual(d.share[0], { campaign_id: '11', click_share_pct: 12.3, exact_match_is_pct: 50, lost_is_budget_pct: 20, invalid_click_rate_pct: 9, spend_30d_usd: 300 });
+  assert.deepStrictEqual(d.share[0], { campaign_id: '11', campaign_name: null, click_share_pct: 12.3, exact_match_is_pct: 50, lost_is_budget_pct: 20, invalid_click_rate_pct: 9, spend_30d_usd: 300 });
   assert.deepStrictEqual(d.monthly.map((m) => m.month), ['May', 'Jun']);
   assert.strictEqual(d.assets[0].pinned, true);
   assert.strictEqual(d.assets[1].pinned, false);

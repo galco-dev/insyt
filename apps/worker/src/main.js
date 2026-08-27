@@ -219,6 +219,27 @@ if (process.env.ANTHROPIC_API_KEY) {
       }
     }
     if (rows.length) console.log(`narration repair: ${fixed}/${rows.length} rewritten`);
+    // Re-render the affected reports from their stored envelope so the
+    // report page and the email copy carry the repaired titles too.
+    if (fixed) {
+      const { renderReport } = require('../../../packages/report/src/render');
+      for (const runId of new Set(rows.map((r) => r.run_id))) {
+        try {
+          const run = await db.select('runs', `id=eq.${q(runId)}&select=checkpoint`, { single: true });
+          const env = run && run.checkpoint && run.checkpoint.ctx && run.checkpoint.ctx.envelope;
+          if (!env) continue;
+          const fresh = await db.select('findings', `run_id=eq.${q(runId)}&select=id,title,explanation`);
+          const byId = new Map(fresh.map((f) => [f.id, f]));
+          env.findings = env.findings.map((f) => { const k = f.finding_id || f.id; return byId.has(k) ? { ...f, title: byId.get(k).title, explanation: byId.get(k).explanation } : f; });
+          const health = run.checkpoint.ctx.health_score ?? null;
+          await db.update('reports', `run_id=eq.${q(runId)}`, {
+            html_web: renderReport(env, { unlocked: false, healthScore: health, mode: 'web' }),
+            html_email: renderReport(env, { unlocked: false, healthScore: health, mode: 'email' }),
+            findings_snapshot: env.findings,
+          });
+        } catch (e) { console.warn(`report re-render skipped for run ${runId}: ${e.message}`); }
+      }
+    }
   };
   setInterval(() => repairNarration().catch((e) => console.error('narration repair failed:', e.message)), 10 * 60_000);
   setTimeout(() => repairNarration().catch((e) => console.error('narration repair failed:', e.message)), 90_000);

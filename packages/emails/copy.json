@@ -61,5 +61,16 @@
     "serious": "Fix"
    }
   }
- }
+ },
+ "noun_for_kind_singular": {
+  "search_term": "search term",
+  "gtm_tag": "setup item",
+  "conversion_action": "counter",
+  "event": "tracked action",
+  "campaign": "campaign",
+  "page": "page",
+  "measurement_id": "tracking code",
+  "default": "item"
+ },
+ "locked_placeholder": "{count} {noun} found - unlock the full report to see the list and the fix"
 }

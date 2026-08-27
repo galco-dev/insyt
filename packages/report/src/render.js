@@ -72,7 +72,8 @@ function payloadBlock(finding, unlocked) {
   const count = (p.entities || []).length;
   if (count === 0) return `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};padding:8px;">${esc(COPY.locked_fix_placeholder)}</div>`;
   const kind = (p.entities[0] && p.entities[0].kind) || 'default';
-  const noun = COPY.noun_for_kind[kind] || COPY.noun_for_kind.default;
+  const nouns = count === 1 && COPY.noun_for_kind_singular ? COPY.noun_for_kind_singular : COPY.noun_for_kind;
+  const noun = nouns[kind] || nouns.default;
   return `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};background:${TOKENS.neutral100};border:1px dashed ${TOKENS.neutral400};border-radius:${TOKENS.radius};padding:12px;text-align:center;">${fill(COPY.locked_placeholder, { count, noun })}</div>`;
 }
 
