@@ -1,1 +1,1 @@
-deploy request: funnel polish (contextual check headline, warmer strip, failure exit) — 2026-08-27T08:48:17Z
+deploy request: demo flag never leaks into the real funnel — 2026-08-27T09:01:43Z

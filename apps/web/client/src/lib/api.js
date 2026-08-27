@@ -5,6 +5,10 @@ import { demoData } from './demo.js';
 
 const params = new URLSearchParams(window.location.search);
 if (params.get('demo')) sessionStorage.setItem('insyt_demo', '1');
+// The demo is a side door, never a step in the funnel. Any real entry point
+// (the start page without ?demo, or a post-sign-in landing) clears the flag so
+// a visitor who peeked at the sample report is never shown Glow Studio again.
+else if (window.location.pathname === '/app/start' || params.has('found') || params.has('url')) sessionStorage.removeItem('insyt_demo');
 export const isDemo = () => sessionStorage.getItem('insyt_demo') === '1';
 
 export class ApiError extends Error {
