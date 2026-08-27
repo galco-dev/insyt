@@ -44,7 +44,7 @@ test('journey A slice: paste URL -> crawl -> findings strip', async () => {
     await new Promise((r) => setTimeout(r, 30)); // let the stub crawl settle
     const got = await (await fetch(`${base}/api/crawl/${id}`)).json();
     assert.strictEqual(got.status, 'complete');
-    assert.match(got.strip.headline, /Found:/);
+    assert.match(got.strip.headline, /worth fixing|looks healthy/);
     const page = await (await fetch(`${base}/check/${id}`)).text();
     assert.ok(page.includes('Checking your website'));
   });

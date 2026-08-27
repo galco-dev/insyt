@@ -13,7 +13,7 @@ const SECRET = 'test-secret';
 test('oauth state round-trips and expires', () => {
   const now = 1_000_000;
   const state = issueState({ tenantId: 't1', step: 'discovery', secret: SECRET, now });
-  assert.deepEqual(readState(state, SECRET, now + 60_000), { tenantId: 't1', step: 'discovery' });
+  assert.deepEqual(readState(state, SECRET, now + 60_000), { tenantId: 't1', step: 'discovery', site: '' });
   assert.equal(readState(state, SECRET, now + 16 * 60_000), null, 'expired');
   assert.equal(readState(state, 'other-secret', now), null, 'wrong secret');
   assert.equal(readState(`${state}x`, SECRET, now), null, 'tampered');
@@ -114,10 +114,14 @@ test('callback with bad state fails without touching google', async () => {
   assert.equal(res.code, 400);
 });
 
-test('start redirects signed-out users home, signed-in users to google', async () => {
+test('start: signed-out discovery goes to google (one-tap sign-in), signed-out write goes home, signed-in to google', async () => {
   const deps = { db: fakeDb(), config: { clientId: 'cid', redirectUri: 'https://app/cb' }, sessionSecret: SECRET, now: () => 1 };
+  const res0 = fakeRes();
+  await handleGoogleAuth({ method: 'GET' }, res0, new URL('http://x/auth/google/start?step=discovery&site=thenaildxb.net'), null, deps);
+  assert.match(res0.headers.location, /^https:\/\/accounts\.google\.com/);
+  assert.match(res0.headers.location, /openid/);
   const res1 = fakeRes();
-  await handleGoogleAuth({ method: 'GET' }, res1, new URL('http://x/auth/google/start'), null, deps);
+  await handleGoogleAuth({ method: 'GET' }, res1, new URL('http://x/auth/google/start?step=write'), null, deps);
   assert.equal(res1.headers.location, '/');
   const res2 = fakeRes();
   await handleGoogleAuth({ method: 'GET' }, res2, new URL('http://x/auth/google/start?step=discovery'), { tenantId: 't1' }, deps);

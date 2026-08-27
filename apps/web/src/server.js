@@ -153,7 +153,10 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       // Google data-scope OAuth (§6 ladder steps 2–4) + §7 discovery.
       if (path.startsWith('/auth/google') && googleAuth) {
         const session = readSession(req.headers.cookie, sessionSecret, now());
-        const handled = await handleGoogleAuth(req, res, u, session, { ...googleAuth, sessionSecret, now });
+        const handled = await handleGoogleAuth(req, res, u, session, {
+          ...googleAuth, sessionSecret, now, issueSession, cookieFor,
+          findOrCreateTenantByGoogle: authBridge ? authBridge.findOrCreateTenantByGoogle : null,
+        });
         if (handled) return undefined;
       }
 

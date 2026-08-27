@@ -217,7 +217,7 @@ export default function Start() {
                 </li>
               ))}
             </ol>
-            <Button href={isDemo() ? '/app/confirm?demo=1' : '/auth/google/start?step=discovery'} className="mt-4 w-full">
+            <Button href={isDemo() ? '/app/confirm?demo=1' : `/auth/google/start?step=discovery&site=${encodeURIComponent(site)}`} className="mt-4 w-full">
               Continue with Google - run my free check
             </Button>
             <p className="mt-2 text-center text-tiny text-neutral-900">You choose the account. Disconnect any time.</p>
@@ -229,7 +229,7 @@ export default function Start() {
         <div className="mx-auto mt-8 max-w-s2">
           <ErrorNote message="Check the address and try again - or try without www. If your site is behind a password or a bot-check, the free check can't read it, but the full check still can." />
           <Button variant="secondary" className="mt-4 w-full" onClick={() => setState('idle')}>Try another address</Button>
-          <Button href="/auth/google/start?step=discovery" className="mt-2 w-full">Skip ahead - run the full check with Google</Button>
+          <Button href={`/auth/google/start?step=discovery&site=${encodeURIComponent(site)}`} className="mt-2 w-full">Skip ahead - run the full check with Google</Button>
         </div>
       )}
     </div>

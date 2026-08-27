@@ -22,7 +22,9 @@ const SCOPES = {
 // via include_granted_scopes, so each step lists only its additions).
 const LADDER = {
   signin: [SCOPES.OPENID, SCOPES.EMAIL, SCOPES.PROFILE],
-  discovery: [SCOPES.ADWORDS, SCOPES.ANALYTICS_RO, SCOPES.TAGMANAGER_RO],
+  // Discovery is also the funnel's sign-in ("one tap"): identity scopes ride
+  // along so a signed-out visitor needs exactly one consent screen.
+  discovery: [SCOPES.OPENID, SCOPES.EMAIL, SCOPES.ADWORDS, SCOPES.ANALYTICS_RO, SCOPES.TAGMANAGER_RO],
   write: [SCOPES.ANALYTICS_EDIT, SCOPES.TAGMANAGER_EDIT, SCOPES.TAGMANAGER_PUBLISH],
   // Journey B create: GA4 provisioning rides on analytics.edit; Ads
   // CreateCustomerClient rides on adwords under our MCC — no new scopes,

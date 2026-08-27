@@ -25,8 +25,8 @@ const sign = (payload, secret) => crypto.createHmac('sha256', secret).update(pay
 
 // State: signed tenant + step + expiry — CSRF guard that also survives the
 // round-trip without server-side storage.
-function issueState({ tenantId, step, secret, now }) {
-  const payload = `${tenantId}|${step}|${now + 15 * 60_000}`;
+function issueState({ tenantId, step, secret, now, site = '' }) {
+  const payload = `${tenantId || ''}|${step}|${now + 15 * 60_000}|${site}`;
   return `${Buffer.from(payload).toString('base64url')}.${sign(payload, secret)}`;
 }
 function readState(state, secret, now) {
@@ -34,9 +34,9 @@ function readState(state, secret, now) {
   if (i < 0) return null;
   const payload = Buffer.from(state.slice(0, i), 'base64url').toString();
   if (sign(payload, secret) !== state.slice(i + 1)) return null;
-  const [tenantId, step, expiry] = payload.split('|');
+  const [tenantId, step, expiry, site = ''] = payload.split('|');
   if (Number(expiry) < now) return null;
-  return { tenantId, step };
+  return { tenantId, step, site };
 }
 
 /** Store discovered assets and mark crawl-matched ones linked. */
@@ -64,6 +64,12 @@ async function storeDiscoveredAssets({ db, tenantId, assets, tagsFound }) {
   return { inserted: fresh.length, matched: matched.length, confidence };
 }
 
+async function fetchUserinfo(accessToken, fetchImpl = fetch) {
+  const res = await fetchImpl('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) return null;
+  return res.json().catch(() => null);
+}
+
 async function latestCrawlTags(db, tenantId) {
   const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=website_url`, { single: true });
   if (!t || !t.website_url) return null;
@@ -88,10 +94,14 @@ async function handleGoogleAuth(req, res, u, session, deps) {
   };
 
   if (req.method === 'GET' && path === '/auth/google/start') {
-    if (!session) return redirect('/');
     const step = ['discovery', 'write', 'create'].includes(u.searchParams.get('step')) ? u.searchParams.get('step') : 'discovery';
+    // Signed-out visitors may start discovery: that consent doubles as the
+    // sign-in (identity scopes ride along) and the callback creates the
+    // account. Later steps need an existing session.
+    if (!session && step !== 'discovery') return redirect('/');
     if (step === 'create') return redirect('/app'); // create adds no scopes (§6)
-    const state = issueState({ tenantId: session.tenantId, step, secret: sessionSecret, now: now() });
+    const site = (u.searchParams.get('site') || '').replace(/[|\s]/g, '').slice(0, 200);
+    const state = issueState({ tenantId: session ? session.tenantId : '', step, secret: sessionSecret, now: now(), site });
     return redirect(buildAuthUrl({ clientId: config.clientId, redirectUri: config.redirectUri, step, state }));
   }
 
@@ -106,6 +116,26 @@ async function handleGoogleAuth(req, res, u, session, deps) {
       clientId: config.clientId, clientSecret: config.clientSecret, redirectUri: config.redirectUri, code,
     });
     if (ex.error) return fail('Google did not accept that connection — try again.');
+
+    // Signed-out start: who is this? Ask Google, find-or-create the tenant,
+    // remember the site they checked, and set the session cookie on the way out.
+    let setCookie = null;
+    if (!st.tenantId) {
+      const who = await (deps.fetchUserinfo || fetchUserinfo)(ex.tokens.access_token);
+      if (!who || !who.sub) return fail('Google did not tell us who you are — try again.');
+      if (!deps.findOrCreateTenantByGoogle || !deps.issueSession || !deps.cookieFor) return fail('Sign-in is not available right now.');
+      st.tenantId = await deps.findOrCreateTenantByGoogle({ sub: who.sub, email: who.email, name: who.name });
+      if (st.site) {
+        const t = await db.select('tenants', `id=eq.${q(st.tenantId)}&select=website_url`, { single: true }).catch(() => null);
+        if (t && !t.website_url) await db.update('tenants', `id=eq.${q(st.tenantId)}`, { website_url: st.site }).catch(() => {});
+      }
+      setCookie = deps.cookieFor(deps.issueSession({ tenantId: st.tenantId, secret: sessionSecret, now: now() }));
+    }
+    const redirectWithSession = (loc) => {
+      res.writeHead(302, setCookie ? { location: loc, 'set-cookie': setCookie } : { location: loc });
+      res.end();
+      return true;
+    };
 
     // Upsert the connection on the tenant's owner user.
     const user = await db.select('users', `tenant_id=eq.${q(st.tenantId)}&select=id&limit=1`, { single: true });
@@ -141,9 +171,9 @@ async function handleGoogleAuth(req, res, u, session, deps) {
           tenant_id: st.tenantId, event: 'discovery_partial', detail: { errors },
         }], { returning: false }).catch(() => {});
       }
-      return redirect(`/app/confirm?found=${assets.length}&matched=${result.matched}`);
+      return redirectWithSession(`/app/confirm?found=${assets.length}&matched=${result.matched}`);
     }
-    return redirect('/app');
+    return redirectWithSession('/app');
   }
 
   return false;

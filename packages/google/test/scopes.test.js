@@ -26,8 +26,9 @@ test('missingScopes: names exactly what a partial grant lacks', () => {
   assert.deepStrictEqual(missingScopes(WRITE, 'write'), []);
 });
 
-test('ladder: discovery asks read-only only; write adds edit+publish; create adds none', () => {
-  assert.ok(LADDER.discovery.every((s) => /readonly|adwords/.test(s)));
+test('ladder: discovery asks identity + read-only only; write adds edit+publish; create adds none', () => {
+  assert.ok(LADDER.discovery.every((s) => /readonly|adwords|openid|userinfo\.email/.test(s)));
+  assert.ok(!LADDER.discovery.some((s) => /edit|publish/.test(s)));
   assert.ok(LADDER.write.some((s) => /analytics\.edit/.test(s)));
   assert.ok(LADDER.write.some((s) => /tagmanager\.publish/.test(s)));
   assert.deepStrictEqual(LADDER.create, []);
