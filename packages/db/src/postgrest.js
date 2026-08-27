@@ -26,7 +26,9 @@ function createClient({ url, serviceKey, fetchImpl = fetch }) {
       throw new Error(`postgrest ${method} ${path}: ${res.status} ${detail.slice(0, 300)}`);
     }
     if (res.status === 204) return null;
-    return res.json();
+    // return=minimal answers 201 with an empty body - never try to parse that.
+    if (res.status === 201 && (res.headers && res.headers.get && res.headers.get('content-length') === '0')) return null;
+    try { return await res.json(); } catch (e) { if (res.status === 201) return null; throw e; }
   }
 
   return {

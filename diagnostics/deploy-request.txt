@@ -1,1 +1,1 @@
-deploy request: one-tap Google sign-in (discovery consent creates the account, site carried through) — 2026-08-27T09:06:11Z
+deploy request: postgrest client tolerates empty 201 bodies (return=minimal inserts crashed the sign-in callback) — 2026-08-27T09:41:05Z
