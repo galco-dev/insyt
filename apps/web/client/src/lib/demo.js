@@ -257,6 +257,7 @@ function customerDemo(path, method, body) {
     s.ledger.unshift({ id: `l-${Date.now()}`, event: 'change_requested', actor: 'user', summary_text: `You asked: "${text}". We will draft it as a change for your approval.`, created_at: cnow() });
     return { ok: true };
   }
+  if (p === '/api/app/recheck') return { ok: true, run_id: 'demo-run', note: 'On its way - in the sample, nothing changes.' };
   if (p === '/api/app/autopilot') {
     const cats = (body && (body.categories || body)) || {};
     for (const k of ['negatives', 'budgets', 'counting']) s.autopilot[k] = !!cats[k];

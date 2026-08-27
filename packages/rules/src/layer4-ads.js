@@ -82,7 +82,9 @@ const rules = [
       const spending = activeCampaigns(ads).some((c) => c.spend_30d_usd > 0);
       if (!spending) return [];
       const allPrimaries = primaries(ads);
-      const silent = allPrimaries.filter((a) => a.count_30d === 0 && daysSince(a.last_conversion_at, now) >= silentDays);
+      // System-defined (Google-hosted) actions are skipped: they are often
+      // legitimately empty and the customer cannot configure them anyway.
+      const silent = allPrimaries.filter((a) => !a.system_defined && a.count_30d === 0 && daysSince(a.last_conversion_at, now) >= silentDays);
       // Account-wide zero-working is ads.no_conversion_tracking's finding.
       if (!silent.length || silent.length === allPrimaries.length) return [];
       const silentEvents = new Set(silentGa4Events || []);
@@ -102,7 +104,7 @@ const rules = [
             likely_cause: a.source === 'ga4_import' && a.ga4_event_name && silentEvents.has(a.ga4_event_name)
               ? 'ga4_event_silent' : 'action_config',
           }],
-          fix_detail: `"${a.name}" has recorded nothing for ${Math.floor(daysSince(a.last_conversion_at, now))}+ days while your ads kept spending.`,
+          fix_detail: `"${a.name}" has recorded nothing ${Number.isFinite(daysSince(a.last_conversion_at, now)) ? `for ${Math.floor(daysSince(a.last_conversion_at, now))}+ days` : 'in the last 30 days'} while your ads kept spending.`,
         },
         icon: 'bell-off',
       }));

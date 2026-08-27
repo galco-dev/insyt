@@ -354,6 +354,20 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             return json(res, ok ? 200 : 404, { ok });
           }
           if (sub === '/confirm') { const run = await confirmAndStart(t); return json(res, 200, { ok: true, run_id: run ? run.id : null }); }
+          if (sub === '/recheck') {
+            // "Check again now": a triggered run, at most one per tenant per hour.
+            if (!opsStore || !queue) return json(res, 503, { error: 'Checks are paused right now - try again shortly.' });
+            const hour = new Date(now()).toISOString().slice(0, 13);
+            try {
+              const run = await opsStore.enqueueRun({ tenant_id: t, type: 'triggered', status: 'queued', idempotency_key: `recheck:${t}:${hour}` });
+              await queue.enqueue('runs-triggered', run);
+              return json(res, 200, { ok: true, run_id: run.id });
+            } catch (e) {
+              if (/duplicate|23505|409/.test(String(e && e.message))) return json(res, 200, { ok: true, run_id: null, note: 'A fresh check is already on its way.' });
+              console.error(`recheck enqueue failed for ${t}: ${e && e.message}`);
+              return json(res, 500, { error: 'something went wrong on our side' });
+            }
+          }
         }
         return json(res, 404, { error: 'not found' });
       }

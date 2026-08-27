@@ -102,7 +102,9 @@ const rules = [
       const linked = new Set(linkedMeasurementIds || []);
       if (linked.size === 0) return []; // nothing linked yet — Layer 2 covers that
       return gtm.tags
-        .filter((t) => GA4_CONFIG_TYPES.has(t.type) && active(t) && t.measurement_id && !linked.has(t.measurement_id))
+        // Only GA4 ids (G-…) can mismatch a GA4 stream. AW-/DC-/GT- Google tags
+        // are Ads/Floodlight/gateway tags and legitimately carry other ids.
+        .filter((t) => GA4_CONFIG_TYPES.has(t.type) && active(t) && /^G-/i.test(t.measurement_id || '') && !linked.has(t.measurement_id))
         .map((t) => ({
           category: 'broken_tracking',
           entity_key: `${t.id}:${t.measurement_id}`,

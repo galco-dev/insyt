@@ -39,6 +39,15 @@ async function search({ auth, tenantId, customerId, developerToken, loginCustome
 const micros = (v) => Number(v || 0) / 1_000_000;
 
 /** Layer 4 contract. */
+// GA4-imported action names read "<property> (web) <event_name>"; older
+// imports read "<event_name> (GA4)". The event is what identifies a double count.
+function ga4EventFromActionName(name) {
+  const n = String(name || '').trim();
+  const afterParen = n.includes(')') ? n.slice(n.lastIndexOf(')') + 1).trim() : '';
+  const raw = afterParen || n.split('(')[0].trim();
+  return raw.toLowerCase().replace(/\s+/g, '_');
+}
+
 async function fetchAds({ auth, tenantId, customerId, developerToken, loginCustomerId, ga4KeyEvents30d = null }) {
   const ctx = { auth, tenantId, customerId, developerToken, loginCustomerId };
   const d30 = gaqlDate(30); const d90 = gaqlDate(90); const today = gaqlDate(0);
@@ -55,7 +64,7 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
       FROM search_term_view WHERE segments.date BETWEEN '${d90}' AND '${today}'` }),
     search({ ...ctx, query: `
       SELECT conversion_action.id, conversion_action.name, conversion_action.primary_for_goal,
-             conversion_action.type, conversion_action.status
+             conversion_action.type, conversion_action.status, conversion_action.origin, conversion_action.category
       FROM conversion_action WHERE conversion_action.status = 'ENABLED'` }),
     search({ ...ctx, query: `
       SELECT metrics.cost_micros FROM customer WHERE segments.date BETWEEN '${d90}' AND '${today}'` }),
@@ -117,7 +126,11 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
       count_30d: count,
       last_conversion_at: count > 0 ? new Date().toISOString() : null, // per-day last-seen needs a segmented query; day-window census suffices for §3
       source: (a.type || '').includes('GOOGLE_ANALYTICS') ? 'ga4_import' : 'website',
-      ga4_event_name: (a.type || '').includes('GOOGLE_ANALYTICS') ? a.name.split('(')[0].trim().toLowerCase().replace(/\s+/g, '_') : null,
+      // Google-hosted actions (Local actions - Directions, Calls from ads…)
+      // are system-defined and often legitimately empty.
+      system_defined: (a.origin || '') === 'GOOGLE_HOSTED',
+      conversion_category: a.category || null,
+      ga4_event_name: (a.type || '').includes('GOOGLE_ANALYTICS') ? ga4EventFromActionName(a.name) : null,
     };
   });
 

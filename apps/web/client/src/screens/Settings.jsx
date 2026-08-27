@@ -79,6 +79,7 @@ export default function Settings() {
   const [error, setError] = useState(null);
   const [note, setNote] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
+  const [recheck, setRecheck] = useState(null);
   useEffect(() => { api('/api/app/settings').then((d) => setSettings(d.settings)).catch((e) => setError(e.message)); }, []);
 
   if (error) return <div className="mx-auto max-w-m2 px-5 pt-14"><ErrorNote message={error} /></div>;
@@ -139,6 +140,14 @@ export default function Settings() {
           <div className="flex-1">
             <MonoLabel>Google connection</MonoLabel>
             <div className="mt-0.5 text-body">{settings.connection_status}</div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Button variant="secondary" disabled={recheck === 'busy'} onClick={async () => {
+                setRecheck('busy');
+                try { const r = await api('/api/app/recheck', { method: 'POST' }); setRecheck(r.note || 'On its way - your report refreshes in about ten minutes.'); }
+                catch (e) { setRecheck(e.message); }
+              }}>Check again now</Button>
+              {recheck && recheck !== 'busy' && <span className="text-tiny text-neutral-900">{recheck}</span>}
+            </div>
             <p className="mt-2 text-tiny text-neutral-900">
               To cut off our access at any time, remove Insyt at{' '}
               <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="underline underline-offset-2">your Google Account</a>

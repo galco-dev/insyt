@@ -200,3 +200,27 @@ if (googleConfigured) {
 } else {
   console.log('apply loop idle: Google OAuth client not configured');
 }
+
+// Narration repair — findings that shipped with empty copy (model outage,
+// unparseable reply) get their title/explanation written on the next tick.
+// Same grounded narrator, same register rules; 40 findings per 10 minutes.
+if (process.env.ANTHROPIC_API_KEY) {
+  const { narrateFinding } = require('../../../packages/report/src/narration');
+  const repairNarration = async () => {
+    const rows = await db.select('findings', "explanation=eq.&status=eq.open&select=id,run_id,tenant_id,rule_id,layer,severity,title,money_impact_monthly_usd,campaign_name,payload&order=created_at.desc&limit=40");
+    let fixed = 0;
+    for (const f of rows) {
+      try {
+        const generate = (args) => model.generate({ ...args, tenantId: f.tenant_id, runId: f.run_id });
+        const { title, explanation } = await narrateFinding({ ...f, title: undefined }, generate);
+        if (title && explanation) { await db.update('findings', `id=eq.${q(f.id)}`, { title, explanation }); fixed += 1; }
+      } catch (e) {
+        console.warn(`narration repair skipped ${f.rule_id} (${f.id}): ${e.message}`);
+      }
+    }
+    if (rows.length) console.log(`narration repair: ${fixed}/${rows.length} rewritten`);
+  };
+  setInterval(() => repairNarration().catch((e) => console.error('narration repair failed:', e.message)), 10 * 60_000);
+  setTimeout(() => repairNarration().catch((e) => console.error('narration repair failed:', e.message)), 90_000);
+  console.log('narration repair active (10-minute tick)');
+}
