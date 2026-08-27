@@ -1,1 +1,1 @@
-deploy request: postgrest client tolerates empty 201 bodies (return=minimal inserts crashed the sign-in callback) — 2026-08-27T09:41:05Z
+deploy request: webhooks acknowledge tenant-less events instead of 500 — 2026-08-27T10:37:19Z

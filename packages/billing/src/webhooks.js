@@ -16,7 +16,7 @@ const GRACE_RETRY_DAYS = [3, 5, 7]; // §10 grace ladder
 async function tenantFor(obj, store) {
   return (obj.metadata && obj.metadata.tenant_id)
     || obj.client_reference_id
-    || store.tenantIdByCustomer(obj.customer);
+    || (obj.customer ? store.tenantIdByCustomer(obj.customer) : null);
 }
 
 async function handleWebhook(event, store) {
@@ -26,6 +26,9 @@ async function handleWebhook(event, store) {
   switch (type) {
     case 'checkout.session.completed': {
       const tenantId = await tenantFor(obj, store);
+      // Events that belong to no tenant (dashboard test triggers, objects
+      // created outside the app) are acknowledged, not retried forever.
+      if (!tenantId) return { handled: false, reason: 'no tenant' };
       if (obj.mode === 'payment') {
         const kind = obj.metadata && obj.metadata.kind; // audit_unlock | large_audit | setup_bundle
         await store.recordPayment({
@@ -41,6 +44,9 @@ async function handleWebhook(event, store) {
     case 'customer.subscription.created':
     case 'customer.subscription.updated': {
       const tenantId = await tenantFor(obj, store);
+      // Events that belong to no tenant (dashboard test triggers, objects
+      // created outside the app) are acknowledged, not retried forever.
+      if (!tenantId) return { handled: false, reason: 'no tenant' };
       await store.upsertSubscription({
         tenant_id: tenantId,
         stripe_customer_id: obj.customer,
@@ -56,18 +62,27 @@ async function handleWebhook(event, store) {
     }
     case 'customer.subscription.deleted': {
       const tenantId = await tenantFor(obj, store);
+      // Events that belong to no tenant (dashboard test triggers, objects
+      // created outside the app) are acknowledged, not retried forever.
+      if (!tenantId) return { handled: false, reason: 'no tenant' };
       await store.markSubscription(obj.id, { status: 'canceled' });
       await store.ledger({ tenant_id: tenantId, event: 'subscription_changed', actor: 'system', summary_text: 'Plan cancelled' });
       return { handled: true };
     }
     case 'invoice.paid': {
       const tenantId = await tenantFor(obj, store);
+      // Events that belong to no tenant (dashboard test triggers, objects
+      // created outside the app) are acknowledged, not retried forever.
+      if (!tenantId) return { handled: false, reason: 'no tenant' };
       if (obj.subscription) await store.markSubscription(obj.subscription, { status: 'active' });
       await store.audit({ tenant_id: tenantId, event: 'invoice_paid', detail: { invoice: obj.id, amount_usd: (obj.amount_paid || 0) / 100 } });
       return { handled: true };
     }
     case 'invoice.payment_failed': {
       const tenantId = await tenantFor(obj, store);
+      // Events that belong to no tenant (dashboard test triggers, objects
+      // created outside the app) are acknowledged, not retried forever.
+      if (!tenantId) return { handled: false, reason: 'no tenant' };
       const attempt = obj.attempt_count || 1;
       // Degrade, never cut: subscription stays mirrored as-is; we email the
       // grace ladder and let Stripe's retry schedule run its course.
