@@ -57,17 +57,17 @@ async function fetchAdsDeep({ auth, tenantId, customerId, developerToken, loginC
              ad_group_criterion.quality_info.quality_score, ad_group_criterion.criterion_id,
              campaign.id, ad_group.id, ad_group.name,
              metrics.cost_micros, metrics.clicks, metrics.conversions
-      FROM keyword_view WHERE ${between(d90)} AND ad_group_criterion.status != 'REMOVED'`,
-    hours: `SELECT segments.hour, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d30)}`,
-    days: `SELECT segments.day_of_week, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d90)}`,
-    devices: `SELECT segments.device, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d90)}`,
+      FROM keyword_view WHERE ${between(d90)} AND ad_group_criterion.status != 'REMOVED' AND campaign.status = 'ENABLED'`,
+    hours: `SELECT segments.hour, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d30)} AND campaign.status = 'ENABLED'`,
+    days: `SELECT segments.day_of_week, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d90)} AND campaign.status = 'ENABLED'`,
+    devices: `SELECT segments.device, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${between(d90)} AND campaign.status = 'ENABLED'`,
     share: `
       SELECT campaign.id, campaign.name, metrics.search_click_share, metrics.search_exact_match_impression_share,
              metrics.search_budget_lost_impression_share, metrics.invalid_click_rate, metrics.cost_micros
       FROM campaign WHERE ${between(d30)} AND campaign.advertising_channel_type = 'SEARCH' AND campaign.status = 'ENABLED'`,
     monthly: `
       SELECT segments.month, campaign.id, metrics.cost_micros, metrics.clicks, metrics.conversions
-      FROM campaign WHERE ${between(d180)}`,
+      FROM campaign WHERE ${between(d180)} AND campaign.status = 'ENABLED'`,
     assets: `
       SELECT campaign.id, ad_group_ad_asset_view.field_type, ad_group_ad_asset_view.pinned_field,
              ad_group_ad_asset_view.performance_label, asset.text_asset.text, metrics.impressions

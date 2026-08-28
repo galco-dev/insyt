@@ -12,11 +12,14 @@ const SYSTEM_PROMPT = [
   'Register rules, absolute: no marketing-tool jargon. Never say container, snippet, property, conversion action, or measurement ID.',
   'Say "your tracking", "your ads", "customer actions". One or two sentences per field. Warm, direct, concrete.',
   'You may repeat numbers from the data exactly as given. NEVER compute, estimate, round, or combine numbers yourself.',
+  'Money: the data carries a currency code (money_currency). Write amounts in THAT currency ("AED 1,692"); only use "$" when the code is USD. Never convert.',
 ].join(' ');
 
 /** What the model is allowed to see: the finding minus payload. */
 function narrationInput(finding) {
   const { payload, ...safe } = finding;
+  if (safe.money && safe.money.currency) safe.money_currency = safe.money.currency;
+  else if (safe.money_impact_currency_local && safe.money_impact_currency_local.code) safe.money_currency = safe.money_impact_currency_local.code;
   return safe;
 }
 

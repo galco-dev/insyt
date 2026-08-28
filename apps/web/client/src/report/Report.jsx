@@ -233,6 +233,8 @@ function RealReport({ reportId }) {
 
   const locked = report.unlocked === false;
   const summary = report.summary || {};
+  const code = summary.currency || 'USD';
+  const money = (n) => (code === 'USD' ? `$${Math.round(n).toLocaleString()}` : `${code} ${Math.round(n).toLocaleString()}`);
   const ORDER = { critical: 0, warning: 1, opportunity: 2, info: 3 };
   const snapshot = (report.findings_snapshot || []).filter((f) => f.status !== 'dismissed' && f.status !== 'resolved');
   const findings = snapshot.map((f) => {
@@ -247,7 +249,7 @@ function RealReport({ reportId }) {
       rawSeverity: f.severity,
       title,
       campaign: f.campaign_name || null,
-      money: usd ? `about $${Math.round(usd).toLocaleString()} / month` : null,
+      money: usd ? `about ${money(usd)} / month` : null,
       usd: usd || 0,
       body: f.explanation || '',
       fix: p.fix_detail || (entities ? `${entities} item${entities === 1 ? '' : 's'} to fix - the full report lists each one.` : undefined),
@@ -274,7 +276,7 @@ function RealReport({ reportId }) {
               {findings.length === 0
                 ? 'All clear this week.'
                 : waste > 0
-                  ? <>About <span className="text-critical">${waste.toLocaleString()} a month</span> is going to waste.</>
+                  ? <>About <span className="text-critical">{money(waste)} a month</span> is going to waste.</>
                   : `${findings.length} finding${findings.length === 1 ? '' : 's'}, biggest money first.`}
             </h1>
             <p className="mt-2 max-w-m2 text-body text-neutral-900">

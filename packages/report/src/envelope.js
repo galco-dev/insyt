@@ -3,7 +3,9 @@
 // dashboard, blur layer. Numbers are summed here, in code — narration slots
 // arrive from the narration stage and carry prose only.
 
-function assembleEnvelope({ run, findings, ledgerCumulative, narrativeSlots, performance = null, deep = null, currencySymbol = '$' }) {
+const { fmtMoney } = require('../../shared/src/money');
+
+function assembleEnvelope({ run, findings, ledgerCumulative, narrativeSlots, performance = null, deep = null, currencySymbol = null, currencyCode = 'USD' }) {
   const counts = { critical: 0, warning: 0, opportunity: 0, info: 0 };
   let waste = 0;
   let applied = 0;
@@ -42,7 +44,9 @@ function assembleEnvelope({ run, findings, ledgerCumulative, narrativeSlots, per
     // Deep-report sections (charts, tables, execution register, unexamined) —
     // assembled by deep.js when the deep data blocks are present.
     ...(deep ? { deep } : {}),
-    currency_symbol: currencySymbol,
+    // Prefix every amount renders with: "$" for USD, "AED " otherwise.
+    currency_symbol: currencySymbol || fmtMoney(0, currencyCode).replace(/0$/, '').replace(/,$/, ''),
+    currency_code: currencyCode,
     findings: [...findings].sort((a, b) => (b.display?.sort_weight || 0) - (a.display?.sort_weight || 0)),
   };
 }

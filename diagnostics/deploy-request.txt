@@ -1,1 +1,1 @@
-deploy request: model client joins text blocks (thinking-first replies); narration failure reasons; report page upgrade; payment unlocks reports — 2026-08-27T16:25:16Z
+deploy request: account currency everywhere (fetch, findings, report, cards, tiles, narration, budget floor); enabled-only campaign data — 2026-08-28T03:24:28Z

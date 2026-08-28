@@ -264,15 +264,16 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         const sub = path.slice('/api/app'.length) || '/';
         if (req.method === 'GET') {
           if (sub === '/home') {
-            const [health, pending, cumulative, reports, streak, plan, spend] = await Promise.all([
+            const [health, pending, cumulative, reports, streak, plan, spend, currency] = await Promise.all([
               dashStore.healthLatest(t), dashStore.pendingApprovals(t), dashStore.cumulative(t), dashStore.reports(t),
               dashStore.approvalStreak ? dashStore.approvalStreak(t) : 0,
               dashStore.planPosition ? dashStore.planPosition(t) : null,
               // Spend position ships with the audit engine phase; until the
               // store grows the method the card simply does not render.
               dashStore.spendPosition ? dashStore.spendPosition(t) : null,
+              dashStore.accountCurrency ? dashStore.accountCurrency(t) : 'USD',
             ]);
-            return json(res, 200, { health, pending, cumulative, reports, streak, plan, spend });
+            return json(res, 200, { health, pending, cumulative, reports, streak, plan, spend, currency });
           }
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t) });
           if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t) });

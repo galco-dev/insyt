@@ -52,7 +52,7 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
   const ctx = { auth, tenantId, customerId, developerToken, loginCustomerId };
   const d30 = gaqlDate(30); const d90 = gaqlDate(90); const today = gaqlDate(0);
 
-  const [campaigns, terms, actions, spend90, disapproved, convo30] = await Promise.all([
+  const [campaigns, terms, actions, spend90, disapproved, convo30, customer] = await Promise.all([
     search({ ...ctx, query: `
       SELECT campaign.id, campaign.name, campaign.status, campaign.bidding_strategy_type,
              campaign.target_cpa.target_cpa_micros, campaign.target_roas.target_roas,
@@ -61,7 +61,7 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
       FROM campaign WHERE segments.date BETWEEN '${d30}' AND '${today}'` }),
     search({ ...ctx, query: `
       SELECT search_term_view.search_term, campaign.id, metrics.cost_micros, metrics.clicks, metrics.conversions
-      FROM search_term_view WHERE segments.date BETWEEN '${d90}' AND '${today}'` }),
+      FROM search_term_view WHERE segments.date BETWEEN '${d90}' AND '${today}' AND campaign.status = 'ENABLED'` }),
     search({ ...ctx, query: `
       SELECT conversion_action.id, conversion_action.name, conversion_action.primary_for_goal,
              conversion_action.type, conversion_action.status, conversion_action.origin, conversion_action.category
@@ -75,6 +75,7 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
     search({ ...ctx, query: `
       SELECT segments.conversion_action, segments.conversion_action_name, metrics.conversions
       FROM customer WHERE segments.date BETWEEN '${d30}' AND '${today}' AND metrics.conversions > 0` }),
+    search({ ...ctx, query: 'SELECT customer.currency_code FROM customer' }),
   ]);
 
   // Aggregate campaign rows (one per date segment when segmented — here totals).
@@ -139,7 +140,8 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
 
   return {
     customer_id: String(customerId).replace(/-/g, ''),
-    currency: null, // display currency joins from the assets row
+    // Every money figure in this object is in the ACCOUNT'S OWN currency.
+    currency_code: (customer && customer[0] && customer[0].customer && customer[0].customer.currencyCode) || null,
     spend_30d_usd: Math.round([...campMap.values()].reduce((s, c) => s + c.spend_30d_usd, 0)),
     spend_90d_usd: Math.round(spend90Usd),
     conversion_actions: conversionActions,

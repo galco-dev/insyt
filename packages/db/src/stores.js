@@ -63,7 +63,7 @@ function workerStore(db) {
         layer: f.layer, severity: f.severity, status: f.status,
         title: f.title, explanation: f.explanation,
         money_impact_monthly_usd: f.money ? f.money.impact_monthly_usd : null,
-        money_impact_currency_local: f.money && f.money.impact_monthly_local ? f.money.impact_monthly_local : null,
+        money_impact_currency_local: f.money ? (f.money.impact_monthly_local || (f.money.currency ? { code: f.money.currency } : null)) : null,
         payload: { ...f.payload, entity_key: f.entity_key },
         fix_available: !!(f.fix && f.fix.available),
         first_seen_run_id: f.first_seen_run_id,
@@ -431,18 +431,27 @@ function dashStore(db, deps = {}) {
         band: (tenant && tenant.size_band) || '4k',
       };
     },
+    accountCurrency: async (tenantId) => {
+      const a = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null);
+      return (a && a.currency) || 'USD';
+    },
     pendingApprovals: async (tenantId) => {
       // Change summaries are written for the ledger (past tense: "Excluded…").
       // On a card that is still waiting for a yes they must read as proposals.
       const PROPOSE = [[/^Excluded /, 'Exclude '], [/^Raised /, 'Raise '], [/^Lowered /, 'Lower '], [/^Paused /, 'Pause '], [/^Linked /, 'Link '], [/^Undid /, 'Undo '], [/^Set /, 'Set '], [/^Added /, 'Add '], [/^Removed /, 'Remove '], [/^Enabled /, 'Enable '], [/^Created /, 'Create ']];
       const asProposal = (t) => { for (const [re, to] of PROPOSE) if (re.test(t)) return t.replace(re, to); return t; };
+      const cur = await (async () => {
+        const a = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null);
+        return (a && a.currency) || 'USD';
+      })();
+      const sym = cur === 'USD' ? '$' : `${cur} `;
       const rows = await db.select('changes',
         `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,before,after,summary_text,money_impact_usd,ask_reason,category,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
       return rows.map((r) => ({
         id: r.id,
         title: r.summary_text ? asProposal(r.summary_text) : ((r.finding && r.finding.title) || 'A fix is ready'),
         money_line: (r.money_impact_usd || (r.finding && r.finding.money_impact_monthly_usd))
-          ? `about $${Math.round(r.money_impact_usd || r.finding.money_impact_monthly_usd)} a month` : null,
+          ? `about ${sym}${Math.round(r.money_impact_usd || r.finding.money_impact_monthly_usd)} a month` : null,
         category: r.category || null,
         ask_reason: r.ask_reason || null,
         // The trust layer: what exactly changes, in plain words, on the card

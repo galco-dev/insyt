@@ -239,9 +239,13 @@ function buildStages({ google, crawler, model, store }) {
           changes: store.changeRegister ? await store.changeRegister(ctx.run.tenant_id).catch(() => []) : [],
           extraUnexamined: ['demographics', 'conversion_lag', 'change_history', 'seasonality'],
         });
+        const code = (ctx.ads && ctx.ads.currency_code) || 'USD';
+        // Money figures are in the account's own currency - stamp every finding.
+        for (const f of ctx.findings) if (f.money) f.money.currency = code;
         const envelope = assembleEnvelope({
           run: { id: ctx.run.id, type: ctx.run.type, status: 'complete' },
           findings: ctx.findings,
+          currencyCode: code,
           ledgerCumulative: await store.ledgerCumulative(ctx.run.tenant_id),
           narrativeSlots: ctx.narrativeSlots,
           deep,
@@ -292,6 +296,7 @@ function buildStages({ google, crawler, model, store }) {
           tenant_id: ctx.run.tenant_id,
           type: ctx.run.type === 'signup_audit' ? 'signup' : ctx.run.type === 'deep' ? 'deep' : 'weekly',
           summary: ctx.envelope ? {
+            currency: ctx.envelope.currency_code || 'USD',
             health_score: ctx.health_score ?? null,
             waste_monthly_usd: ctx.envelope.totals ? ctx.envelope.totals.waste_monthly_usd : null,
             counts: ctx.envelope.counts || null,

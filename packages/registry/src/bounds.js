@@ -23,6 +23,8 @@ const BOUNDS = Object.freeze({
   suspect_reverts_30d: 2,
 });
 
+const { toUsd } = require('../../shared/src/money');
+
 function checkBounds(draft, state) {
   if (!draft || !draft.tool_id) return 'no tool';
   const p = draft.params || {};
@@ -34,7 +36,8 @@ function checkBounds(draft, state) {
   if (draft.tool_id === 'ads.adjust_budget') {
     const c = state.campaign ? state.campaign(p.campaign_id) : null;
     if (!c || !(c.budget_daily_usd > 0)) return 'unknown campaign budget';
-    if (!(p.new_daily_usd >= BOUNDS.budget_floor_daily_usd)) return `budget below the $${BOUNDS.budget_floor_daily_usd}/day floor`;
+    // The floor is a USD guardrail; budgets arrive in the account's currency.
+    if (!(toUsd(p.new_daily_usd, state.account && state.account.currency_code) >= BOUNDS.budget_floor_daily_usd)) return `budget below the $${BOUNDS.budget_floor_daily_usd}/day floor`;
     const pct = Math.abs(p.new_daily_usd - c.budget_daily_usd) / c.budget_daily_usd * 100;
     if (pct > BOUNDS.budget_max_pct_per_change + 1e-9) return `budget move ${Math.round(pct)}% exceeds ${BOUNDS.budget_max_pct_per_change}% per change`;
     const net = (state.weekly_budget_delta_pct || 0) + (Math.abs(p.new_daily_usd - c.budget_daily_usd) / (state.account.daily_budget_total_usd || 1)) * 100;

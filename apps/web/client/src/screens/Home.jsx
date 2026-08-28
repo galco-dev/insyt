@@ -27,11 +27,11 @@ function MiniDial({ score }) {
   );
 }
 
-function WasteFigure({ value }) {
+function WasteFigure({ value, money }) {
   const shown = useCountUp(value);
   return (
     <div className="mt-1 text-h3">
-      ${shown.toLocaleString()}<span className="text-small text-neutral-900">/mo</span>
+      {money ? money(shown) : `$${shown.toLocaleString()}`}<span className="text-small text-neutral-900">/mo</span>
     </div>
   );
 }
@@ -45,6 +45,8 @@ export default function Home() {
   if (!data) return <Spinner label="Loading your account" />;
 
   const { health, pending, cumulative, reports, streak, plan, spend } = data;
+  const code = data.currency || 'USD';
+  const money = (n) => (code === 'USD' ? `$${Math.round(n).toLocaleString()}` : `${code} ${Math.round(n).toLocaleString()}`);
   const latest = reports && reports[0];
   const trend = (health.trend || []).map((p) => (typeof p === 'number' ? p : p.score));
   const delta = trend.length >= 2 ? trend[trend.length - 1] - trend[trend.length - 2] : null;
@@ -105,15 +107,15 @@ export default function Home() {
           </Card>
           <Card className="p-4">
             <MonoLabel>Waste removed</MonoLabel>
-            <WasteFigure value={cumulative.waste_removed_usd} />
+            <WasteFigure value={cumulative.waste_removed_usd} money={money} />
           </Card>
           {spend && (
             <Card className="col-span-2 p-4 sm:col-span-1">
               <MonoLabel>Spent this month</MonoLabel>
               <div className="mt-1 text-h3">
-                ${Math.round(spend.month_usd).toLocaleString()}
+                {money(spend.month_usd)}
                 {spend.month_budget_usd ? (
-                  <span className="text-small text-neutral-900"> of ${Math.round(spend.month_budget_usd).toLocaleString()}</span>
+                  <span className="text-small text-neutral-900"> of {money(spend.month_budget_usd)}</span>
                 ) : null}
               </div>
               {spend.pace_line && <div className="mt-0.5 text-tiny text-neutral-900">{spend.pace_line}</div>}

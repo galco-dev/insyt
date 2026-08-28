@@ -31,11 +31,12 @@ const TOKENS = {
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fill = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => esc(vars[k] ?? ''));
 
-function fmtMoney(usd, local) {
+function fmtMoney(usd, local, currency) {
   if (local && local.amount != null && local.currency) {
     return `${esc(local.currency)} ${Math.round(local.amount).toLocaleString('en-US')}`;
   }
-  return `$${Math.round(usd || 0).toLocaleString('en-US')}`;
+  const cur = currency || '$';
+  return `${cur}${Math.round(usd || 0).toLocaleString('en-US')}`;
 }
 
 function sevColor(severity) { return TOKENS[severity] || TOKENS.info; }
@@ -64,7 +65,7 @@ function payloadBlock(finding, unlocked) {
   if (showFull) {
     const rows = (p.entities || []).slice(0, 30).map((e) => `<tr>
         <td style="font-family:${TOKENS.font};font-size:13px;padding:4px 8px;border-bottom:1px solid ${TOKENS.neutral400};">${esc(e.value)}</td>
-        <td style="font-family:${TOKENS.font};font-size:13px;padding:4px 8px;border-bottom:1px solid ${TOKENS.neutral400};color:${TOKENS.neutral900};text-align:right;">${e.spend_usd != null ? '$' + Math.round(e.spend_usd).toLocaleString('en-US') : ''}</td>
+        <td style="font-family:${TOKENS.font};font-size:13px;padding:4px 8px;border-bottom:1px solid ${TOKENS.neutral400};color:${TOKENS.neutral900};text-align:right;">${e.spend_usd != null ? ((finding.money && finding.money.currency && finding.money.currency !== 'USD' ? finding.money.currency + ' ' : '$')) + Math.round(e.spend_usd).toLocaleString('en-US') : ''}</td>
       </tr>`).join('');
     const fixLine = p.fix_detail ? `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.accent};padding:8px;">${esc(p.fix_detail)}</div>` : '';
     return `${rows ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>` : ''}${fixLine}`;
@@ -80,7 +81,7 @@ function payloadBlock(finding, unlocked) {
 function findingCard(finding, unlocked) {
   const color = sevColor(finding.severity);
   const money = finding.money && finding.money.impact_monthly_usd > 0
-    ? `<span style="float:right;font-weight:600;color:${finding.money.direction === 'opportunity' ? TOKENS.success : color};">${finding.money.confidence === 'estimated' ? '~' : ''}${fmtMoney(finding.money.impact_monthly_usd, finding.money.impact_monthly_local)}/mo</span>` : '';
+    ? `<span style="float:right;font-weight:600;color:${finding.money.direction === 'opportunity' ? TOKENS.success : color};">${finding.money.confidence === 'estimated' ? '~' : ''}${fmtMoney(finding.money.impact_monthly_usd, finding.money.impact_monthly_local || (finding.money.currency && finding.money.currency !== 'USD' ? { amount: finding.money.impact_monthly_usd, currency: finding.money.currency } : null))}/mo</span>` : '';
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px 0;border:1px solid ${TOKENS.neutral400};border-left:4px solid ${color};border-radius:${TOKENS.radius};">
     <tr><td style="padding:12px 16px;">
       <div style="font-family:${TOKENS.font};font-size:11px;font-weight:500;color:${color};text-transform:uppercase;letter-spacing:.04em;">${esc(COPY.severity_labels[finding.severity] || finding.severity)}${finding.is_new === false && finding.still_open_days >= 7 ? `<span style="font-weight:400;color:${TOKENS.neutral900};text-transform:none;letter-spacing:0;"> · still open, ${finding.still_open_days} days</span>` : ''}</div>
@@ -212,7 +213,7 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
          <a href="${esc(links.unlock_url)}" style="display:inline-block;padding:12px 24px;font-family:${TOKENS.font};font-size:14px;font-weight:500;color:#ffffff;text-decoration:none;">${esc(COPY.unlock_cta)}</a>
        </td></tr></table>` : '';
   const cumulative = envelope.totals.ledger_cumulative.fixes > 0
-    ? `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};text-align:center;padding:16px 0;border-top:1px solid ${TOKENS.neutral400};">${fill(COPY.cumulative_strip, { fixes: envelope.totals.ledger_cumulative.fixes, amount: '$' + envelope.totals.ledger_cumulative.waste_removed_usd.toLocaleString('en-US') })}</div>` : '';
+    ? `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};text-align:center;padding:16px 0;border-top:1px solid ${TOKENS.neutral400};">${fill(COPY.cumulative_strip, { fixes: envelope.totals.ledger_cumulative.fixes, amount: (envelope.currency_symbol || '$') + envelope.totals.ledger_cumulative.waste_removed_usd.toLocaleString('en-US') })}</div>` : '';
   const sinceLast = envelope.narrative_slots.since_last_week
     ? `<div style="font-family:${TOKENS.font};padding:8px 0 16px 0;"><div style="font-size:14px;font-weight:600;color:${TOKENS.accent};">${esc(COPY.since_last_week_title)}</div><div style="font-size:14px;color:#333;">${esc(envelope.narrative_slots.since_last_week)}</div></div>` : '';
   const footerLinks = mode === 'email'

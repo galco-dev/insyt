@@ -77,7 +77,10 @@ const google = googleConfigured ? {
     const a = await linkedAsset(tenantId, 'ads_account');
     if (!a) throw new Error('no linked Ads asset');
     if (!developerToken) throw new Error('ads reads not configured (developer token pending)');
-    return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: loginFor(a) });
+    const ads = await fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: loginFor(a) });
+    // Remember the account currency where every screen can read it.
+    if (ads.currency_code) db.update('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account`, { currency: ads.currency_code }).catch(() => {});
+    return ads;
   },
   // Watch-window measurement for watch_close (§4.4).
   fetchWindow: async (tenantId, { since, campaignIds, terms }) => {
@@ -180,6 +183,7 @@ if (googleConfigured) {
     const negativesByUs = new Set(applied.filter((c) => c.tool_id === 'ads.add_negative_keywords').flatMap((c) => (c.after && c.after.resource_names) || []));
     return {
       account: {
+        currency_code: (ads && ads.currency_code) || 'USD',
         daily_budget_total_usd: (ads ? ads.campaigns : []).reduce((s, c) => s + (c.budget_daily_usd || 0), 0) || 1,
         weekly_budget_delta_pct: 0, // per-week accounting joins the ledger later
         platform_min_daily_usd: 1,
@@ -210,7 +214,7 @@ if (googleConfigured) {
 if (process.env.ANTHROPIC_API_KEY) {
   const { narrateFinding } = require('../../../packages/report/src/narration');
   const repairNarration = async () => {
-    const rows = await db.select('findings', "explanation=eq.&status=eq.open&select=id,run_id,tenant_id,rule_id,layer,severity,title,money_impact_monthly_usd,campaign_name,payload&order=created_at.desc&limit=40");
+    const rows = await db.select('findings', "explanation=eq.&status=eq.open&select=id,run_id,tenant_id,rule_id,layer,severity,title,money_impact_monthly_usd,money_impact_currency_local,campaign_name,payload&order=created_at.desc&limit=40");
     let fixed = 0;
     for (const f of rows) {
       try {
