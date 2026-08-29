@@ -5,13 +5,24 @@
 const FONT = "'Geist', Helvetica, Arial, sans-serif";
 const ACCENT = '#000d14';
 
-const head = (title) => `<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+const head = (title) => `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-<style>body{margin:0;font-family:${FONT};background:#fff;color:${ACCENT};} .wrap{max-width:560px;margin:0 auto;padding:64px 20px;text-align:center;}
+<style>
+body{margin:0;font-family:${FONT};background:#fff;color:${ACCENT};} .wrap{max-width:560px;margin:0 auto;padding:64px 20px;text-align:center;}
 input{font-family:${FONT};font-size:16px;padding:12px 16px;border:1px solid #d1d1d1;border-radius:6px;width:100%;box-sizing:border-box;}
 button{font-family:${FONT};font-size:14px;font-weight:500;background:${ACCENT};color:#fff;border:0;border-radius:6px;padding:12px 24px;margin-top:12px;cursor:pointer;width:100%;}
-.sub{color:#727272;font-size:14px;} a{color:#727272;}</style></head><body>`;
+.sub{color:#727272;font-size:14px;} a{color:#727272;}
+</style>
+
+<meta name="facebook-domain-verification" content="sxlwbu0v4rf3rm7yofkgnr9l5xowdn" />
+</head>
+
+<body>`;
 
 function landingPage() {
   return `${head('Insyt — your ads, watched and fixed every week')}
@@ -52,7 +63,9 @@ async function poll(){
   } else { setTimeout(poll,1500); }
 }
 poll();
-</script></body></html>`;
+</script>
+</body>
+</html>`;
 }
 
 module.exports = { landingPage, progressPage };
