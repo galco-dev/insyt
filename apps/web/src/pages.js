@@ -18,8 +18,6 @@ input{font-family:${FONT};font-size:16px;padding:12px 16px;border:1px solid #d1d
 button{font-family:${FONT};font-size:14px;font-weight:500;background:${ACCENT};color:#fff;border:0;border-radius:6px;padding:12px 24px;margin-top:12px;cursor:pointer;width:100%;}
 .sub{color:#727272;font-size:14px;} a{color:#727272;}
 </style>
-
-<meta name="facebook-domain-verification" content="sxlwbu0v4rf3rm7yofkgnr9l5xowdn" />
 </head>
 
 <body>`;
