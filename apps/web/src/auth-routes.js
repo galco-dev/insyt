@@ -119,12 +119,23 @@ async function handleGoogleAuth(req, res, u, session, deps) {
     });
     if (ex.error) return fail('Google did not accept that connection — try again.');
 
-    // Signed-out start: who is this? Ask Google, find-or-create the tenant,
-    // remember the site they checked, and set the session cookie on the way out.
+    // Always learn who just signed in. A signed-in browser can pick a
+    // DIFFERENT Google account at the chooser; that identity's tokens and
+    // assets must never be bound to the current session's tenant (a shared
+    // laptop switches accounts, it does not merge them).
+    const who = await (deps.fetchUserinfo || fetchUserinfo)(ex.tokens.access_token);
+    if (!who || !who.sub) return fail('Google did not tell us who you are — try again.');
     let setCookie = null;
-    if (!st.tenantId) {
-      const who = await (deps.fetchUserinfo || fetchUserinfo)(ex.tokens.access_token);
-      if (!who || !who.sub) return fail('Google did not tell us who you are — try again.');
+    let switched = false;
+    if (st.tenantId) {
+      const owner = await db.select('users', `tenant_id=eq.${q(st.tenantId)}&select=id,google_sub&limit=1`, { single: true }).catch(() => null);
+      if (owner && owner.google_sub && owner.google_sub !== who.sub) switched = true;
+      else if (owner && !owner.google_sub) await db.update('users', `id=eq.${q(owner.id)}`, { google_sub: who.sub }).catch(() => {});
+    }
+    // Signed-out start (or a different person on a signed-in browser): find or
+    // create THEIR tenant, remember the site they checked, and set the session
+    // cookie to that tenant on the way out.
+    if (!st.tenantId || switched) {
       if (!deps.findOrCreateTenantByGoogle || !deps.issueSession || !deps.cookieFor) return fail('Sign-in is not available right now.');
       st.tenantId = await deps.findOrCreateTenantByGoogle({ sub: who.sub, email: who.email, name: who.name });
       if (st.site) {

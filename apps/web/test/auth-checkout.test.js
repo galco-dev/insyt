@@ -65,7 +65,7 @@ test('callback exchanges code, upserts connection, discovers, redirects to confi
   const now = () => 5_000_000;
   const state = issueState({ tenantId: 't1', step: 'discovery', secret: SECRET, now: now() });
   const db = fakeDb({
-    users: [{ id: 'u1' }],
+    users: [{ id: 'u1', google_sub: 'sub-owner' }],
     google_connections: [],
     tenants: [{ website_url: 'https://example.com' }],
     crawls: [{ tags_found: { gtm_containers: ['GTM-X'], ga4_ids: [], aw_conversion_ids: [] } }],
@@ -76,6 +76,7 @@ test('callback exchanges code, upserts connection, discovers, redirects to confi
     config: { clientId: 'cid', clientSecret: 'cs', redirectUri: 'https://app/cb' },
     sessionSecret: SECRET,
     now,
+    fetchUserinfo: async () => ({ sub: 'sub-owner', email: 'owner@example.com' }),
     exchangeCode: async () => ({
       tokens: { access_token: 'at', refresh_token: 'rt', expires_at: 1 },
       grantedScopes: [
@@ -101,6 +102,49 @@ test('callback exchanges code, upserts connection, discovers, redirects to confi
   assert.equal(connInsert.list[0].refresh_token, 'rt');
   assert.equal(connInsert.list[0].scope_level, 'readonly');
   assert.equal(connInsert.list[0].status, 'valid');
+});
+
+test('callback: a different Google identity on a signed-in browser switches tenant, never overwrites the current one', async () => {
+  // Regression: 31 Aug 2026 — signing in as info@jobpeak.net while the Nail DXB
+  // session cookie was set bound jobpeak's refresh token + assets to the Nail tenant.
+  const now = () => 5_000_000;
+  const state = issueState({ tenantId: 't-nail', step: 'discovery', secret: SECRET, now: now(), site: 'jobpeak.net' });
+  // Query-aware fake: rows are keyed by the tenant/user the query names.
+  const db = fakeDb();
+  db.select = async (table, query, opts) => {
+    let data = [];
+    if (table === 'users') {
+      if (query.includes('t-nail')) data = [{ id: 'u-nail', google_sub: 'sub-nail' }];
+      if (query.includes('t-jobpeak')) data = [{ id: 'u-jobpeak', google_sub: 'sub-jobpeak' }];
+    }
+    if (table === 'google_connections' && query.includes('u-nail')) data = [{ id: 'c-nail', refresh_token: 'rt-nail', granted_scopes: [] }];
+    if (table === 'tenants') data = [{ website_url: null }];
+    return opts && opts.single ? (data[0] || null) : data;
+  };
+  let created = null;
+  const deps = {
+    db,
+    config: { clientId: 'cid', clientSecret: 'cs', redirectUri: 'https://app/cb' },
+    sessionSecret: SECRET,
+    now,
+    fetchUserinfo: async () => ({ sub: 'sub-jobpeak', email: 'info@jobpeak.net' }),
+    findOrCreateTenantByGoogle: async (who) => { created = who; return 't-jobpeak'; },
+    issueSession: ({ tenantId }) => `sess-${tenantId}`,
+    cookieFor: (s) => `insyt=${s}`,
+    exchangeCode: async () => ({ tokens: { access_token: 'at', refresh_token: 'rt-jobpeak' }, grantedScopes: ['https://www.googleapis.com/auth/adwords'] }),
+    listClients: () => ({}),
+    discoverAssets: async () => ({ assets: [], errors: [] }),
+  };
+  const res = fakeRes();
+  const u = new URL(`http://x/auth/google/callback?code=abc&state=${encodeURIComponent(state)}`);
+  await handleGoogleAuth({ method: 'GET' }, res, u, { tenantId: 't-nail' }, deps);
+  assert.equal(res.code, 302);
+  assert.equal(created && created.sub, 'sub-jobpeak', 'looked up / created the OTHER identity\'s tenant');
+  assert.equal(res.headers['set-cookie'], 'insyt=sess-t-jobpeak', 'session switched to the new tenant');
+  // The Nail connection must be untouched: no update carrying the jobpeak token.
+  assert.ok(!db.calls.updates.some((x) => x.table === 'google_connections' && x.patch.refresh_token === 'rt-jobpeak' && x.query.includes('c-nail')));
+  // website_url lookups/inserts target the switched tenant only.
+  assert.ok(db.calls.inserts.every((i) => i.table !== 'assets' || i.list.every((r) => r.tenant_id === 't-jobpeak')));
 });
 
 test('callback with bad state fails without touching google', async () => {
