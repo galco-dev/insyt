@@ -239,3 +239,18 @@ test('dashStore.confirmAssets links only crawl-matched / owner-selected assets, 
   assert.match(decodeURIComponent(f.calls[0].url), /metadata->>matched_via=not\.is\.null/);
   assert.deepStrictEqual(f.calls[0].body, { linked: true });
 });
+
+test('dashStore.settings: connection status comes from the tenant owner\'s google_connections row', async () => {
+  // Regression: 31 Aug 2026 - the query used a SQL subquery PostgREST rejects,
+  // so Settings read "Google connection pending." for every tenant, always.
+  const { dashStore } = require('../src/stores');
+  const mk = (status) => routedFetch({
+    subscriptions: [], autopilot_settings: [], tenants: [{ assistant_enabled: false }],
+    users: (url) => (url.includes('tenant_id=eq.t1') ? [{ id: 'u1' }] : []),
+    google_connections: (url) => (url.includes('user_id=eq.u1') ? [{ status }] : []),
+  });
+  assert.strictEqual((await dashStore(mkDb(mk('valid'))).settings('t1')).connection_status, 'Google connection healthy.');
+  assert.match((await dashStore(mkDb(mk('revoked'))).settings('t1')).connection_status, /removed/);
+  const none = routedFetch({ subscriptions: [], autopilot_settings: [], tenants: [], users: [] });
+  assert.strictEqual((await dashStore(mkDb(none)).settings('t1')).connection_status, 'Google connection pending.');
+});

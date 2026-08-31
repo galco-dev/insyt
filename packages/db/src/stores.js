@@ -511,15 +511,26 @@ function dashStore(db, deps = {}) {
     },
     ledger: async (tenantId) => db.select('ledger', `tenant_id=eq.${q(tenantId)}&select=*&order=created_at.desc&limit=100`),
     settings: async (tenantId) => {
-      const [sub, auto, conn] = await Promise.all([
+      // users → google_connections (one owner per tenant in v1). PostgREST has
+      // no SQL subqueries; the old `user_id=in.(select …)` filter 400'd and every
+      // tenant read "Google connection pending." whatever the real status.
+      const [sub, auto, owner] = await Promise.all([
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,size_band,price_usd,status&limit=1`, { single: true }),
         db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }),
-        db.select('google_connections', `select=status&user_id=in.(select id from users)&limit=1`, { single: true }).catch(() => null),
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=id&limit=1`, { single: true }).catch(() => null),
       ]);
+      const conn = owner
+        ? await db.select('google_connections', `user_id=eq.${q(owner.id)}&select=status&limit=1`, { single: true }).catch(() => null)
+        : null;
+      const CONNECTION_LINE = {
+        valid: 'Google connection healthy.',
+        expired: 'Google connection expired - sign in again to reconnect.',
+        revoked: 'Google access was removed - sign in again to reconnect.',
+      };
       return {
         plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check — no plan yet',
         autopilot: (auto && auto.categories) || {},
-        connection_status: conn && conn.status === 'valid' ? 'Google connection healthy.' : 'Google connection pending.',
+        connection_status: (conn && CONNECTION_LINE[conn.status]) || 'Google connection pending.',
         assistant_enabled: !!deps.assistant && !!(await db.select('tenants', `id=eq.${q(tenantId)}&select=assistant_enabled`, { single: true }).catch(() => null) || {}).assistant_enabled,
       };
     },
