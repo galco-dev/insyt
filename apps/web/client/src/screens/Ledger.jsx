@@ -8,8 +8,8 @@ import { Link } from '../lib/router.jsx';
 import { MonoLabel, Card, Spinner, EmptyState, ErrorNote, Button, Segments } from '../lib/ui.jsx';
 
 const EVENT_ICON = {
-  change_applied: CheckCircle2, tag_verified: CheckCircle2, approval: CheckCircle2,
-  change_reverted: Undo2, revert_requested: Undo2,
+  change_applied: CheckCircle2, fix_applied: CheckCircle2, tag_verified: CheckCircle2, approval: CheckCircle2,
+  change_reverted: Undo2, fix_reverted: Undo2, revert_requested: Undo2, fix_proposed: FileText,
   report_sent: FileText, connection_changed: Link2,
   watch_triggered: Eye, subscription_changed: FileText,
   change_requested: FileText,
@@ -25,18 +25,25 @@ function Activity() {
   if (error) return <ErrorNote message={error} />;
   if (!entries) return <Spinner label="Loading your history" />;
 
-  async function requestRevert(targetId) {
-    try { await api(`/api/app/revert/${targetId}`, { method: 'POST' }); } catch { /* surfaced via reload */ }
+  // Undo is a revert of the CHANGE (server: /api/app/revert/:changeId), not of
+  // the ledger row. The executor logs applied fixes as `fix_applied`.
+  async function requestRevert(changeId) {
+    try {
+      await api(`/api/app/revert/${changeId}`, { method: 'POST' });
+      const d = await api('/api/app/ledger');
+      setEntries(d.entries);
+    } catch (err) { setError(err.message); }
   }
 
   if (entries.length === 0) {
     return <EmptyState title="Nothing here yet" body="Once your first check runs, every action lands here - permanently." />;
   }
+  const reverted = new Set(entries.filter((e) => e.event === 'fix_reverted' && e.change_id).map((e) => e.change_id));
   return (
     <Card className="divide-y divide-neutral-200">
       {entries.map((e) => {
         const IconEl = EVENT_ICON[e.event] || AlertTriangle;
-        const canRevert = e.event === 'change_applied';
+        const canRevert = e.event === 'fix_applied' && e.change_id && !reverted.has(e.change_id);
         return (
           <div key={e.id} className="flex items-start gap-3 p-4">
             <IconEl size={16} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
@@ -48,7 +55,7 @@ function Activity() {
               </div>
             </div>
             {canRevert && (
-              <Button variant="ghost" onClick={() => requestRevert(e.id)} className="!px-2 !py-1 text-tiny">
+              <Button variant="ghost" onClick={() => requestRevert(e.change_id)} className="!px-2 !py-1 text-tiny">
                 Undo
               </Button>
             )}

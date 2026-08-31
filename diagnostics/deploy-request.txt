@@ -1,1 +1,1 @@
-deploy request: executor awaits the async idempotency store (every approved change was being skipped as a replay); apply loop marks replays applied instead of retrying each minute — 2026-08-31T12:50:12Z
+deploy request: History shows Undo on applied fixes (event fix_applied, reverts by change id) — 2026-08-31T13:07:42Z
