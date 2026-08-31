@@ -226,3 +226,16 @@ test('workerStore.draftState: consent flags, exception + inflight + recent sets,
   assert.deepStrictEqual({ d: st.bounds.weekly_budget_delta_pct, rv: st.bounds.reverted_30d, tot: st.bounds.account.daily_budget_total_usd }, { d: 10, rv: 2, tot: 20 });
   assert.strictEqual(st.bounds.campaign('2').budget_daily_usd, 10);
 });
+
+test('dashStore.confirmAssets links only crawl-matched / owner-selected assets, never the "other items"', async () => {
+  // Regression: 31 Aug 2026 - confirming linked every discovered asset, including a
+  // sibling business's Ads account visible under the same Google login.
+  const { dashStore } = require('../src/stores');
+  const f = stubFetch([{ status: 204 }]);
+  await dashStore(mkDb(f)).confirmAssets('t1');
+  assert.strictEqual(f.calls.length, 1);
+  assert.strictEqual(f.calls[0].method, 'PATCH');
+  assert.match(f.calls[0].url, /assets\?tenant_id=eq\.t1/);
+  assert.match(decodeURIComponent(f.calls[0].url), /metadata->>matched_via=not\.is\.null/);
+  assert.deepStrictEqual(f.calls[0].body, { linked: true });
+});

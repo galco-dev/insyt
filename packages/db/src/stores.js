@@ -527,8 +527,13 @@ function dashStore(db, deps = {}) {
       const assets = await db.select('assets', `tenant_id=eq.${q(tenantId)}&select=id,kind,external_id,display_name,linked`);
       return { matched: assets.filter((a) => a.linked), unmatched: assets.filter((a) => !a.linked) };
     },
+    // Link only what the confirm page presented as "your setup": assets matched
+    // to the site's tags (matched_via set by discovery) or chosen by the owner.
+    // The "other items we can see but didn't match your site" stay unlinked -
+    // one Google login often spans several businesses, and auditing (or
+    // proposing changes for) a sibling business's Ads account is never OK.
     confirmAssets: async (tenantId) => {
-      await db.update('assets', `tenant_id=eq.${q(tenantId)}`, { linked: true });
+      await db.update('assets', `tenant_id=eq.${q(tenantId)}&metadata->>matched_via=not.is.null`, { linked: true });
     },
     planOptions: async (tenantId) => {
       const [pricing, tenant] = await Promise.all([
