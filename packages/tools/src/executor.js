@@ -51,7 +51,9 @@ async function applyChangeset({ changes, ctx, api, store, tenantId, runId, chang
 
     // Idempotency: a retried run never applies the same change twice.
     const key = idempotencyKey({ tenantId, runId, toolId: change.tool_id, target: targetOf(change.params || {}) });
-    if (store.hasKey(key)) { results.push({ id: change.id, status: 'skipped', reason: 'idempotent replay' }); continue; }
+    // NB: production stores are async (a DB lookup); an un-awaited Promise is
+    // always truthy, which once skipped every change as a "replay" (31 Aug 2026).
+    if (await store.hasKey(key)) { results.push({ id: change.id, status: 'skipped', reason: 'idempotent replay' }); continue; }
 
     // Entity circuit breaker.
     const n = tool.entities(change.params || {});
@@ -64,7 +66,7 @@ async function applyChangeset({ changes, ctx, api, store, tenantId, runId, chang
     const reason = tool.guard(change.params || {}, ctx);
     if (reason) {
       results.push({ id: change.id, status: 'failed', reason });
-      store.audit({ tenant_id: tenantId, event: 'change_guardrail_blocked', detail: { change_id: change.id, tool_id: change.tool_id, reason } });
+      await store.audit({ tenant_id: tenantId, event: 'change_guardrail_blocked', detail: { change_id: change.id, tool_id: change.tool_id, reason } });
       continue;
     }
 
@@ -72,8 +74,8 @@ async function applyChangeset({ changes, ctx, api, store, tenantId, runId, chang
     try {
       const { before, after } = await api[change.tool_id](change.params);
       entities += n;
-      store.saveKey(key);
-      store.ledger({
+      await store.saveKey(key);
+      await store.ledger({
         tenant_id: tenantId,
         event: 'fix_applied',
         change_id: change.id,
@@ -81,7 +83,7 @@ async function applyChangeset({ changes, ctx, api, store, tenantId, runId, chang
         summary_text: change.summary_text || `Applied ${change.tool_id}`,
         money_impact_usd: change.money_impact_usd ?? null,
       });
-      store.audit({
+      await store.audit({
         tenant_id: tenantId,
         event: 'change_applied',
         detail: { change_id: change.id, changeset_id: changesetId, tool_id: change.tool_id, before, after, idempotency_key: key },
@@ -89,11 +91,11 @@ async function applyChangeset({ changes, ctx, api, store, tenantId, runId, chang
       results.push({ id: change.id, status: 'applied', before, after });
     } catch (err) {
       failed += 1;
-      store.audit({ tenant_id: tenantId, event: 'change_failed', detail: { change_id: change.id, tool_id: change.tool_id, error: String(err.message || err) } });
+      await store.audit({ tenant_id: tenantId, event: 'change_failed', detail: { change_id: change.id, tool_id: change.tool_id, error: String(err.message || err) } });
       results.push({ id: change.id, status: 'failed', reason: String(err.message || err) });
       if (attempted >= 3 && failed / attempted > ABORT_ERROR_RATE) {
         aborted = true;
-        store.audit({ tenant_id: tenantId, event: 'changeset_aborted', detail: { changeset_id: changesetId, failed, attempted } });
+        await store.audit({ tenant_id: tenantId, event: 'changeset_aborted', detail: { changeset_id: changesetId, failed, attempted } });
       }
     }
   }

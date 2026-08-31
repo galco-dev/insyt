@@ -37,6 +37,27 @@ test('applies approved changes, writes ledger + audit with before/after, saves i
   assert.ok(store._keys.has(idempotencyKey({ tenantId: 'tn', runId: 'r1', toolId: 'ads.pause_campaign', target: 'c1' })));
 });
 
+test('async store (production PostgREST): a fresh change is APPLIED, not mistaken for a replay', async () => {
+  // Regression: 31 Aug 2026 - `if (store.hasKey(key))` on an async store saw a
+  // Promise (always truthy) and skipped every approved change in production.
+  const sync = mkStore();
+  const store = {
+    ...sync,
+    hasKey: async (k) => sync._keys.has(k), saveKey: async (k) => { sync._keys.add(k); },
+    ledger: async (e) => { sync._ledger.push(e); }, audit: async (e) => { sync._audit.push(e); },
+  };
+  const { results } = await applyChangeset({
+    changes: [pause('ch1', 'c1')], ctx: baseCtx, api: okApi(), store, tenantId: 'tn', runId: 'r1', changesetId: 'cs1',
+  });
+  assert.strictEqual(results[0].status, 'applied');
+  assert.strictEqual(sync._ledger.length, 1, 'ledger row written (awaited)');
+  // And a genuine replay through the async store is still skipped.
+  const again = await applyChangeset({
+    changes: [pause('ch2', 'c1')], ctx: baseCtx, api: okApi(), store, tenantId: 'tn', runId: 'r1', changesetId: 'cs2',
+  });
+  assert.strictEqual(again.results[0].status, 'skipped');
+});
+
 test('idempotent replay: an already-applied change is skipped, no double ledger', async () => {
   const store = mkStore();
   store.saveKey(idempotencyKey({ tenantId: 'tn', runId: 'r1', toolId: 'ads.pause_campaign', target: 'c1' }));

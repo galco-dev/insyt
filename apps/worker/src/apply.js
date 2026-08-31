@@ -70,8 +70,12 @@ async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }
       } else if (r.status === 'failed') {
         totals.failed += 1;
         await db.update('changes', `id=eq.${q(r.id)}`, { status: 'failed' }).catch(() => {});
+      } else if (r.status === 'skipped') {
+        // Idempotent replay: this exact write already landed under an earlier
+        // change row. Mark it applied so the loop stops re-queuing it every tick.
+        await db.update('changes', `id=eq.${q(r.id)}`, { status: 'applied', applied_at: new Date(now()).toISOString(), changeset_id: changeset.id }).catch(() => {});
       }
-      // 'skipped' (idempotent replay) and 'aborted' rows stay as they are.
+      // 'aborted' rows (error-rate breaker) stay approved for a later pass.
     }
 
     // 48h verification watch on the changeset (§3.7).

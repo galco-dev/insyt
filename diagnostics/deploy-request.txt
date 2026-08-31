@@ -1,1 +1,1 @@
-deploy request: confirm links only matched/owner-selected assets, never sibling businesses' accounts — 2026-08-31T12:34:59Z
+deploy request: executor awaits the async idempotency store (every approved change was being skipped as a replay); apply loop marks replays applied instead of retrying each minute — 2026-08-31T12:50:12Z
