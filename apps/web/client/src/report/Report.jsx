@@ -201,7 +201,7 @@ function UnlockBar({ visible }) {
           type="button"
           onClick={unlock}
           disabled={busy}
-          className="inline-flex shrink-0 items-center gap-2 rounded bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) px-6 py-3 text-small font-medium text-page ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)] disabled:opacity-40"
+          className="inline-flex shrink-0 items-center gap-2 rounded bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) px-6 py-3 text-small font-medium text-(--ui-cta-ink) ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)] disabled:opacity-40"
         >
           {busy ? 'Opening checkout…' : `Unlock for ${audit.unlock.price}`} <ArrowRight size={15} aria-hidden />
         </button>

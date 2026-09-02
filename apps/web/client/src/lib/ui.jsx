@@ -300,7 +300,7 @@ export function Button({ children, onClick, href, variant = 'primary', className
     'transition-[filter,background-color,opacity] duration-150',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ui-focus)',
     variant === 'primary'
-      && 'bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) text-page ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)] hover:brightness-[1.05]',
+      && 'bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) text-(--ui-cta-ink) ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)] hover:brightness-[1.05]',
     variant === 'secondary'
       && 'bg-gradient-to-b from-(--ui-plate-a) to-(--ui-plate-b) text-strong ring-1 ring-inset ring-(--ui-ring-strong) shadow-[0_1px_2px_rgba(0,0,0,0.25),inset_0_1px_0_var(--ui-plate-hi)] hover:from-(--ui-plate-a-h) hover:to-(--ui-plate-b-h)',
     variant === 'ghost' && 'px-2 text-strong underline underline-offset-4 hover:text-neutral-900',
@@ -454,7 +454,7 @@ export function CountBadge({ n, className, inverted = false }) {
     <span
       className={clsx(
         'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-semibold leading-none',
-        inverted ? 'bg-page text-strong' : 'bg-(--ui-cta-a) text-page',
+        inverted ? 'bg-page text-strong' : 'bg-(--ui-cta-a) text-(--ui-cta-ink)',
         className,
       )}
     >

@@ -155,7 +155,7 @@ export default function Start() {
               autoComplete="url"
               autoFocus
             />
-            <button type="button" onClick={begin} className="flex items-center gap-2 whitespace-nowrap bg-(--ui-cta-a) px-5 text-small font-medium text-page">
+            <button type="button" onClick={begin} className="flex items-center gap-2 whitespace-nowrap bg-(--ui-cta-a) px-5 text-small font-medium text-(--ui-cta-ink)">
               <Search size={15} aria-hidden /> Check my site
             </button>
           </div>

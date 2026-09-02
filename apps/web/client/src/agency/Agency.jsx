@@ -142,7 +142,7 @@ function ScopeBar() {
             type="button"
             onClick={() => setScope({ ...scope, mine: !scope.mine })}
             className={clsx('rounded-full border px-3 py-1 font-mono text-tiny',
-              scope.mine ? 'border-transparent bg-(--ui-cta-a) text-page' : 'border-neutral-400 bg-(--ui-well) text-neutral-900')}
+              scope.mine ? 'border-transparent bg-(--ui-cta-a) text-(--ui-cta-ink)' : 'border-neutral-400 bg-(--ui-well) text-neutral-900')}
             title={`Only accounts managed by ${meName}`}
           >
             My accounts ({mineNames.size})
@@ -383,7 +383,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
         {item.build_template ? (
           <Link
             to={demoHref(`/app/agency/build?template=${item.build_template}&for=${encodeURIComponent(item.account)}`)}
-            className="inline-flex items-center gap-1.5 rounded bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) px-4 py-2 text-small font-medium text-page ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)]"
+            className="inline-flex items-center gap-1.5 rounded bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) px-4 py-2 text-small font-medium text-(--ui-cta-ink) ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)]"
           >
             <Hammer size={13} aria-hidden /> Build it
           </Link>
@@ -1100,7 +1100,7 @@ function Accounts() {
           className="w-full bg-transparent px-4 py-3 text-small outline-none placeholder:text-neutral-800"
           aria-label="New account name"
         />
-        <button type="button" onClick={add} disabled={busy} className="flex items-center gap-1.5 whitespace-nowrap bg-(--ui-cta-a) px-4 text-small font-medium text-page disabled:opacity-40">
+        <button type="button" onClick={add} disabled={busy} className="flex items-center gap-1.5 whitespace-nowrap bg-(--ui-cta-a) px-4 text-small font-medium text-(--ui-cta-ink) disabled:opacity-40">
           <Plus size={14} aria-hidden /> Add account
         </button>
       </div>
@@ -1364,7 +1364,7 @@ function AgencyRoutes() {
                 to={demoHref(to)}
                 className={clsx(
                   'inline-flex shrink-0 items-center gap-1.5 rounded px-3 py-1.5 text-small font-medium',
-                  active ? 'bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) text-page ring-1 ring-inset ring-(--ui-cta-edge) shadow-[inset_0_1px_0_var(--ui-cta-hi)]' : 'text-neutral-900 hover:bg-neutral-100',
+                  active ? 'bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) text-(--ui-cta-ink) ring-1 ring-inset ring-(--ui-cta-edge) shadow-[inset_0_1px_0_var(--ui-cta-hi)]' : 'text-neutral-900 hover:bg-neutral-100',
                 )}
               >
                 <IconEl size={14} aria-hidden /> {label}

@@ -16,6 +16,7 @@ const COPY = require(path.join(__dirname, '..', '..', 'emails', 'copy.json')).re
 // serves email + standalone web where light is the correct ground.
 const TOKENS = {
   accent: '#16181b',
+  cta: '#2563EB', // brand blue — primary action only (kit v2, Sep 2026)
   critical: '#DC2626',
   warning: '#D97706',
   success: '#16A34A',
@@ -209,7 +210,7 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
   const degraded = envelope.degraded
     ? `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};background:${TOKENS.neutral100};border-radius:${TOKENS.radius};padding:10px 14px;margin-bottom:16px;">${fill(COPY.degraded_notice, { reasons: envelope.degraded_reasons.join(', ') })}</div>` : '';
   const unlockCta = !unlocked && links.unlock_url
-    ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:8px auto 20px auto;"><tr><td style="background:${TOKENS.accent};border-radius:${TOKENS.radius};">
+    ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:8px auto 20px auto;"><tr><td style="background:${TOKENS.cta};border-radius:${TOKENS.radius};">
          <a href="${esc(links.unlock_url)}" style="display:inline-block;padding:12px 24px;font-family:${TOKENS.font};font-size:14px;font-weight:500;color:#ffffff;text-decoration:none;">${esc(COPY.unlock_cta)}</a>
        </td></tr></table>` : '';
   const cumulative = envelope.totals.ledger_cumulative.fixes > 0

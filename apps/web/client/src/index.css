@@ -1,11 +1,12 @@
-/* Insyt app — premium restyle (v28). Tailwind v4, two themes, one geometry.
-   DARK is the product default (near-black, silver mono ramp, decided 21 Aug
-   2026); LIGHT is its monochrome twin matching the Webflow landing pages.
+/* Insyt app — brand kit v2 (v29, 2 Sep 2026). Tailwind v4, two themes.
+   DARK is the product default and the brand surface: ink #000D14 ground,
+   surface steps #0A171F / #14222B, white ink, muted #5C6B75 / #A9B4BC.
+   Blue #2563EB appears exactly where the kit allows: the primary CTA
+   (hover #1D4ED8) and focus. LIGHT stays as the fallback twin.
    The theme flips on the `dark-mode` class on <html> — the same class the
    vendored UUI kit uses, so kit components switch in lockstep. All
    theme-dependent values live in the --ui-* variables below; utilities
-   reference them via @theme inline or the parenthesized var() syntax.
-   Severity colors are the only hues in the product in both themes. */
+   reference them via @theme inline or the parenthesized var() syntax. */
 
 @import "./uui/styles/globals.css";
 
@@ -42,12 +43,13 @@
 
   /* interactive: in mono, luminance signals "interactive" — on light the
      primary plate is dark with light ink (text-page) */
-  --ui-cta-a: #33363b;
-  --ui-cta-b: #1f2226;
-  --ui-cta-edge: rgba(0, 0, 0, 0.35);
-  --ui-cta-hi: rgba(255, 255, 255, 0.18);
-  --ui-focus: #45494f;
-  --ui-dot-halo: rgba(0, 0, 0, 0.12);
+  --ui-cta-a: #2563eb;
+  --ui-cta-b: #1d4ed8;
+  --ui-cta-ink: #ffffff;
+  --ui-cta-edge: rgba(29, 78, 216, 0.5);
+  --ui-cta-hi: rgba(255, 255, 255, 0.25);
+  --ui-focus: #2563eb;
+  --ui-dot-halo: rgba(37, 99, 235, 0.18);
 
   /* chrome: rings, plates, wells */
   --ui-ring: rgba(0, 0, 0, 0.08);
@@ -86,11 +88,11 @@
 
 /* ----------------------------------------------------------------- DARK */
 .dark-mode {
-  --ui-page: #0a0a0c;
-  --ui-sidebar: #070808;
-  --ui-card: #131415;
-  --ui-card-hi: #17181a;
-  --ui-strong: #f4f5f6;
+  --ui-page: #000d14;
+  --ui-sidebar: #00090e;
+  --ui-card: #0a171f;
+  --ui-card-hi: #14222b;
+  --ui-strong: #ffffff;
 
   --ui-n50: rgba(255, 255, 255, 0.03);
   --ui-n100: rgba(255, 255, 255, 0.06);
@@ -100,8 +102,8 @@
   --ui-n500: rgba(255, 255, 255, 0.14);
   --ui-n600: rgba(255, 255, 255, 0.18);
   --ui-n700: rgba(255, 255, 255, 0.25);
-  --ui-n800: #71747c;
-  --ui-n900: #9ba0a8;
+  --ui-n800: #5c6b75;
+  --ui-n900: #a9b4bc;
 
   --ui-critical: #f05252;
   --ui-critical-tint: rgba(240, 82, 82, 0.12);
@@ -112,12 +114,13 @@
   --ui-info: #4d9fec;
   --ui-info-tint: rgba(77, 159, 236, 0.12);
 
-  --ui-cta-a: #f4f5f6;
-  --ui-cta-b: #d9dbde;
-  --ui-cta-edge: rgba(185, 189, 195, 0.5);
-  --ui-cta-hi: rgba(255, 255, 255, 0.55);
-  --ui-focus: #b9bdc3;
-  --ui-dot-halo: rgba(244, 245, 246, 0.18);
+  --ui-cta-a: #2563eb;
+  --ui-cta-b: #1d4ed8;
+  --ui-cta-ink: #ffffff;
+  --ui-cta-edge: rgba(37, 99, 235, 0.55);
+  --ui-cta-hi: rgba(255, 255, 255, 0.22);
+  --ui-focus: #2563eb;
+  --ui-dot-halo: rgba(37, 99, 235, 0.25);
 
   --ui-ring: rgba(255, 255, 255, 0.07);
   --ui-ring-strong: rgba(255, 255, 255, 0.12);

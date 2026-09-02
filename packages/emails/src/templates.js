@@ -8,16 +8,18 @@
 // Vars are engine-computed; templates never do arithmetic.
 
 const FONT = "'Geist', Helvetica, Arial, sans-serif";
-const ACCENT = '#000d14';
+const ACCENT = '#000d14'; // brand ink — headings
+const CTA = '#2563eb'; // brand blue — the one action (kit v2, Sep 2026)
 
 function shell({ subject, paragraphs, cta }) {
   const body = paragraphs.map((p) => `<p style="font-family:${FONT};font-size:15px;color:#333;line-height:1.5;margin:0 0 14px 0;">${p}</p>`).join('\n');
-  const button = cta ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 18px 0;"><tr><td style="background:${ACCENT};border-radius:6px;">
+  const button = cta ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 18px 0;"><tr><td style="background:${CTA};border-radius:6px;">
       <a href="${cta.url}" style="display:inline-block;padding:12px 24px;font-family:${FONT};font-size:14px;font-weight:500;color:#ffffff;text-decoration:none;">${cta.label}</a>
     </td></tr></table>` : '';
   return `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#ffffff;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;"><tr><td style="padding:32px 20px;">
+<img src="https://app.tryinsyt.com/app/brand/insyt-wordmark-black.png" alt="Insyt" height="22" style="height:22px;width:auto;display:block;margin-bottom:22px;border:0;" />
 <div style="font-family:${FONT};font-size:20px;font-weight:600;color:${ACCENT};margin-bottom:18px;">${subject}</div>
 ${body}
 ${button}

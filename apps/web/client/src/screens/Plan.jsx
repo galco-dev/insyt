@@ -48,7 +48,7 @@ export default function Plan() {
             type="button"
             onClick={() => setCadence(value)}
             aria-pressed={cadence === value}
-            className={`rounded px-4 py-2 text-small font-medium ${cadence === value ? 'bg-(--ui-cta-a) text-page' : 'text-neutral-900'}`}
+            className={`rounded px-4 py-2 text-small font-medium ${cadence === value ? 'bg-(--ui-cta-a) text-(--ui-cta-ink)' : 'text-neutral-900'}`}
           >
             {label}
           </button>
