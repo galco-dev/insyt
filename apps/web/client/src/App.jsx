@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import { Home01 as HomeIcon, CheckSquare, Receipt as ScrollText, Settings01 as SettingsIcon, Map01 as Map } from '@untitledui/icons';
+import { Home01 as HomeIcon, CheckSquare, Receipt as ScrollText, Settings01 as SettingsIcon, Map01 as Map, ArrowLeft } from '@untitledui/icons';
 import { RouterProvider, useRouter, Link } from './lib/router.jsx';
 import { api, isDemo } from './lib/api.js';
 import { MonoLabel, Button, Spinner, Wordmark, ThemeToggle, CountBadge } from './lib/ui.jsx';
@@ -45,6 +45,10 @@ const TITLES = {
 };
 
 const PUBLIC = new Set(['/app/start', '/app/report']);
+
+// Where "Return home" goes: the marketing site. Visitors reach the sample
+// audit from tryinsyt.com and need a way back on every screen size.
+const SITE_HOME = 'https://tryinsyt.com/';
 
 // Setup auto-hide: once every gate is green the tab is a dead end, so it
 // leaves the nav. Cached per session; a fresh gate change shows on reload.
@@ -104,6 +108,9 @@ function Frame({ children, withNav }) {
   const pending = usePendingCount(!!withNav, path);
   const items = withNav ? NAV.filter((n) => !(setupDone && n.to === '/app/journey')) : [];
   const isActive = (n) => (n.match ? n.match.includes(path) : path === n.to);
+  // Sample audit / demo preview: always offer the way back to the marketing
+  // site. Signed-in customers keep the normal app header.
+  const returnHome = path === '/app/report' || isDemo();
 
   useEffect(() => {
     document.title = TITLES[path] || 'Insyt';
@@ -138,7 +145,22 @@ function Frame({ children, withNav }) {
             </nav>
           )}
           <div className="flex shrink-0 items-center gap-3">
-            {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
+            {isDemo() && <MonoLabel className="hidden sm:block">Preview with sample data</MonoLabel>}
+            {returnHome && (
+              <a
+                href={SITE_HOME}
+                aria-label="Return to the Insyt home page"
+                className={clsx(
+                  'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] px-3 text-small font-medium text-strong',
+                  'bg-gradient-to-b from-(--ui-plate-a) to-(--ui-plate-b) ring-1 ring-inset ring-(--ui-ring-strong)',
+                  'shadow-[inset_0_1px_0_var(--ui-plate-hi)] transition-[filter] duration-150 hover:brightness-110',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ui-focus)',
+                )}
+              >
+                <ArrowLeft size={14} strokeWidth={2.2} aria-hidden />
+                Return home
+              </a>
+            )}
             <ThemeToggle />
           </div>
         </div>
