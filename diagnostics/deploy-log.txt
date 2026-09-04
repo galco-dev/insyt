@@ -1,5 +1,5 @@
-deploy transcript 2026-09-03T12:57:10Z
-railway 5.49.0
+deploy transcript 2026-09-04T05:32:31Z
+railway 5.49.1
 
 
 Workspace:       galco-dev's Projects
@@ -24,25 +24,25 @@ All resources
       - cron: ● Online
       - poller: ● Online
     Databases
-      - redis: ● Online · Deploying (23s) · redis-volume
+      - redis: ● Online · redis-volume
 
 
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=d19999e1-7f5f-4aa3-9ba8-68cdeb2f7748&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=0faaa76b-6f67-47e8-b5d0-0a11f4060b69&
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=b98692e1-636e-41d9-876a-b39d50ae342f&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=27e26f8c-666f-4a43-b682-63945383228d&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=dc17a670-74d5-4e98-872d-2b1949319f1a&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=8c611253-2cba-4c69-abee-ac126f538c30&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=12f066a4-1440-45ef-a028-21d0e6beff11&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=7d1cd1ed-f7f4-4561-8196-1530c32de71f&
