@@ -23,6 +23,11 @@ const EXEMPT = [
   path.join('apps', 'web', 'client', 'src', 'agency'),
   // Vendored Untitled UI kit: third-party source, not app copy, kept as-is.
   path.join('apps', 'web', 'client', 'src', 'uui'),
+  // Connected data screen (Settings → "See what Insyt reads"): shows the raw
+  // objects each Google API returns, in Google's own names, on purpose. It is
+  // the one consumer surface where "container", "property" and "conversion
+  // action" are the honest words.
+  path.join('apps', 'web', 'client', 'src', 'connected'),
 ];
 
 function* walk(dir) {
