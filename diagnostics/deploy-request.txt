@@ -2,3 +2,4 @@ deploy request: History shows Undo on applied fixes (event fix_applied, reverts 
 Wed Sep  2 23:42:51 +04 2026
 deploy request: Return home pill on sample audit header — 2026-09-03T11:52:00Z
 deploy request: Connected data screen (Ads, Analytics, Tag Manager tabs; CSV export; pause and exclude actions) — 2026-09-04T05:40:00Z
+deploy request: Connected data fixes (rule seed, change_key lookup, GTM built-in trigger names, exclude panel under row) — 2026-09-04T06:05:00Z

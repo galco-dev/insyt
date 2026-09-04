@@ -25,7 +25,7 @@ const money = (n, cur) => `${cur ? `${cur} ` : ''}${Number(n || 0).toLocaleStrin
 const int = (n) => Number(n || 0).toLocaleString('en-US');
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 
-function Table({ cols, rows, empty = 'Nothing returned.', keyOf }) {
+function Table({ cols, rows, empty = 'Nothing returned.', keyOf, rowExtra }) {
   if (!rows || !rows.length) return <p className="px-4 py-6 text-small text-neutral-900">{empty}</p>;
   return (
     <div className="overflow-x-auto">
@@ -38,15 +38,26 @@ function Table({ cols, rows, empty = 'Nothing returned.', keyOf }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={keyOf ? keyOf(r, i) : i} className="border-b border-neutral-200 last:border-0">
-              {cols.map((c) => (
-                <td key={c.key} className={clsx('px-4 py-2.5 align-top', c.num && 'text-right font-mono tabular-nums', c.mono && 'font-mono text-tiny')}>
-                  {c.render ? c.render(r) : r[c.key]}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {rows.map((r, i) => {
+            const k = keyOf ? keyOf(r, i) : i;
+            const extra = rowExtra ? rowExtra(r) : null;
+            return (
+              <React.Fragment key={k}>
+                <tr className="border-b border-neutral-200 last:border-0">
+                  {cols.map((c) => (
+                    <td key={c.key} className={clsx('px-4 py-2.5 align-top', c.num && 'text-right font-mono tabular-nums', c.mono && 'font-mono text-tiny')}>
+                      {c.render ? c.render(r) : r[c.key]}
+                    </td>
+                  ))}
+                </tr>
+                {extra && (
+                  <tr className="border-b border-neutral-200 last:border-0">
+                    <td colSpan={cols.length} className="p-0">{extra}</td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -95,6 +106,18 @@ function useTab(path) {
   };
   useEffect(() => { load(); }, [path]);
   return { data, error, busy, reload: load };
+}
+
+// Action feedback: approvals read as confirmations, everything else as a warning.
+function Note({ text }) {
+  if (!text) return null;
+  if (!/^Approved:/.test(text)) return <ErrorNote message={text} />;
+  return (
+    <div className="flex items-start gap-2 rounded bg-success-tint p-4 text-small text-strong ring-1 ring-inset ring-success/25">
+      <CheckCircle size={15} className="mt-0.5 shrink-0 text-success" aria-hidden />
+      <span>{text}</span>
+    </div>
+  );
 }
 
 function NotLinked({ reason }) {
@@ -211,31 +234,29 @@ function AdsTab() {
             ]}
             rows={data.campaigns}
             empty="No campaigns were returned for this account."
+            rowExtra={(c) => (negFor === c.id ? (
+              <div className="bg-(--ui-well) p-4">
+                <MonoLabel>Exclude searches from "{c.name}"</MonoLabel>
+                <p className="mt-0.5 text-tiny text-neutral-900">One per line or comma-separated. Added as exact-match negative keywords on the campaign (campaign_criterion resources). Up to 25 at a time.</p>
+                <textarea
+                  value={negText}
+                  onChange={(e) => setNegText(e.target.value)}
+                  rows={3}
+                  autoFocus
+                  placeholder="free course, jobs near me"
+                  className="mt-2 w-full rounded bg-page p-3 font-mono text-small text-strong ring-1 ring-inset ring-(--ui-ring) focus:outline-none focus:ring-(--ui-focus)"
+                />
+                <div className="mt-2 flex gap-2">
+                  <Button onClick={() => exclude(c)} disabled={acting === c.id}>Approve and exclude</Button>
+                  <Button variant="secondary" onClick={() => setNegFor(null)}>Cancel</Button>
+                </div>
+              </div>
+            ) : null)}
           />
         </div>
-        {negFor && (() => {
-          const c = data.campaigns.find((x) => x.id === negFor);
-          return c ? (
-            <div className="border-t border-neutral-300 p-4">
-              <MonoLabel>Exclude searches from "{c.name}"</MonoLabel>
-              <p className="mt-0.5 text-tiny text-neutral-900">One per line or comma-separated. Added as exact-match negative keywords on the campaign (campaign_criterion resources). Up to 25 at a time.</p>
-              <textarea
-                value={negText}
-                onChange={(e) => setNegText(e.target.value)}
-                rows={3}
-                placeholder="free course, jobs near me"
-                className="mt-2 w-full rounded bg-(--ui-well) p-3 font-mono text-small text-strong ring-1 ring-inset ring-(--ui-ring) focus:outline-none focus:ring-(--ui-focus)"
-              />
-              <div className="mt-2 flex gap-2">
-                <Button onClick={() => exclude(c)} disabled={acting === c.id}>Approve and exclude</Button>
-                <Button variant="secondary" onClick={() => setNegFor(null)}>Cancel</Button>
-              </div>
-            </div>
-          ) : null;
-        })()}
       </Card>
 
-      {note && <ErrorNote message={note} />}
+      <Note text={note} />
 
       {data.changes && data.changes.length > 0 && (
         <Card>

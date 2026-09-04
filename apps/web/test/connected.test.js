@@ -71,7 +71,7 @@ function fakeAuth(log = []) {
       }
       if (url.includes('tagmanager')) {
         if (url.endsWith('/workspaces')) return { workspace: [{ path: 'accounts/6335864759/containers/241680754/workspaces/5', workspaceId: '5', name: 'Default Workspace' }] };
-        if (url.endsWith('/tags')) return { tag: [{ tagId: '7', name: 'GA4 config', type: 'googtag', firingTriggerId: ['2147479553'], parameter: [{ key: 'tagId', value: 'G-B5KH5C2T8R' }] }] };
+        if (url.endsWith('/tags')) return { tag: [{ tagId: '7', name: 'GA4 config', type: 'googtag', firingTriggerId: ['2147479553', '9'], parameter: [{ key: 'tagId', value: 'G-B5KH5C2T8R' }] }] };
         if (url.endsWith('/triggers')) return { trigger: [{ triggerId: '9', name: 'Form submit', type: 'formSubmission' }] };
         if (url.endsWith('/version_headers')) return { containerVersionHeader: [{ containerVersionId: '4' }, { containerVersionId: '3' }] };
         if (/\/versions\/\d+$/.test(url)) return { containerVersionId: url.slice(-1), fingerprint: '1756800000000', tag: [] };
@@ -125,7 +125,8 @@ test('pause campaign: synthetic finding + APPROVED change row, approvals + ledge
   assert.equal(ch.tool_id, 'ads.pause_campaign');
   assert.equal(ch.status, 'approved');
   assert.equal(ch.actor, 'user');
-  assert.equal(ch.category, 'connected_data');
+  assert.equal(ch.category, null);
+  assert.equal(ch.change_key, 'connected:ads.pause_campaign:campaign:11:status');
   assert.deepEqual(ch.params, { campaign_id: '11' });
   assert.equal(ch.finding_id, db.inserted.findings[0].id);
   assert.match(ch.idempotency_key, /^connected:ads\.pause_campaign:campaign:11:status:\d+$/);
@@ -182,6 +183,7 @@ test('gtm view: account → container → workspace, tags with trigger names, tr
   assert.equal(v.workspace.name, 'Default Workspace');
   assert.equal(v.tags[0].name, 'GA4 config');
   assert.equal(v.tags[0].measurement_id, 'G-B5KH5C2T8R');
+  assert.deepEqual(v.tags[0].triggers, ['All Pages', 'Form submit']);
   assert.equal(v.triggers[0].name, 'Form submit');
   assert.equal(v.variables[0].name, 'Page path');
   assert.equal(v.built_in_variables[0].name, 'Page URL');

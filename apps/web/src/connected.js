@@ -25,7 +25,11 @@ const { fetchGtmSnapshot } = require('../../../packages/google/src/fetch-gtm');
 const GTM = 'https://tagmanager.googleapis.com/tagmanager/v2';
 const ADMIN = 'https://analyticsadmin.googleapis.com/v1beta';
 const DATA = 'https://analyticsdata.googleapis.com/v1beta';
-const CATEGORY = 'connected_data';
+// Changes born here are recognisable by their change_key prefix. (`category`
+// on the changes table is the autopilot category and is DB-constrained to
+// negatives | budgets | counting, so it is left null: always ask-first.)
+const KEY_PREFIX = 'connected:';
+const SOURCE = 'connected_data';
 
 const q = (s) => encodeURIComponent(s);
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
@@ -110,7 +114,7 @@ function createConnected({ db, auth, developerToken = null, mccId = '3315824995'
 
   async function connectedChanges(tenantId) {
     const rows = await db.select('changes',
-      `tenant_id=eq.${q(tenantId)}&category=eq.${CATEGORY}&select=id,tool_id,status,params,after,summary_text,created_at,applied_at,reverts_change_id&order=created_at.desc&limit=30`).catch(() => []);
+      `tenant_id=eq.${q(tenantId)}&change_key=like.${q(`${KEY_PREFIX}*`)}&select=id,tool_id,status,params,after,summary_text,created_at,applied_at,reverts_change_id&order=created_at.desc&limit=30`).catch(() => []);
     return rows || [];
   }
 
@@ -128,13 +132,13 @@ function createConnected({ db, auth, developerToken = null, mccId = '3315824995'
     const [finding] = await db.insert('findings', [{
       run_id: runId, tenant_id: tenantId, rule_id: 'user.connected_action', layer: 4, severity: 'info', status: 'open',
       title, explanation: 'You asked for this from the Connected data screen. It runs through the same approval, ledger and Undo path as every other change.',
-      payload: { source: CATEGORY, tool_id, params }, fix_available: true, first_seen_run_id: runId, first_seen_at: new Date(now()).toISOString(),
+      payload: { source: SOURCE, tool_id, params }, fix_available: true, first_seen_run_id: runId, first_seen_at: new Date(now()).toISOString(),
     }]);
     const [change] = await db.insert('changes', [{
       tenant_id: tenantId, finding_id: finding.id, tool_id, params, status: 'approved', actor: 'user',
-      category: CATEGORY, change_key: `connected:${tool_id}:${target}`, target,
+      category: null, change_key: `${KEY_PREFIX}${tool_id}:${target}`, target,
       summary_text: summary, before: { line: before }, after: { line: after },
-      idempotency_key: `connected:${tool_id}:${target}:${now()}`,
+      idempotency_key: `${KEY_PREFIX}${tool_id}:${target}:${now()}`,
     }]);
     await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: change.id, channel: 'dashboard' }], { returning: false }).catch(() => {});
     await db.insert('ledger', [{ tenant_id: tenantId, event: 'approval', change_id: change.id, actor: 'user', summary_text: `You approved: ${summary}. It is being applied now.` }], { returning: false }).catch(() => {});
@@ -263,7 +267,9 @@ function createConnected({ db, auth, developerToken = null, mccId = '3315824995'
       auth.api(tenantId, `${GTM}/${wPath}/variables`).catch(() => ({})),
       auth.api(tenantId, `${GTM}/${wPath}/built_in_variables`).catch(() => ({})),
     ]);
-    const triggerName = new Map(snap.triggers.map((t) => [String(t.id), t.name]));
+    // GTM's built-in triggers never appear in the triggers list; name them.
+    const BUILT_IN_TRIGGERS = { 2147479553: 'All Pages', 2147479572: 'Consent Initialization - All Pages', 2147479573: 'Initialization - All Pages' };
+    const triggerName = new Map([...Object.entries(BUILT_IN_TRIGGERS), ...snap.triggers.map((t) => [String(t.id), t.name])]);
     return {
       linked: true,
       api: 'Google Tag Manager API',
@@ -311,7 +317,8 @@ function createConnected({ db, auth, developerToken = null, mccId = '3315824995'
     } catch (err) {
       const msg = String((err && err.message) || err).slice(0, 300);
       console.error(`connected ${sub} failed for ${tenantId}: ${msg}`);
-      return json(res, 502, { error: 'Google did not answer that request. Try again in a moment.', detail: msg });
+      const ours = /^postgrest /.test(msg);
+      return json(res, ours ? 500 : 502, { error: ours ? 'We could not record that change. It is logged; try again in a moment.' : 'Google did not answer that request. Try again in a moment.', detail: msg });
     }
   }
 
