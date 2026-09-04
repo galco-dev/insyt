@@ -19,6 +19,7 @@ import Journey from './screens/Journey.jsx';
 import Settings from './screens/Settings.jsx';
 import Report from './report/Report.jsx';
 import Agency from './agency/Agency.jsx';
+import Connected from './connected/Connected.jsx';
 
 // Four steady-state tabs: how am I doing (Home) - what needs me (Approvals) -
 // what happened (History: activity + reports as lenses) - my account
@@ -42,6 +43,9 @@ const TITLES = {
   '/app/settings': 'Settings - Insyt',
   '/app/start': 'Free check - Insyt',
   '/app/plan': 'Plans - Insyt',
+  '/app/connected': 'Connected data - Insyt',
+  '/app/connected/analytics': 'Connected data - Insyt',
+  '/app/connected/tag-manager': 'Connected data - Insyt',
 };
 
 const PUBLIC = new Set(['/app/start', '/app/report']);
@@ -240,6 +244,10 @@ function Routes() {
   if (path === '/app/reports') return <Frame withNav><History view="reports" /></Frame>;
   if (path === '/app/journey') return <Frame withNav><Journey /></Frame>;
   if (path === '/app/settings') return <Frame withNav><Settings /></Frame>;
+  // Connected data: what each granted Google permission returns for this account.
+  if (path === '/app/connected') return <Frame withNav><Connected tab="ads" /></Frame>;
+  if (path === '/app/connected/analytics') return <Frame withNav><Connected tab="ga4" /></Frame>;
+  if (path === '/app/connected/tag-manager') return <Frame withNav><Connected tab="gtm" /></Frame>;
   return <Frame withNav><Home /></Frame>;
 }
 

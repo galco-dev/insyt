@@ -8,6 +8,7 @@ const { webStore, opsStore, dashStore, agencyStore, billingStore, authStore } = 
 const { discoveryCrawl } = require('../../../packages/crawler/src/crawl');
 const { handleWebhook } = require('../../../packages/billing/src/webhooks');
 const { createApp } = require('./server');
+const { createConnected } = require('./connected');
 
 function required(name) {
   const v = process.env[name];
@@ -149,6 +150,15 @@ const assistant = draftModel ? createAssistant({
 }) : null;
 const draftDeps = { google: draftGoogle, model: draftModel, modelId: MODEL_ID, provisioner, assistant };
 
+// Connected data screen: reads through the same Google client the worker
+// uses; Ads actions become approved change rows the worker applies.
+const connected = createConnected({
+  db,
+  auth: googleAuth ? createGoogleAuth({ db, clientId: googleClientId, clientSecret: googleClientSecret }) : null,
+  developerToken: googleAuth ? googleAuth.config.developerToken : null,
+  mccId: googleAuth ? googleAuth.config.loginCustomerId : '3315824995',
+});
+
 // Stripe checkout deps (§10) — active once STRIPE_SECRET_KEY exists.
 let checkout = null;
 if (process.env.STRIPE_SECRET_KEY) {
@@ -208,6 +218,7 @@ const app = createApp({
   },
   googleAuth,
   checkout,
+  connected,
   clientDir: require('path').join(__dirname, '../public/app'),
 });
 

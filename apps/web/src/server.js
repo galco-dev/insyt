@@ -37,7 +37,7 @@ function html(res, code, body) {
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
-function createApp({ store, crawler, now = Date.now, dashStore = null, agencyStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null, clientDir = null }) {
+function createApp({ store, crawler, now = Date.now, dashStore = null, agencyStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null, clientDir = null, connected = null }) {
   // Confirming assets is the moment the first audit starts (§8 signup queue,
   // immediate priority). Idempotent per tenant: a second confirm never queues
   // a second first-audit.
@@ -262,6 +262,10 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         if (!session) return json(res, 401, { error: 'Sign in first.' });
         const t = session.tenantId;
         const sub = path.slice('/api/app'.length) || '/';
+        // Connected data (Settings → "See what Insyt reads"): the raw objects
+        // each granted Google API returns for this tenant, plus the two Ads
+        // actions that run through the normal approve → apply → Undo path.
+        if (sub.startsWith('/connected') && connected) return connected.handle(req, res, sub.slice('/connected'.length), t);
         if (req.method === 'GET') {
           if (sub === '/home') {
             const [health, pending, cumulative, reports, streak, plan, spend, currency] = await Promise.all([
