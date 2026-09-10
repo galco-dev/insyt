@@ -214,3 +214,31 @@ test('webhook prefers metadata.tenant_id over customer lookup', async () => {
   assert.equal(seen[0].tenant_id, 't7');
   assert.equal(seen[0].amount_usd, 20);
 });
+
+test('subscriptionCheckout: saved customer first, the audit fee as a one-off coupon, the tapped change in metadata (gated platform)', async () => {
+  const requests = [];
+  const fetchImpl = async (url, init) => {
+    requests.push({ url, method: init.method, body: init.body });
+    if (url.includes('/prices')) return { ok: true, json: async () => ({ data: [{ id: 'price_core', metadata: { key: 'insyt_core_4k_monthly' } }], has_more: false }) };
+    if (url.endsWith('/coupons/insyt_audit_credit_20') && init.method === 'GET') return { ok: false, status: 404, json: async () => ({ error: { message: 'No such coupon' } }) };
+    if (url.endsWith('/coupons')) return { ok: true, json: async () => ({ id: 'insyt_audit_credit_20' }) };
+    return { ok: true, json: async () => ({ id: 'cs_2', url: 'https://checkout.stripe/cs_2' }) };
+  };
+  const stripe = createStripeCheckout({ secretKey: 'sk_test_x', fetchImpl });
+  const r = await stripe.subscriptionCheckout({ tenantId: 't9', tier: 'core', band: '4k', cadence: 'monthly', customerEmail: 'a@b.c', customerId: 'cus_9', creditUsd: 20, changeId: 'ch1', successUrl: 'https://a/s', cancelUrl: 'https://a/c' });
+  assert.equal(r.url, 'https://checkout.stripe/cs_2');
+  const coupon = requests.find((x) => x.url.endsWith('/coupons') && x.method === 'POST');
+  assert.match(coupon.body, /amount_off=2000/);
+  assert.match(coupon.body, /duration=once/);
+  const create = requests.find((x) => x.url.includes('/checkout/sessions'));
+  assert.match(create.body, /(^|&)customer=cus_9(&|$)/);
+  assert.doesNotMatch(create.body, /customer_email/);
+  assert.match(create.body, /discounts%5B0%5D%5Bcoupon%5D=insyt_audit_credit_20/);
+  assert.match(create.body, /metadata%5Bchange_id%5D=ch1/);
+  // no credit, no customer: email path, no discounts
+  const r2 = await stripe.subscriptionCheckout({ tenantId: 't9', tier: 'core', band: '4k', customerEmail: 'a@b.c', successUrl: 'https://a/s', cancelUrl: 'https://a/c' });
+  assert.equal(r2.id, 'cs_2');
+  const create2 = requests.filter((x) => x.url.includes('/checkout/sessions')).at(-1);
+  assert.match(create2.body, /customer_email=a%40b.c/);
+  assert.doesNotMatch(create2.body, /discounts/);
+});

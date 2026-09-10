@@ -219,12 +219,25 @@ test('workerStore.draftState: consent flags, exception + inflight + recent sets,
       : url.includes('adjust_budget') ? [{ params: { new_daily_usd: 12, previous_daily_usd: 10 } }]
       : url.includes('status=eq.reverted') ? [{ id: 'x' }, { id: 'y' }] : []),
     campaigns: [{ google_campaign_id: '1', budget_daily_usd: '10' }, { google_campaign_id: '2', budget_daily_usd: '10' }],
+    subscriptions: [{ tier: 'autopilot', status: 'active' }],
   });
   const st = await workerStore(mkDb(f)).draftState('t1');
   assert.deepStrictEqual(st.autopilot, { negatives: true, budgets: false, counting: true });
   assert.ok(st.exceptions.has('ex1') && st.inflight.has('campaign:1:budget') && st.recent.has('r1'));
   assert.deepStrictEqual({ d: st.bounds.weekly_budget_delta_pct, rv: st.bounds.reverted_30d, tot: st.bounds.account.daily_budget_total_usd }, { d: 10, rv: 2, tot: 20 });
   assert.strictEqual(st.bounds.campaign('2').budget_daily_usd, 10);
+});
+
+test('workerStore.draftState: autopilot consent only counts on an active Autopilot or Scale plan (gated platform)', async () => {
+  const base = { autopilot_settings: [{ categories: { negatives: true, budgets: true, counting: true } }], standing_exceptions: [], changes: [], campaigns: [] };
+  const none = await workerStore(mkDb(routedFetch({ ...base, subscriptions: [] }))).draftState('t1');
+  assert.deepStrictEqual(none.autopilot, { negatives: false, budgets: false, counting: false });
+  const core = await workerStore(mkDb(routedFetch({ ...base, subscriptions: [{ tier: 'core', status: 'active' }] }))).draftState('t1');
+  assert.deepStrictEqual(core.autopilot, { negatives: false, budgets: false, counting: false });
+  const lapsed = await workerStore(mkDb(routedFetch({ ...base, subscriptions: [{ tier: 'autopilot', status: 'canceled' }] }))).draftState('t1');
+  assert.deepStrictEqual(lapsed.autopilot, { negatives: false, budgets: false, counting: false });
+  const scale = await workerStore(mkDb(routedFetch({ ...base, subscriptions: [{ tier: 'scale', status: 'past_due' }] }))).draftState('t1');
+  assert.deepStrictEqual(scale.autopilot, { negatives: true, budgets: true, counting: true });
 });
 
 test('dashStore.confirmAssets links only crawl-matched / owner-selected assets, never the "other items"', async () => {

@@ -36,8 +36,20 @@ async function handleWebhook(event, store) {
           kind: kind || 'audit_unlock',
           stripe_payment_intent: obj.payment_intent,
           amount_usd: (obj.amount_total || 0) / 100,
+          // The customer the unlock created: the plan checkout offers its saved card.
+          ...(obj.customer ? { stripe_customer_id: obj.customer } : {}),
         });
         await store.audit({ tenant_id: tenantId, event: 'checkout_completed', detail: { kind, session: obj.id } });
+      }
+      if (obj.mode === 'subscription') {
+        // Gated-platform spec §6: the fix the customer tapped before paying is
+        // approved here, server-side, so a closed tab never loses it. The
+        // subscription row itself arrives on customer.subscription.created.
+        const changeId = obj.metadata && obj.metadata.change_id;
+        let approved = false;
+        if (changeId && store.approveOnCheckout) approved = await store.approveOnCheckout(tenantId, changeId);
+        if (store.markCredited && obj.total_details && Number(obj.total_details.amount_discount || 0) > 0) await store.markCredited(tenantId);
+        await store.audit({ tenant_id: tenantId, event: 'checkout_completed', detail: { kind: 'subscription', session: obj.id, change_id: changeId || null, approved } });
       }
       return { handled: true };
     }

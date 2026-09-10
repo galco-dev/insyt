@@ -58,6 +58,19 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
     return id;
   }
 
+  // Spec §5: the audit fee comes off the first invoice as a one-off coupon.
+  // Found by id (insyt_audit_credit_20), created on first use, cached.
+  const couponCache = new Map();
+  async function creditCouponId(usd) {
+    const id = `insyt_audit_credit_${Math.round(usd)}`;
+    if (couponCache.has(id)) return couponCache.get(id);
+    const existing = await call(`/coupons/${id}`).catch(() => null);
+    if (existing && existing.id && existing.valid !== false) { couponCache.set(id, existing.id); return existing.id; }
+    const made = await call('/coupons', { id, amount_off: Math.round(usd * 100), currency: 'usd', duration: 'once', name: `Audit fee credited ($${Math.round(usd)})` });
+    couponCache.set(id, made.id);
+    return made.id;
+  }
+
   return {
     /** One-time payment (audit unlock / large audit / setup bundle). */
     auditCheckout: async ({ tenantId, kind = 'audit_unlock', customerEmail, successUrl, cancelUrl }) => {
@@ -77,20 +90,27 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
       return { id: session.id, url: session.url };
     },
 
-    /** Subscription checkout for a tier/band/cadence from the §12 matrix. */
-    subscriptionCheckout: async ({ tenantId, tier, band, cadence = 'monthly', customerEmail, successUrl, cancelUrl }) => {
+    /**
+     * Subscription checkout for a tier/band/cadence from the §12 matrix.
+     * customerId (from the $20 unlock) puts the saved card first; creditUsd
+     * takes the audit fee off the first invoice as a one-off coupon (spec §5);
+     * changeId rides in metadata so the webhook can approve the tapped fix.
+     */
+    subscriptionCheckout: async ({ tenantId, tier, band, cadence = 'monthly', customerEmail, customerId, creditUsd = 0, changeId = null, successUrl, cancelUrl }) => {
       const session = await call('/checkout/sessions', {
         mode: 'subscription',
         line_items: [{ price: await priceIdByKey(`insyt_${tier}_${band}_${cadence}`), quantity: 1 }],
         client_reference_id: tenantId,
-        customer_email: customerEmail || undefined,
-        metadata: { tenant_id: tenantId, kind: 'subscription', tier, band },
+        ...(customerId ? { customer: customerId } : { customer_email: customerEmail || undefined }),
+        ...(creditUsd > 0 ? { discounts: [{ coupon: await creditCouponId(creditUsd) }] } : {}),
+        metadata: { tenant_id: tenantId, kind: 'subscription', tier, band, ...(changeId ? { change_id: changeId } : {}) },
         subscription_data: { metadata: { tenant_id: tenantId, tier, band } },
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
       return { id: session.id, url: session.url };
     },
+
 
     /** Billing portal (card update, cancel) for an existing customer. */
     portalSession: async ({ customerId, returnUrl }) => {

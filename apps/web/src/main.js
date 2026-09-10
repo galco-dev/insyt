@@ -170,22 +170,38 @@ if (process.env.STRIPE_SECRET_KEY) {
     return u && u.email;
   };
   checkout = {
-    audit: async ({ tenantId, kind }) => stripe.auditCheckout({
+    // The $20 unlock returns to the report the customer was reading.
+    audit: async ({ tenantId, kind, next }) => stripe.auditCheckout({
       tenantId, kind, customerEmail: await ownerEmail(tenantId),
-      successUrl: `${baseUrl}/app?paid=1`, cancelUrl: `${baseUrl}/app`,
+      successUrl: `${baseUrl}${next || '/app'}${(next || '/app').includes('?') ? '&' : '?'}paid=1`, cancelUrl: `${baseUrl}${next || '/app'}`,
     }),
-    subscribe: async ({ tenantId, tier, cadence }) => {
-      const t = await db.select('tenants', `id=eq.${qe(tenantId)}&select=size_band`, { single: true });
+    // The plan checkout (gated-platform spec §5): saved card first when the
+    // $20 created a customer, the audit fee credited once as a coupon, and the
+    // tapped change in metadata so the webhook approves it (spec §6).
+    subscribe: async ({ tenantId, tier, cadence, next = '/app/approvals', changeId = null }) => {
+      const [t, payment, prior] = await Promise.all([
+        db.select('tenants', `id=eq.${qe(tenantId)}&select=size_band`, { single: true }),
+        db.select('payments', `tenant_id=eq.${qe(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=amount_usd,stripe_customer_id,credited_to_subscription&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+        db.select('subscriptions', `tenant_id=eq.${qe(tenantId)}&select=stripe_customer_id&limit=1`, { single: true }).catch(() => null),
+      ]);
+      const customerId = (prior && prior.stripe_customer_id) || (payment && payment.stripe_customer_id) || null;
+      const creditUsd = payment && !prior && !payment.credited_to_subscription ? Math.min(Number(payment.amount_usd || 0), 20) : 0;
+      const join = next.includes('?') ? '&' : '?';
       return stripe.subscriptionCheckout({
         tenantId, tier, band: (t && t.size_band) || '4k', cadence,
-        customerEmail: await ownerEmail(tenantId),
-        successUrl: `${baseUrl}/app?subscribed=1`, cancelUrl: `${baseUrl}/app/plan`,
+        customerEmail: await ownerEmail(tenantId), customerId, creditUsd, changeId,
+        successUrl: `${baseUrl}${next}${join}subscribed=1${changeId ? `&pa=${qe(changeId)}` : ''}`,
+        cancelUrl: `${baseUrl}${next}`,
       });
     },
     portal: async ({ tenantId }) => {
-      const sub = await db.select('subscriptions', `tenant_id=eq.${qe(tenantId)}&select=stripe_customer_id&limit=1`, { single: true });
-      if (!sub || !sub.stripe_customer_id) throw new Error('no billing account yet');
-      return stripe.portalSession({ customerId: sub.stripe_customer_id, returnUrl: `${baseUrl}/app/settings` });
+      const [sub, payment] = await Promise.all([
+        db.select('subscriptions', `tenant_id=eq.${qe(tenantId)}&select=stripe_customer_id&limit=1`, { single: true }),
+        db.select('payments', `tenant_id=eq.${qe(tenantId)}&select=stripe_customer_id&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+      ]);
+      const customerId = (sub && sub.stripe_customer_id) || (payment && payment.stripe_customer_id);
+      if (!customerId) throw new Error('no billing account yet');
+      return stripe.portalSession({ customerId, returnUrl: `${baseUrl}/app/settings` });
     },
   };
 }

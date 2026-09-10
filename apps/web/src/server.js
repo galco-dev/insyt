@@ -21,7 +21,22 @@ const { landingPage, progressPage } = require('./pages');
 const { handleOps } = require('./ops');
 const { issueSession, readSession, cookieFor } = require('./session');
 const { handleGoogleAuth } = require('./auth-routes');
+const { safeNext } = require('../../../packages/billing/src/access');
 const screens = require('./screens');
+
+// The gate (gated-platform spec §2). A write that needs a plan answers 402
+// with plan_required so the client opens the Plan sheet; nothing is hidden
+// client-side alone. Stores without access() (tests, older adapters) gate
+// nothing, so existing contracts keep working.
+const PLAN_REQUIRED = { error: 'This needs a plan. Nothing has changed.', plan_required: true, plan_url: '/app/plan' };
+async function accessFor(dashStore, tenantId) {
+  if (!dashStore || typeof dashStore.access !== 'function') return null;
+  try { return await dashStore.access(tenantId); } catch { return null; }
+}
+async function planActive(dashStore, tenantId) {
+  const a = await accessFor(dashStore, tenantId);
+  return !a || a.level === 'active';
+}
 
 // §5 limits: 1 crawl/domain/hour, 3/day (email-verified: 5 — later).
 const LIMITS = { perHour: 1, perDay: 3 };
@@ -210,12 +225,18 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         let parsed; try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
         try {
           if (path === '/api/checkout/audit') {
-            const r = await checkout.audit({ tenantId: session.tenantId, kind: parsed.kind || 'audit_unlock' });
+            const r = await checkout.audit({ tenantId: session.tenantId, kind: parsed.kind || 'audit_unlock', next: safeNext(parsed.next, '/app') });
             return json(res, 200, { url: r.url });
           }
           if (path === '/api/checkout/subscribe') {
             if (!parsed.tier) return json(res, 400, { error: 'tier required' });
-            const r = await checkout.subscribe({ tenantId: session.tenantId, tier: parsed.tier, cadence: parsed.cadence || 'monthly' });
+            // Spec §5/§6: the return lands where the customer was, with the
+            // change they tapped riding along so the tab (and the webhook)
+            // can approve it the moment the plan is active.
+            const r = await checkout.subscribe({
+              tenantId: session.tenantId, tier: parsed.tier, cadence: parsed.cadence || 'monthly',
+              next: safeNext(parsed.next), changeId: parsed.change_id ? String(parsed.change_id).slice(0, 64) : null,
+            });
             return json(res, 200, { url: r.url });
           }
           if (path === '/api/checkout/portal') {
@@ -265,8 +286,14 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         // Connected data (Settings → "See what Insyt reads"): the raw objects
         // each granted Google API returns for this tenant, plus the two Ads
         // actions that run through the normal approve → apply → Undo path.
-        if (sub.startsWith('/connected') && connected) return connected.handle(req, res, sub.slice('/connected'.length), t);
+        if (sub.startsWith('/connected') && connected) {
+          // Reads at every level; the two Ads writes need a plan (spec §2).
+          if (req.method === 'POST' && !(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
+          return connected.handle(req, res, sub.slice('/connected'.length), t);
+        }
         if (req.method === 'GET') {
+          // The gate, on its own: the client polls this after Checkout (spec §6).
+          if (sub === '/access') return json(res, 200, { access: await accessFor(dashStore, t) });
           if (sub === '/home') {
             const [health, pending, cumulative, reports, streak, plan, spend, currency] = await Promise.all([
               dashStore.healthLatest(t), dashStore.pendingApprovals(t), dashStore.cumulative(t), dashStore.reports(t),
@@ -277,12 +304,12 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               dashStore.spendPosition ? dashStore.spendPosition(t) : null,
               dashStore.accountCurrency ? dashStore.accountCurrency(t) : 'USD',
             ]);
-            return json(res, 200, { health, pending, cumulative, reports, streak, plan, spend, currency });
+            return json(res, 200, { health, pending, cumulative, reports, streak, plan, spend, currency, access: await accessFor(dashStore, t) });
           }
-          if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t) });
-          if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t) });
+          if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
+          if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
           if (sub === '/reports') return json(res, 200, { reports: await dashStore.reports(t) });
-          if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t) });
+          if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t), access: await accessFor(dashStore, t) });
           if (sub === '/discovery') return json(res, 200, await dashStore.discovery(t));
           if (sub === '/plan') return json(res, 200, { plan: await dashStore.planOptions(t) });
           if (sub === '/first-fix') return json(res, 200, { fix: await dashStore.firstFix(t) });
@@ -300,7 +327,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub.startsWith('/report/')) {
             const r = await dashStore.reportData(t, sub.split('/')[2]);
             if (!r) return json(res, 404, { error: 'Report not found.' });
-            return json(res, 200, { report: r });
+            // Pending changes ride along so each finding can carry its
+            // "Fix this" (spec §4, Report), and the gate decides what it does.
+            return json(res, 200, { report: r, pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
           }
         }
         if (req.method === 'POST') {
@@ -349,6 +378,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                 {
                   const m = /^\/drafts\/([^/]+)\/(approve|enable|dismiss|edit)$/.exec(sub);
                   if (m) {
+                    // Creating or switching on an ad writes to Google Ads: plan only.
+                    if ((m[2] === 'approve' || m[2] === 'enable') && !(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
                     const r = dashStore.draftAction ? await dashStore.draftAction(t, m[1], m[2], parsed) : null;
                     if (!r) return json(res, 404, { error: 'Unknown draft.' });
                     if (r.error) return json(res, 409, { error: r.error, ...(r.steps ? { steps: r.steps } : {}) });
@@ -357,6 +388,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                 }
                 if (sub === '/autopilot') {
                   if (!dashStore.setAutopilot) return json(res, 501, { error: 'Not available yet.' });
+                  // Autopilot is a plan feature: the toggles need an active plan
+                  // (the worker additionally requires the Autopilot tier).
+                  if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
                   const categories = await dashStore.setAutopilot(t, parsed.categories || parsed);
                   return json(res, 200, { ok: true, categories });
                 }
@@ -371,8 +405,15 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             });
             return;
           }
-          if (sub.startsWith('/approve/')) { await dashStore.approveChange(t, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          // The two writes the whole funnel turns on (spec §2): a yes on a fix,
+          // and its undo. Both need a plan; the client opens the Plan sheet on 402.
+          if (sub.startsWith('/approve/')) {
+            if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
+            await dashStore.approveChange(t, sub.split('/')[2]);
+            return json(res, 200, { ok: true });
+          }
           if (sub.startsWith('/revert/')) {
+            if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
             const r = await dashStore.requestRevert(t, sub.split('/')[2]);
             return json(res, 200, r && r.ok === false ? { ok: false, reason: r.reason } : { ok: true });
           }
@@ -541,9 +582,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         }
         if (req.method === 'POST') {
           const redirect = (loc) => { res.writeHead(302, { location: loc }); res.end(); };
-          if (path.startsWith('/app/approve/')) { await dashStore.approveChange(t, path.split('/')[3]); return redirect('/app/approvals'); }
+          if (path.startsWith('/app/approve/')) { if (!(await planActive(dashStore, t))) return redirect('/app/plan'); await dashStore.approveChange(t, path.split('/')[3]); return redirect('/app/approvals'); }
           if (path.startsWith('/app/dismiss/')) { await dashStore.dismissChange(t, path.split('/')[3]); return redirect('/app/approvals'); }
-          if (path.startsWith('/app/revert/')) { await dashStore.requestRevert(t, path.split('/')[3]); return redirect('/app/ledger'); }
+          if (path.startsWith('/app/revert/')) { if (!(await planActive(dashStore, t))) return redirect('/app/plan'); await dashStore.requestRevert(t, path.split('/')[3]); return redirect('/app/ledger'); }
           if (path === '/app/confirm') { await confirmAndStart(t); return redirect('/app'); }
         }
         return json(res, 404, { error: 'not found' });

@@ -5,6 +5,7 @@
 // adapters exist to satisfy them against the deployed §1 schema.
 
 const q = (s) => encodeURIComponent(s);
+const { accessFrom, autopilotAllowed } = require('../../billing/src/access');
 const createTelemetryBeat = (db, stream) => require('../../shared/src/telemetry').createTelemetry({ db }).beat(stream);
 
 // ---------------------------------------------------------------- worker
@@ -117,7 +118,7 @@ function workerStore(db) {
     draftState: async (tenantId) => {
       const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
       const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
-      const [auto, exc, open, recent, reverted, budgetMoves, camps] = await Promise.all([
+      const [auto, exc, open, recent, reverted, budgetMoves, camps, sub] = await Promise.all([
         db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }).catch(() => null),
         db.select('standing_exceptions', `tenant_id=eq.${q(tenantId)}&cleared_at=is.null&select=change_key`).catch(() => []),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(proposed,approved)&select=target`).catch(() => []),
@@ -125,8 +126,12 @@ function workerStore(db) {
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.reverted&applied_at=gte.${q(since30)}&select=id`).catch(() => []),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&tool_id=eq.ads.adjust_budget&status=eq.applied&applied_at=gte.${q(since7)}&select=params`).catch(() => []),
         db.select('campaigns', `tenant_id=eq.${q(tenantId)}&status=eq.enabled&select=google_campaign_id,budget_daily_usd`).catch(() => []),
+        db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
       ]);
-      const cats = (auto && auto.categories) || {};
+      // Autopilot is a plan feature (gated-platform spec §2): the categories
+      // only count on an active Autopilot or Scale plan. Everything else
+      // becomes a card that waits for a tap.
+      const cats = autopilotAllowed(sub) ? ((auto && auto.categories) || {}) : {};
       const dailyTotal = (camps || []).reduce((s, c) => s + Number(c.budget_daily_usd || 0), 0) || 1;
       const weeklyDelta = (budgetMoves || []).reduce((s, c) => s + Math.abs(Number((c.params || {}).new_daily_usd || 0) - Number((c.params || {}).previous_daily_usd || 0)), 0) / dailyTotal * 100;
       const campMap = new Map((camps || []).map((c) => [String(c.google_campaign_id), { budget_daily_usd: Number(c.budget_daily_usd || 0) }]));
@@ -296,6 +301,18 @@ function billingStore(db) {
     },
     ledger: async (entry) => { await db.insert('ledger', [entry], { returning: false }); },
     audit: async (entry) => { await db.insert('audit_log', [entry], { returning: false }); },
+    // Spec §6: the fix the customer tapped before subscribing is approved by
+    // the webhook itself, so a closed tab never loses it. Proposed rows only.
+    markCredited: async (tenantId) => {
+      await db.update('payments', `tenant_id=eq.${q(tenantId)}&credited_to_subscription=eq.false`, { credited_to_subscription: true }).catch(() => {});
+    },
+    approveOnCheckout: async (tenantId, changeId) => {
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&select=id,status`, { single: true }).catch(() => null);
+      if (!ch || ch.status !== 'proposed') return false;
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&status=eq.proposed`, { status: 'approved' });
+      await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: changeId, channel: 'dashboard' }], { returning: false }).catch(() => {});
+      return true;
+    },
     scheduleEmail: async (templateId, tenantId, vars) => {
       await db.insert('emails', [{
         tenant_id: tenantId, template_id: templateId, to_email: vars.to_email || '',
@@ -434,6 +451,20 @@ function dashStore(db, deps = {}) {
     accountCurrency: async (tenantId) => {
       const a = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null);
       return (a && a.currency) || 'USD';
+    },
+    // The gate (gated-platform spec §1): locked / unlocked / active plus the
+    // customer's own numbers, so every gated state speaks in their figures.
+    access: async (tenantId) => {
+      const [paid, sub, tenant, pricing, report, pending, ads] = await Promise.all([
+        db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=id,kind&limit=1`, { single: true }).catch(() => null),
+        db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status,price_usd,stripe_customer_id&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band`, { single: true }).catch(() => null),
+        db.select('pricing_config', 'select=matrix&order=effective_from.desc&limit=1', { single: true }).catch(() => null),
+        db.select('reports', `tenant_id=eq.${q(tenantId)}&select=summary,findings_snapshot&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=money_impact_usd,finding:findings(money_impact_monthly_usd)`).catch(() => []),
+        db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null),
+      ]);
+      return accessFrom({ paid, sub, tenant, pricing, report, pending, ads });
     },
     pendingApprovals: async (tenantId) => {
       // Change summaries are written for the ledger (past tense: "Excluded…").
@@ -581,7 +612,7 @@ function dashStore(db, deps = {}) {
       return { ...j, instruction_line: next };
     },
     approveChange: async (tenantId, changeId) => {
-      const ch = await db.select('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&select=tool_id,params`, { single: true }).catch(() => null);
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&select=tool_id,params,status`, { single: true }).catch(() => null);
       if (ch && ch.tool_id === 'settings.autopilot_on') {
         // A settings card, not an Ads write: the tap IS the flip (§7.2 lane 2).
         const cur = await db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }).catch(() => null);
@@ -595,7 +626,10 @@ function dashStore(db, deps = {}) {
         await tel.event({ tenantId, name: 'approval.approve', props: { change_id: changeId, settings: true }, source: 'server' });
         return;
       }
-      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}`, { status: 'approved' });
+      // Idempotent: only a proposed change moves. The Checkout return path may
+      // approve the same change twice (webhook, then the returning tab).
+      if (ch && ch.status && ch.status !== 'proposed') return;
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&status=eq.proposed`, { status: 'approved' });
       await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: changeId, channel: 'dashboard' }], { returning: false });
       await tel.event({ tenantId, name: 'approval.approve', props: { change_id: changeId }, source: 'server' });
     },
