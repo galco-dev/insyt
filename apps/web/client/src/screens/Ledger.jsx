@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle as CheckCircle2, FlipBackward as Undo2, File02 as FileText, Link01 as Link2, Eye, AlertTriangle, ArrowRight } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
+import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Card, Spinner, EmptyState, ErrorNote, Button, Segments } from '../lib/ui.jsx';
 
 const EVENT_ICON = {
@@ -17,27 +18,79 @@ const EVENT_ICON = {
 
 const TYPE_LABEL = { weekly: 'Weekly report', audit: 'Your audit', deep: 'Deep review', monthly: 'Monthly pulse' };
 
+// Next Sunday, when the weekly check runs and approved fixes go out.
+function nextSunday() {
+  const d = new Date();
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7));
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+// Before any fix has been applied, History shows what the first week looks
+// like: the queued fixes, greyed, dated for the coming Sunday (spec §4).
+function FirstWeekPreview({ pending, level, money, access }) {
+  if (!pending || !pending.length) return null;
+  const locked = level === 'locked';
+  return (
+    <div>
+      <MonoLabel>What your first week looks like</MonoLabel>
+      <Card className="mt-2 divide-y divide-neutral-200 opacity-80">
+        {pending.map((p) => (
+          <div key={p.id} className="flex items-start gap-3 p-4">
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-neutral-800" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <div className="text-small">{p.title}{!locked && p.money_line ? <span className="text-neutral-900">, {p.money_line}</span> : null}</div>
+              <div className="mt-0.5 font-mono text-tiny text-neutral-900">{nextSunday()} · applied after your yes · Undo for 30 days</div>
+            </div>
+          </div>
+        ))}
+      </Card>
+      <p className="mt-2 text-tiny text-neutral-900">
+        {level === 'active' ? 'Approve them from Approvals; each one lands here with a one-tap Undo.'
+          : locked ? 'Money lines open with the full report. Fixes you approve land here with a one-tap Undo.'
+            : `Fixes you approve land here with a one-tap Undo.${access && access.pending_value_usd > 0 ? ` Together these are worth about ${money(access.pending_value_usd)} a month.` : ''}`}
+      </p>
+    </div>
+  );
+}
+
 function Activity() {
   const [entries, setEntries] = useState(null);
+  const [pending, setPending] = useState([]);
   const [error, setError] = useState(null);
-  useEffect(() => { api('/api/app/ledger').then((d) => setEntries(d.entries)).catch((e) => setError(e.message)); }, []);
+  const { access, level, gate, money, version } = useAccess();
+  useEffect(() => { api('/api/app/ledger').then((d) => { setEntries(d.entries); setPending(d.pending || []); }).catch((e) => setError(e.message)); }, [version]);
 
   if (error) return <ErrorNote message={error} />;
   if (!entries) return <Spinner label="Loading your history" />;
 
   // Undo is a revert of the CHANGE (server: /api/app/revert/:changeId), not of
-  // the ledger row. The executor logs applied fixes as `fix_applied`.
-  async function requestRevert(changeId) {
-    try {
+  // the ledger row. The executor logs applied fixes as `fix_applied`. Like a
+  // yes, an undo writes to Google Ads, so it needs a plan (a lapsed plan opens
+  // the sheet instead of failing).
+  async function requestRevert(changeId, title) {
+    const run = async () => {
       await api(`/api/app/revert/${changeId}`, { method: 'POST' });
       const d = await api('/api/app/ledger');
       setEntries(d.entries);
-    } catch (err) { setError(err.message); }
+    };
+    try { await gate(run, { kind: 'revert', id: changeId, title: title ? `Undo: ${title}` : 'Undo this change' }); } catch (err) { setError(err.message); }
   }
 
-  if (entries.length === 0) {
-    return <EmptyState title="Nothing here yet" body="Once your first check runs, every action lands here - permanently." />;
+  const applied = entries.some((e) => e.event === 'fix_applied' || e.event === 'change_applied');
+  if (entries.length === 0 || (!applied && pending.length)) {
+    return (
+      <div className="flex flex-col gap-6">
+        {pending.length ? <FirstWeekPreview pending={pending} level={level} money={money} access={access} /> : (
+          <EmptyState title="Nothing here yet" body="Once your first check runs, every action lands here - permanently." />
+        )}
+        {entries.length > 0 && <ActivityList entries={entries} requestRevert={requestRevert} />}
+      </div>
+    );
   }
+  return <ActivityList entries={entries} requestRevert={requestRevert} />;
+}
+
+function ActivityList({ entries, requestRevert }) {
   const reverted = new Set(entries.filter((e) => e.event === 'fix_reverted' && e.change_id).map((e) => e.change_id));
   return (
     <Card className="divide-y divide-neutral-200">
@@ -55,7 +108,7 @@ function Activity() {
               </div>
             </div>
             {canRevert && (
-              <Button variant="ghost" onClick={() => requestRevert(e.change_id)} className="!px-2 !py-1 text-tiny">
+              <Button variant="ghost" onClick={() => requestRevert(e.change_id, e.summary_text)} className="!px-2 !py-1 text-tiny">
                 Undo
               </Button>
             )}

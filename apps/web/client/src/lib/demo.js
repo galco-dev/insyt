@@ -3,6 +3,7 @@
 // exist. Same fictional business as the sample report (Glow Studio).
 
 import { agencyDemo } from '../agency/demo.js';
+import { audit as sampleAudit } from '../report/data.js';
 
 const pending = [
   {
@@ -142,26 +143,77 @@ function cstate() {
 }
 const cnow = () => new Date().toISOString();
 
+// The gate in the sample console (gated-platform spec §8). The level is
+// previewable per tab (?demo=1&access=locked|unlocked|active) so every gated
+// state can be reviewed with the sample report's numbers and no Stripe.
+function demoAccess(s) {
+  let level = 'active';
+  try { level = sessionStorage.getItem('insyt_demo_access') || 'active'; } catch { /* default */ }
+  const pendingValue = s.pending.reduce((sum, p) => { const m = /\$([0-9][0-9,]*)/.exec(p.money_line || ''); return sum + (m ? Number(m[1].replace(/,/g, '')) : 0); }, 0);
+  return {
+    level,
+    paid: level !== 'locked',
+    plan: level === 'active' ? { tier: s.tier || 'core', status: 'active', label: s.tier === 'autopilot' ? 'Autopilot' : s.tier === 'scale' ? 'Scale' : 'Core', price_usd: s.tier === 'autopilot' ? 199 : s.tier === 'scale' ? 399 : 129 } : null,
+    has_customer: level !== 'locked',
+    credit_applies: level === 'unlocked',
+    band: '4k',
+    price_usd: 129,
+    prices: { core: 129, autopilot: 199, scale: 399 },
+    waste_monthly_usd: 1240,
+    currency: 'USD',
+    pending_count: s.pending.length,
+    pending_value_usd: pendingValue,
+    has_report: true,
+  };
+}
+const gatedPending = (s, level) => (level === 'locked' ? s.pending.map((p) => ({ id: p.id, title: p.title, money_line: p.money_line, finding_id: p.finding_id || null })) : s.pending);
+
+// A real-shaped report for the sample tenant (/app/report/rep-1): the sample
+// audit's findings as a snapshot, ids matching the pending changes by title
+// so "Fix this" works in the demo exactly as it does for a real tenant.
+function demoReport(s, level, id) {
+  const audit = sampleAudit;
+  const byTitle = new Map(s.pending.map((p) => [p.title, p]));
+  const snapshot = audit.findings.map((f, i) => {
+    const usd = /\$([0-9][0-9,]*)/.exec(f.money || '');
+    const chg = byTitle.get(f.title);
+    if (chg && !chg.finding_id) chg.finding_id = `f-${i}`;
+    return { finding_id: `f-${i}`, severity: f.severity, title: f.title, explanation: f.body, money_impact_monthly_usd: usd ? Number(usd[1].replace(/,/g, '')) : 0, payload: { fix_detail: f.fix, locked: true }, status: 'open' };
+  });
+  return {
+    id, type: id === 'rep-1' ? 'signup' : 'weekly', created_at: '2026-08-17T07:00:00Z', unlocked: level !== 'locked',
+    summary: { currency: 'USD', waste_monthly_usd: audit.wasteMonthly, health_score: audit.health, counts: audit.counts, exec_summary: 'We checked your ads, your tracking and your counting, line by line. This is the sample account.' },
+    findings_snapshot: snapshot,
+  };
+}
+
 function customerDemo(path, method, body) {
   const s = cstate();
   const p = path.split('?')[0];
+  const access = demoAccess(s);
 
   if (method === 'GET') {
+    if (p === '/api/app/access') return { access };
+    if (p.startsWith('/api/app/report/')) { const report = demoReport(s, access.level, p.split('/')[4]); return { report, pending: gatedPending(s, access.level), access }; }
     if (p === '/api/app/home') {
       const base = DEMO['GET /api/app/home'];
       return {
         ...structuredClone(base),
         health: { ...structuredClone(base.health), score: s.health },
         pending: s.pending,
-        cumulative: s.cumulative,
+        cumulative: access.level === 'active' ? s.cumulative : null,
+        plan: access.level === 'active' ? { tier: access.plan.tier, label: access.plan.label, band: '4k' } : { tier: null, label: 'Free check', band: '4k' },
+        access,
       };
     }
-    if (p === '/api/app/approvals') return { pending: s.pending };
-    if (p === '/api/app/ledger') return { entries: s.ledger };
+    if (p === '/api/app/approvals') return { pending: gatedPending(s, access.level), access };
+    if (p === '/api/app/ledger') return { entries: access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event)), pending: gatedPending(s, access.level), access };
     if (p === '/api/app/settings') {
       const base = structuredClone(DEMO['GET /api/app/settings']);
       base.settings.autopilot = { ...s.autopilot };
       base.settings.assistant_enabled = true; // demo consoles first (§7.6)
+      base.settings.plan_line = access.level === 'active' ? `${access.plan.label} · $${access.plan.price_usd}/mo (active)` : 'Free check, no plan yet';
+      base.access = access;
       return base;
     }
     if (p === '/api/app/chat') {
@@ -189,6 +241,17 @@ function customerDemo(path, method, body) {
   }
 
   if (method !== 'POST') return undefined;
+
+  // The sample console answers like the server: a write that needs a plan is
+  // a 402 with plan_required, and the sheet opens over the screen.
+  const needsPlan = access.level !== 'active' && (
+    p.startsWith('/api/app/approve/') || p.startsWith('/api/app/revert/') || p === '/api/app/autopilot'
+    || /^\/api\/app\/drafts\/[^/]+\/(approve|enable)$/.test(p) || /^\/api\/app\/connected\/ads\/campaigns\/\d+\/(pause|negatives)$/.test(p));
+  if (needsPlan) return { status: 402, error: 'This needs a plan. Nothing has changed.', plan_required: true, plan_url: '/app/plan' };
+  if (p === '/api/checkout/subscribe') {
+    s.tier = (body && body.tier) || 'core';
+    return { url: null, demo: true };
+  }
 
   {
     const m = /^\/api\/app\/drafts\/([^/]+)\/(approve|enable|dismiss|edit)$/.exec(p);

@@ -7,6 +7,8 @@ import clsx from 'clsx';
 import { Home01 as HomeIcon, CheckSquare, Receipt as ScrollText, Settings01 as SettingsIcon, Map01 as Map, ArrowLeft } from '@untitledui/icons';
 import { RouterProvider, useRouter, Link } from './lib/router.jsx';
 import { api, isDemo } from './lib/api.js';
+import { AccessProvider, useAccess, setDemoLevel } from './lib/access.jsx';
+import { PlanSheet } from './lib/plan-sheet.jsx';
 import { MonoLabel, Button, Spinner, Wordmark, ThemeToggle, CountBadge } from './lib/ui.jsx';
 import Start from './screens/Start.jsx';
 import Confirm from './screens/Confirm.jsx';
@@ -108,6 +110,7 @@ function SignIn() {
 
 function Frame({ children, withNav }) {
   const { path } = useRouter();
+  const { sheet } = useAccess();
   const setupDone = useSetupDone(!!withNav);
   const pending = usePendingCount(!!withNav, path);
   const items = withNav ? NAV.filter((n) => !(setupDone && n.to === '/app/journey')) : [];
@@ -170,6 +173,7 @@ function Frame({ children, withNav }) {
         </div>
       </header>
       <div className={clsx('page-fade', withNav && 'pb-20 md:pb-8')}>{children}</div>
+      {sheet && <PlanSheet />}
       {withNav && (
         <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-300 bg-page/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden" aria-label="Main">
           <div className="mx-auto flex max-w-l2 items-stretch justify-between px-2">
@@ -216,6 +220,7 @@ function Frame({ children, withNav }) {
 
 function Routes() {
   const { path } = useRouter();
+  const { refresh } = useAccess();
   const [authed, setAuthed] = useState(null); // null = checking
 
   const isAgency = path.startsWith('/app/agency');
@@ -225,6 +230,9 @@ function Routes() {
     if (!needsSession || isDemo()) { setAuthed(true); return; }
     api('/api/app/journey').then(() => setAuthed(true)).catch((e) => setAuthed(e.status !== 401));
   }, [path, needsSession]);
+  // The gate loads once per session and again on every screen change, so a
+  // plan activated in another tab (or by the webhook) shows up on the next tap.
+  useEffect(() => { if (needsSession && authed) refresh(); }, [path, needsSession, authed, refresh]);
 
   // Agency console owns its shell and auth (seat check via /api/agency/me).
   if (isAgency) return <Agency />;
@@ -251,10 +259,18 @@ function Routes() {
   return <Frame withNav><Home /></Frame>;
 }
 
+// The sample console previews any gate level: ?demo=1&access=locked|unlocked|active.
+(() => {
+  const lvl = new URLSearchParams(window.location.search).get('access');
+  if (lvl && ['locked', 'unlocked', 'active'].includes(lvl)) setDemoLevel(lvl);
+})();
+
 export default function App() {
   return (
     <RouterProvider>
-      <Routes />
+      <AccessProvider>
+        <Routes />
+      </AccessProvider>
     </RouterProvider>
   );
 }

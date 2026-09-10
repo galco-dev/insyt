@@ -1,9 +1,10 @@
 // Dashboard home - §11 screen 2. Health, waiting approvals, cumulative value,
 // latest report. Every element leads somewhere; empty states sell next steps.
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, Zap } from '@untitledui/icons';
+import { ArrowRight, Zap, Lock01 as Lock } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
+import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, Sparkline, useCountUp } from '../lib/ui.jsx';
 
 function MiniDial({ score }) {
@@ -36,10 +37,55 @@ function WasteFigure({ value, money }) {
   );
 }
 
+// Gated states (gated-platform spec §4, Home). Locked: the $20 is the next
+// step and it is said in their numbers. Unlocked: the projection of what a
+// plan does with the fixes already queued, and the door to it.
+function NextStep({ access, pending, latest, money, goUnlock, openSheet }) {
+  if (!access || !latest) return null;
+  if (access.level === 'locked') {
+    return (
+      <Card accent="warning" className="mt-3 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Lock size={17} className="mt-0.5 shrink-0 text-warning" aria-hidden />
+          <div>
+            <div className="text-body font-semibold">
+              {access.waste_monthly_usd > 0 ? `About ${money(access.waste_monthly_usd)} a month is going to waste.` : 'Your report is ready.'}
+            </div>
+            <div className="mt-0.5 text-small text-neutral-900">
+              {pending.length > 0 ? `${pending.length} fix${pending.length === 1 ? '' : 'es'} ${pending.length === 1 ? 'is' : 'are'} drafted. ` : ''}Every line, every fix and every verdict opens with the full report.
+            </div>
+          </div>
+        </div>
+        <Button onClick={goUnlock} className="shrink-0 !px-5 !py-2.5">Unlock the full report, $20</Button>
+      </Card>
+    );
+  }
+  if (access.level === 'unlocked' && pending.length > 0) {
+    return (
+      <Card accent="success" className="mt-3 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Zap size={17} className="mt-0.5 shrink-0 text-success" aria-hidden />
+          <div>
+            <div className="text-body font-semibold">
+              If you approve all {pending.length}{access.pending_value_usd > 0 ? `: about ${money(access.pending_value_usd)} a month recovered` : ' fixes, they are applied within the hour'}.
+            </div>
+            <div className="mt-0.5 text-small text-neutral-900">
+              A plan applies what you approve, checks again every week, and keeps a one-tap undo on everything. {access.credit_applies ? 'Your $20 comes off the first month.' : ''}
+            </div>
+          </div>
+        </div>
+        <Button onClick={() => openSheet({ title: 'Start fixing' })} className="shrink-0 !px-5 !py-2.5">Start fixing</Button>
+      </Card>
+    );
+  }
+  return null;
+}
+
 export default function Home() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  useEffect(() => { api('/api/app/home').then(setData).catch((e) => setError(e.message)); }, []);
+  const { access, goUnlock, openSheet, money: accessMoney, version } = useAccess();
+  useEffect(() => { api('/api/app/home').then(setData).catch((e) => setError(e.message)); }, [version]);
 
   if (error) return <div className="mx-auto max-w-m2 px-5 pt-14"><ErrorNote message={error} /></div>;
   if (!data) return <Spinner label="Loading your account" />;
@@ -84,6 +130,8 @@ export default function Home() {
         )}
       </Card>
 
+      <NextStep access={access} pending={pending} latest={latest} money={accessMoney} goUnlock={goUnlock} openSheet={openSheet} />
+
       {showGraduation && (
         <Card accent="info" className="mt-3 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
@@ -95,7 +143,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <Link to="/app/plan" className="shrink-0"><Button variant="secondary" className="!px-4 !py-2">See Autopilot</Button></Link>
+          <Button variant="secondary" onClick={() => openSheet({ mode: 'upgrade' })} className="shrink-0 !px-4 !py-2">See Autopilot</Button>
         </Card>
       )}
 
@@ -124,7 +172,7 @@ export default function Home() {
         </div>
       )}
 
-      {plan && (
+      {plan && plan.tier && (
         <div className="mt-3 flex items-center justify-between rounded border border-neutral-300 bg-neutral-50 px-4 py-2.5 text-small text-neutral-900">
           <span>
             {plan.label} plan · sized for accounts around {plan.band === '25k' ? '25,000' : plan.band === '10k' ? '10,000' : '4,000'} search terms
@@ -148,7 +196,7 @@ export default function Home() {
               <Card key={p.id} className="rise lift flex items-center justify-between gap-3 p-4" style={{ '--rise-i': i }}>
                 <div>
                   <div className="text-body font-medium">{p.title}</div>
-                  {p.money_line && <div className="mt-0.5 text-small text-neutral-900">{p.money_line}</div>}
+                  {p.money_line && access && access.level !== 'locked' && <div className="mt-0.5 text-small text-neutral-900">{p.money_line}</div>}
                 </div>
                 <Link to="/app/approvals"><Button variant="secondary" className="!px-4 !py-2">Review</Button></Link>
               </Card>

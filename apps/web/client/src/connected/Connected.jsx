@@ -13,6 +13,7 @@ import clsx from 'clsx';
 import { Download01 as Download, RefreshCw01 as Refresh, PauseCircle, MinusCircle, CheckCircle, Clock } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
+import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Card, Spinner, Button, ErrorNote, Segments, Pill } from '../lib/ui.jsx';
 
 const TABS = [
@@ -136,6 +137,7 @@ const CHANGE_STATE = {
 };
 
 function AdsTab() {
+  const { gate } = useAccess();
   const { data, error, busy, reload } = useTab('/api/app/connected/ads');
   const [acting, setActing] = useState(null);
   const [note, setNote] = useState(null);
@@ -155,27 +157,29 @@ function AdsTab() {
 
   const cur = data.account.currency_code;
 
+  // Both actions write to Google Ads, so they need a plan (gated-platform
+  // spec §2): without one the Plan sheet opens with the action pending.
   async function pause(c) {
     setActing(c.id); setNote(null);
-    try {
-      const r = await api(`/api/app/connected/ads/campaigns/${c.id}/pause`, { method: 'POST' });
+    const run = async () => {
+      await api(`/api/app/connected/ads/campaigns/${c.id}/pause`, { method: 'POST' });
       setNote(`Approved: pause "${c.name}". Insyt applies it within a minute; History will show it with Undo.`);
       await reload();
-      return r;
-    } catch (e) { setNote(e.message); }
+    };
+    try { await gate(run, { kind: 'connected.pause', id: String(c.id), title: `Pause "${c.name}"`, run }); } catch (e) { setNote(e.message); }
     finally { setActing(null); }
-    return null;
   }
   async function exclude(c) {
     const terms = negText.split(/[\n,]/).map((t) => t.trim()).filter(Boolean);
     if (!terms.length) { setNote('Type at least one search to exclude.'); return; }
     setActing(c.id); setNote(null);
-    try {
+    const run = async () => {
       await api(`/api/app/connected/ads/campaigns/${c.id}/negatives`, { method: 'POST', body: { terms } });
       setNote(`Approved: exclude ${terms.length} search${terms.length === 1 ? '' : 'es'} from "${c.name}" as exact-match negative keywords. Applies within a minute; Undo removes them.`);
       setNegFor(null); setNegText('');
       await reload();
-    } catch (e) { setNote(e.message); }
+    };
+    try { await gate(run, { kind: 'connected.negatives', id: String(c.id), title: `Exclude ${terms.length} search${terms.length === 1 ? '' : 'es'} from "${c.name}"`, run }); } catch (e) { setNote(e.message); }
     finally { setActing(null); }
   }
 

@@ -1,0 +1,122 @@
+// The gate on the client (gated-platform spec §1, §3, §6).
+//
+// One AccessProvider holds the tenant's access level and the numbers that
+// come with it. Every API response that carries `access` refreshes it, so a
+// screen load is also a gate refresh. Screens call gate() around any write:
+//   active   → the write runs
+//   unlocked → the Plan sheet opens with the tapped action pending
+//   locked   → the customer is sent to the unlock (see first, then act)
+// A 402 plan_required from the server does the same, so nothing depends on a
+// button being hidden. The return from Stripe (?subscribed=1&pa=<change>)
+// re-opens the sheet in its activating state and finishes the tapped action.
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { api, onAccess, isPlanRequired, isDemo, track } from './api.js';
+import { useRouter } from './router.jsx';
+
+const AccessCtx = createContext(null);
+
+export const LEVELS = { locked: 'locked', unlocked: 'unlocked', active: 'active' };
+
+// Money in the account's currency; USD keeps the $ sign.
+export function fmtMoney(n, code = 'USD') {
+  const v = Math.round(Number(n || 0)).toLocaleString();
+  return code === 'USD' ? `$${v}` : `${code} ${v}`;
+}
+
+export function AccessProvider({ children }) {
+  const [access, setAccessState] = useState(null);
+  const [sheet, setSheet] = useState(null); // null | { mode, action, title }
+  // Bumped when a plan activates and finishes an action, so open screens reload their lists.
+  const [version, setVersion] = useState(0);
+  const bump = useCallback(() => setVersion((v) => v + 1), []);
+  const { path, navigate } = useRouter();
+  const pendingRef = useRef(null);
+
+  const setAccess = useCallback((a) => { if (a) setAccessState(a); }, []);
+  useEffect(() => { onAccess(setAccess); return () => onAccess(null); }, [setAccess]);
+
+  const refresh = useCallback(async () => {
+    try { const d = await api('/api/app/access'); if (d && d.access) setAccessState(d.access); return d && d.access; } catch { return null; }
+  }, []);
+
+  const level = access ? access.level : null;
+
+  const openSheet = useCallback((opts = {}) => {
+    track('gate.sheet_open', { kind: opts.action ? opts.action.kind : 'compare', level });
+    setSheet({ mode: opts.mode || 'offer', action: opts.action || null, title: opts.title || null });
+  }, [level]);
+  const closeSheet = useCallback(() => { track('gate.dismissed', {}); setSheet(null); }, []);
+
+  // Where the customer goes to pay the $20: the latest report's unlock bar.
+  const goUnlock = useCallback(() => {
+    track('gate.shown', { control: 'unlock', level });
+    api('/api/app/reports').then((d) => {
+      const r = d && d.reports && d.reports[0];
+      navigate(r ? `/app/report/${r.id}?unlock=1` : '/app');
+    }).catch(() => navigate('/app'));
+  }, [navigate, level]);
+
+  /**
+   * gate(run, action): run the write at active; otherwise open what the level
+   * needs. `action` = { kind, id, title, run } and is what the sheet finishes
+   * after the plan activates. Returns true when the write ran now.
+   */
+  const gate = useCallback(async (run, action) => {
+    let lvl = level;
+    if (lvl === 'active' || !lvl) {
+      try { await run(); return true; } catch (e) {
+        if (!isPlanRequired(e)) throw e;
+        // The server knows better than a stale client: fall through to the sheet.
+        const fresh = await refresh();
+        lvl = fresh ? fresh.level : 'unlocked';
+      }
+    }
+    track('gate.shown', { control: action ? action.kind : 'write', level: lvl });
+    if (lvl === 'locked') { goUnlock(); return false; }
+    pendingRef.current = action ? { ...action, run } : null;
+    openSheet({ action: action ? { ...action, run } : null });
+    return false;
+  }, [level, refresh, goUnlock, openSheet]);
+
+  // Return from Checkout (spec §6): re-open the sheet, wait for the webhook,
+  // then finish the tapped action. The URL is cleaned so a reload is inert.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('subscribed') === '1') {
+      const pa = params.get('pa');
+      params.delete('subscribed'); params.delete('pa');
+      const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+      window.history.replaceState({}, '', clean);
+      let remembered = null;
+      try { remembered = JSON.parse(sessionStorage.getItem('insyt_pending_action') || 'null'); sessionStorage.removeItem('insyt_pending_action'); } catch { /* ignore */ }
+      const action = remembered && remembered.id ? remembered : pa ? { kind: 'approve', id: pa, title: null } : null;
+      setSheet({ mode: 'activating', action, title: null });
+    } else if (params.get('paid') === '1') {
+      params.delete('paid');
+      window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params}` : ''}`);
+      refresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const value = useMemo(() => ({
+    access, level, setAccess, refresh, gate, openSheet, closeSheet, sheet, goUnlock, path, version, bump,
+    money: (n) => fmtMoney(n, access ? access.currency : 'USD'),
+    pendingAction: () => pendingRef.current,
+  }), [access, level, setAccess, refresh, gate, openSheet, closeSheet, sheet, goUnlock, path, version, bump]);
+
+  return <AccessCtx.Provider value={value}>{children}</AccessCtx.Provider>;
+}
+
+export function useAccess() {
+  const v = useContext(AccessCtx);
+  if (!v) throw new Error('useAccess outside AccessProvider');
+  return v;
+}
+
+// Demo-only: the sample console can preview any level (?demo=1&access=unlocked).
+export const demoLevel = () => {
+  try { return sessionStorage.getItem('insyt_demo_access') || 'active'; } catch { return 'active'; }
+};
+export const setDemoLevel = (lvl) => { try { sessionStorage.setItem('insyt_demo_access', lvl); } catch { /* ignore */ } };
+export const inDemo = isDemo;

@@ -2,9 +2,10 @@
 // Each card can open to show exactly what changes (the trust layer), and the
 // request composer at the foot lets the owner ask for anything in a sentence.
 import React, { useEffect, useState } from 'react';
-import { ChevronDown } from '@untitledui/icons';
+import { ChevronDown, Lock01 as Lock } from '@untitledui/icons';
 import clsx from 'clsx';
 import { api } from '../lib/api.js';
+import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';
 
 function Detail({ p }) {
@@ -175,19 +176,29 @@ function YourAds() {
     api('/api/app/drafts').then((d) => setDrafts(d.drafts || [])).catch(() => setDrafts([]));
     api('/api/app/setup').then(setSetup).catch(() => setSetup(null));
   }, []);
+  const { gate } = useAccess();
   if (!drafts || !drafts.length) return null;
   const stepsLeft = setup && setup.steps ? setup.steps.filter((s) => !s.done) : [];
 
   async function act(id, action, body) {
     setBusy(id); setNote(null);
-    try {
+    // Creating or switching on an ad writes to Google Ads: a plan feature.
+    // Without one the Plan sheet opens with this draft as the pending action.
+    if (action === 'approve' || action === 'enable') {
+      const d = (drafts || []).find((x) => x.id === id);
+      const ran = await gate(() => run(), { kind: `draft.${action}`, id, title: d ? d.plain.headline : 'Your ad', run: () => run() }).catch((e) => { setNote(e.message); return true; });
+      if (!ran) setBusy(null);
+      return;
+    }
+    try { await run(); } catch (e) { setNote(e.message); setBusy(null); }
+    async function run() {
       const r = await api(`/api/app/drafts/${id}/${action}`, { method: 'POST', body: body || {} });
       if (r.status === 'staged') setNote('Your campaign is ready. It waits behind the setup steps below; it switches to "create" the moment they clear.');
       if (r.warnings && r.warnings.length) setNote(r.warnings.join(' '));
       setDrafts((xs) => xs.map((d) => (d.id === id ? { ...d, status: r.status || d.status, gates: r.blockers ? { ok: false, blockers: r.blockers, steps: r.steps } : d.gates, ...(r.spec ? { ad_groups: r.spec.ad_groups.map((g) => ({ name: g.name, rsa: g.rsa })) } : {}) } : d)).filter((d) => d.status !== 'dismissed'));
       if (action === 'edit') setEditing((e) => ({ ...e, [id]: false }));
-    } catch (e) { setNote(e.message); }
-    setBusy(null);
+      setBusy(null);
+    }
   }
   async function provision() {
     setBusy('setup'); setNote(null);
@@ -268,18 +279,25 @@ export default function Approvals() {
   const [busy, setBusy] = useState(null);
   const [open, setOpen] = useState({});
   const [assistant, setAssistant] = useState(false);
+  const { access, level, gate, goUnlock, money, version } = useAccess();
 
   const load = () => api('/api/app/approvals').then((d) => setPending(d.pending)).catch((e) => setError(e.message));
-  useEffect(() => { load(); api('/api/app/settings').then((d) => setAssistant(!!(d.settings && d.settings.assistant_enabled))).catch(() => {}); }, []);
+  useEffect(() => { load(); api('/api/app/settings').then((d) => setAssistant(!!(d.settings && d.settings.assistant_enabled))).catch(() => {}); }, [version]);
 
   async function act(kind, id) {
     setBusy(id);
-    try {
+    const p = (pending || []).find((x) => x.id === id);
+    const run = async () => {
       // Dismissals carry whether the detail was opened first (§11.2 label:
       // "the finding is wrong" vs "the explanation failed").
       const body = kind === 'dismiss' ? { expanded_first: !!open[id] } : undefined;
       await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
-      setPending((p) => p.filter((x) => x.id !== id));
+      setPending((prev) => (prev || []).filter((x) => x.id !== id));
+    };
+    try {
+      // A yes needs a plan (gated-platform spec §2); a no is always free.
+      if (kind === 'approve') await gate(run, { kind: 'approve', id, title: p ? p.title : 'This fix' });
+      else await run();
     } catch (e) { setError(e.message); }
     setBusy(null);
   }
@@ -287,10 +305,21 @@ export default function Approvals() {
   if (error) return <div className="mx-auto max-w-m2 px-5 pt-14"><ErrorNote message={error} /></div>;
   if (!pending) return <Spinner label="Loading approvals" />;
 
+  // The gated states speak in the customer's numbers (spec §4, Approvals).
+  const locked = level === 'locked';
+  const unlocked = level === 'unlocked';
+  const value = access && access.pending_value_usd > 0 ? money(access.pending_value_usd) : null;
+
   return (
     <div className="mx-auto max-w-m2 px-5 pb-24 pt-10">
       <MonoLabel>Nothing changes without your yes</MonoLabel>
       <h1 className="mt-1 text-h2 tracking-tight">Approvals</h1>
+
+      {unlocked && pending.length > 0 && (
+        <p className="mt-3 text-small text-neutral-900">
+          {pending.length} fix{pending.length === 1 ? '' : 'es'}{value ? ` worth about ${value} a month` : ''} {pending.length === 1 ? 'is' : 'are'} ready. Approving the first one starts your plan.
+        </p>
+      )}
 
       {pending.length === 0 ? (
         <div className="mt-6">
@@ -299,12 +328,17 @@ export default function Approvals() {
       ) : (
         <div className="mt-6 flex flex-col gap-3">
           {pending.map((p) => {
-            const hasDetail = !!(p.explanation || p.before_line || p.after_line);
+            const hasDetail = !locked && !!(p.explanation || p.before_line || p.after_line);
             const isOpen = !!open[p.id];
             return (
               <Card key={p.id} className="p-5">
                 <div className="text-body font-medium">{p.title}</div>
-                {p.money_line && <div className="mt-0.5 text-small text-neutral-900">{p.money_line}</div>}
+                {p.money_line && !locked && <div className="mt-0.5 text-small text-neutral-900">{p.money_line}</div>}
+                {locked && (
+                  <div className="mt-0.5 inline-flex items-center gap-1.5 text-small text-neutral-900" aria-label="Unlocks with the full report">
+                    <Lock size={12} aria-hidden /><span className="blurred select-none" aria-hidden>about $000 a month</span>
+                  </div>
+                )}
                 {hasDetail && (
                   <button
                     type="button"
@@ -328,7 +362,13 @@ export default function Approvals() {
               </Card>
             );
           })}
-          <p className="mt-2 text-tiny text-neutral-900">Every approved fix is applied, watched for 48 hours, and reversible with one tap from your history.</p>
+          {locked ? (
+            <button type="button" onClick={goUnlock} className="mt-2 inline-flex items-center gap-1.5 text-small underline underline-offset-2">
+              <Lock size={12} aria-hidden /> Money lines and the exact changes unlock with the full report, $20.
+            </button>
+          ) : (
+            <p className="mt-2 text-tiny text-neutral-900">Every approved fix is applied, watched for 48 hours, and reversible with one tap from your history.</p>
+          )}
         </div>
       )}
 

@@ -9,8 +9,10 @@ import { LineChart, StackedBarsH, Histogram, HourProfile, ShareBars } from './ch
 import { CheckCircle as CheckCircle2, AlertTriangle, Lock01 as Lock, ArrowRight, FlipBackward as Undo2, Eye } from '@untitledui/icons';
 import { audit, deep } from './data.js';
 import { api, isDemo } from '../lib/api.js';
+import { useAccess } from '../lib/access.jsx';
+import { Link } from '../lib/router.jsx';
 import {
-  COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState,
+  COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState, Button,
 } from '../lib/ui.jsx';
 
 function VerdictChip({ verdict }) {
@@ -53,7 +55,7 @@ export function HealthDial({ score, label }) {
 
 // ---------------------------------------------------------------- finding card
 
-function FindingCard({ f, locked, index = 0 }) {
+function FindingCard({ f, locked, index = 0, action = null }) {
   const m = severityMeta[f.severity] || severityMeta.info;
   return (
     <div
@@ -76,7 +78,37 @@ function FindingCard({ f, locked, index = 0 }) {
             {locked && <Lock size={13} className="mt-0.5 shrink-0 text-neutral-900" aria-label="Unlocks with the full report" />}
           </div>
         )}
+        {action}
       </div>
+    </div>
+  );
+}
+
+// "Fix this" (gated-platform spec §4, Report). A finding with a drafted
+// change carries the one action the whole funnel turns on. Active: approves
+// on the spot. Unlocked: opens the Plan sheet with this fix pending.
+function FixAction({ change, gate, level }) {
+  const [state, setState] = useState('idle'); // idle | busy | done
+  if (!change || level === 'locked') return null;
+  async function fix() {
+    setState('busy');
+    try {
+      const ran = await gate(async () => { await api(`/api/app/approve/${change.id}`, { method: 'POST' }); }, { kind: 'approve', id: change.id, title: change.title });
+      setState(ran ? 'done' : 'idle');
+    } catch { setState('idle'); }
+  }
+  if (state === 'done') {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-small">
+        <CheckCircle2 size={15} className="text-success" aria-hidden /> Approved, applying within the hour.{' '}
+        <Link to="/app/ledger" className="underline underline-offset-2">History</Link>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3">
+      <Button onClick={fix} disabled={state === 'busy'} className="!px-5 !py-2.5">Fix this</Button>
+      <span className="text-tiny text-neutral-900">{change.money_line ? `${change.money_line}. ` : ''}Applied after your yes, watched 48 hours, one-tap undo.</span>
     </div>
   );
 }
@@ -184,7 +216,8 @@ function UnlockBar({ visible }) {
   async function unlock() {
     setBusy(true); setNote(null);
     try {
-      const r = await api('/api/checkout/audit', { method: 'POST', body: { kind: 'audit_unlock' } });
+      // Return to this report once paid (the gate refreshes on ?paid=1).
+      const r = await api('/api/checkout/audit', { method: 'POST', body: { kind: 'audit_unlock', next: window.location.pathname } });
       if (r.url) { window.location.href = r.url; return; }
       setNote(isDemo() ? 'Demo mode - checkout opens here once payments are connected.' : 'Payments are almost ready - try again shortly.');
     } catch (e) { setNote(e.status === 401 ? 'Sign in first - run your free check from the start page.' : e.message); }
@@ -225,13 +258,18 @@ const SNAPSHOT_SEV = { critical: 'critical', warning: 'warning', info: 'info', o
 
 function RealReport({ reportId }) {
   const [report, setReport] = useState(null);
+  const [pending, setPending] = useState([]);
   const [error, setError] = useState(null);
-  useEffect(() => { api(`/api/app/report/${reportId}`).then((d) => setReport(d.report)).catch((e) => setError(e.message)); }, [reportId]);
+  const { gate, level, access, version } = useAccess();
+  useEffect(() => { api(`/api/app/report/${reportId}`).then((d) => { setReport(d.report); setPending(d.pending || []); }).catch((e) => setError(e.message)); }, [reportId, version]);
 
   if (error) return <div className="mx-auto max-w-l2 px-5 pt-14"><ErrorNote message={error} /></div>;
   if (!report) return <Spinner label="Loading your report" />;
 
-  const locked = report.unlocked === false;
+  // The gate is the source of truth once loaded; the report's own flag is the
+  // first paint. Unlocking (paid=1) refreshes the gate, which re-renders here.
+  const locked = access ? access.level === 'locked' : report.unlocked === false;
+  const changeByFinding = new Map(pending.filter((c) => c.finding_id).map((c) => [c.finding_id, c]));
   const summary = report.summary || {};
   const code = summary.currency || 'USD';
   const money = (n) => (code === 'USD' ? `$${Math.round(n).toLocaleString()}` : `${code} ${Math.round(n).toLocaleString()}`);
@@ -303,7 +341,13 @@ function RealReport({ reportId }) {
             <SectionHead kicker="What we found" title={`${findings.length} finding${findings.length === 1 ? '' : 's'}, biggest money first`} />
             <div className="flex flex-col gap-3">
               {findings.map((f, i) => (
-                <FindingCard key={f.id} index={i} locked={f.lockedFix} f={{ ...f, title: f.campaign ? `${f.title} - ${f.campaign}` : f.title }} />
+                <FindingCard
+                  key={f.id}
+                  index={i}
+                  locked={f.lockedFix}
+                  f={{ ...f, title: f.campaign ? `${f.title} - ${f.campaign}` : f.title }}
+                  action={<FixAction change={changeByFinding.get(f.id) || null} gate={gate} level={level} />}
+                />
               ))}
             </div>
           </>

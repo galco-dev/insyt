@@ -12,14 +12,25 @@ else if (window.location.pathname === '/app/start' || params.has('found') || par
 export const isDemo = () => sessionStorage.getItem('insyt_demo') === '1';
 
 export class ApiError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, data = {}) { super(message); this.status = status; this.data = data; }
 }
+// A 402 with plan_required is the gate answering (gated-platform spec §2):
+// the client opens the Plan sheet instead of showing an error.
+export const isPlanRequired = (e) => !!(e && e.status === 402 && e.data && e.data.plan_required);
+
+// Every response that carries `access` updates the one AccessProvider, so a
+// screen load is also a gate refresh. Registered by lib/access.jsx.
+let accessListener = null;
+export const onAccess = (fn) => { accessListener = fn; };
 
 export async function api(path, { method = 'GET', body } = {}) {
   if (isDemo()) {
     const hit = demoData(path, method, body);
-    if (hit !== undefined) return structuredClone(hit);
-    return { ok: true };
+    if (hit === undefined) return { ok: true };
+    const out = structuredClone(hit);
+    if (out && out.error && out.status) throw new ApiError(out.status, out.error, out);
+    if (out && out.access && typeof accessListener === 'function') accessListener(out.access);
+    return out;
   }
   const res = await fetch(path, {
     method,
@@ -29,7 +40,8 @@ export async function api(path, { method = 'GET', body } = {}) {
   });
   let data = {};
   try { data = await res.json(); } catch { /* html/redirect bodies */ }
-  if (!res.ok) throw new ApiError(res.status, data.error || `request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, data.error || `request failed (${res.status})`, data);
+  if (data && data.access && typeof accessListener === 'function') accessListener(data.access);
   return data;
 }
 

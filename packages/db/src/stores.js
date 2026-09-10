@@ -477,9 +477,10 @@ function dashStore(db, deps = {}) {
       })();
       const sym = cur === 'USD' ? '$' : `${cur} `;
       const rows = await db.select('changes',
-        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,before,after,summary_text,money_impact_usd,ask_reason,category,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
+        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,finding_id,before,after,summary_text,money_impact_usd,ask_reason,category,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
       return rows.map((r) => ({
         id: r.id,
+        finding_id: r.finding_id || null,
         title: r.summary_text ? asProposal(r.summary_text) : ((r.finding && r.finding.title) || 'A fix is ready'),
         money_line: (r.money_impact_usd || (r.finding && r.finding.money_impact_monthly_usd))
           ? `about ${sym}${Math.round(r.money_impact_usd || r.finding.money_impact_monthly_usd)} a month` : null,

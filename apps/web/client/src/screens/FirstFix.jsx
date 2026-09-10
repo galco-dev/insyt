@@ -4,10 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { ArrowDown, ShieldTick as ShieldCheck, FlipBackward as Undo2 } from '@untitledui/icons';
 import { api, isDemo } from '../lib/api.js';
 import { useRouter } from '../lib/router.jsx';
+import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';
 
 export default function FirstFix() {
   const { navigate } = useRouter();
+  const { gate } = useAccess();
   const [fix, setFix] = useState(undefined);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -31,8 +33,8 @@ export default function FirstFix() {
   async function approve() {
     setBusy(true);
     try {
-      await api(`/api/app/approve/${fix.change_id}`, { method: 'POST' });
-      navigate('/app/approvals');
+      const ran = await gate(async () => { await api(`/api/app/approve/${fix.change_id}`, { method: 'POST' }); }, { kind: 'approve', id: fix.change_id, title: fix.finding_title });
+      if (ran) navigate('/app/approvals'); else setBusy(false);
     } catch (e) { setError(e.message); setBusy(false); }
   }
 

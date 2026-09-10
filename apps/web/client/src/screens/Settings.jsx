@@ -6,6 +6,7 @@ import { CreditCard01 as CreditCard, Link01 as Link2, Zap, ShieldTick as ShieldC
 import clsx from 'clsx';
 import { api, isDemo } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
+import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Card, Spinner, Button, ErrorNote } from '../lib/ui.jsx';
 
 const AUTOPILOT_LABEL = {
@@ -80,6 +81,7 @@ export default function Settings() {
   const [note, setNote] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
   const [recheck, setRecheck] = useState(null);
+  const { access, level, gate, openSheet, goUnlock } = useAccess();
   useEffect(() => { api('/api/app/settings').then((d) => setSettings(d.settings)).catch((e) => setError(e.message)); }, []);
 
   if (error) return <div className="mx-auto max-w-m2 px-5 pt-14"><ErrorNote message={error} /></div>;
@@ -96,19 +98,31 @@ export default function Settings() {
 
   const autopilot = settings.autopilot || {};
 
+  // Autopilot is a plan feature (gated-platform spec §4, Settings): without a
+  // plan a tap opens the Plan sheet; on Core it opens the Autopilot upgrade.
+  const onAutopilotPlan = level === 'active' && access && access.plan && (access.plan.tier === 'autopilot' || access.plan.tier === 'scale');
   async function flip(key) {
+    if (level === 'active' && access && !onAutopilotPlan) { openSheet({ mode: 'upgrade', title: AUTOPILOT_LABEL[key] }); return; }
     const next = { ...autopilot, [key]: !autopilot[key] };
-    setBusyKey(key);
-    // Optimistic: the switch answers immediately; a failure rolls it back.
-    setSettings((s) => ({ ...s, autopilot: next }));
-    try {
-      await api('/api/app/autopilot', { method: 'POST', body: { categories: next } });
-    } catch (e) {
-      setSettings((s) => ({ ...s, autopilot }));
-      setNote(e.message);
-    }
-    setBusyKey(null);
+    const run = async () => {
+      setBusyKey(key);
+      // Optimistic: the switch answers immediately; a failure rolls it back.
+      setSettings((s) => ({ ...s, autopilot: next }));
+      try {
+        await api('/api/app/autopilot', { method: 'POST', body: { categories: next } });
+      } catch (e) {
+        setSettings((s) => ({ ...s, autopilot }));
+        throw e;
+      } finally { setBusyKey(null); }
+    };
+    try { await gate(run, { kind: 'autopilot', id: key, title: `Autopilot: ${AUTOPILOT_LABEL[key].toLowerCase()}` }); } catch (e) { setNote(e.message); }
   }
+
+  // Plan card copy per level, in their numbers.
+  const price = access ? access.price_usd : 129;
+  const planLine = level === 'active' || !access ? settings.plan_line
+    : level === 'unlocked' ? `No plan yet. Core is $${price}/month${access.credit_applies ? ', your $20 comes off the first month' : ''}.`
+      : `Free check. Your full report is $20; plans start at $${price}/month.`;
 
   const mail = (subject) => `mailto:hello@tryinsyt.com?subject=${encodeURIComponent(subject)}`;
 
@@ -118,19 +132,23 @@ export default function Settings() {
       <h1 className="mt-1 text-h2 tracking-tight">Settings</h1>
 
       <Card className="mt-6 p-5">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-col items-start gap-3 sm:flex-row">
           <CreditCard size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
           <div className="flex-1">
             <MonoLabel>Plan</MonoLabel>
-            <div className="mt-0.5 text-body font-medium">{settings.plan_line}</div>
+            <div className="mt-0.5 text-body font-medium">{planLine}</div>
           </div>
-          <div className="flex shrink-0 gap-2">
-            <Link to="/app/plan"><Button variant="secondary" className="!px-4 !py-2">Change plan</Button></Link>
-            <Button variant="secondary" onClick={portal} className="!px-4 !py-2">Manage card</Button>
+          <div className="flex shrink-0 flex-wrap gap-2 pl-8 sm:pl-0">
+            {level === 'locked' && <Button onClick={goUnlock} className="!px-4 !py-2">Unlock the full report, $20</Button>}
+            {level === 'unlocked' && <Button onClick={() => openSheet({ title: 'Start your plan' })} className="!px-4 !py-2">Start Core</Button>}
+            {(level === 'active' || !access) && <Link to="/app/plan"><Button variant="secondary" className="!px-4 !py-2">Change plan</Button></Link>}
+            {(!access || access.has_customer) && <Button variant="secondary" onClick={portal} className="!px-4 !py-2">Manage card</Button>}
           </div>
         </div>
         <p className="mt-3 text-tiny text-neutral-900">
-          Cancelling? The card page handles it - your subscription runs to the end of the period you paid for, and your accounts stay exactly as they are.
+          {level === 'active' || !access
+            ? 'Cancelling? The card page handles it - your subscription runs to the end of the period you paid for, and your accounts stay exactly as they are.'
+            : 'A plan applies the fixes you approve, checks again every week, and keeps a one-tap undo on everything. Cancel any time; your accounts stay exactly as they are.'}
         </p>
       </Card>
 
@@ -174,8 +192,8 @@ export default function Settings() {
                 <div key={key} className="flex items-center justify-between gap-3 text-small">
                   <span>{label}</span>
                   <div className="flex items-center gap-2.5">
-                    <span className="font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">
-                      {autopilot[key] ? 'On' : 'Asks first'}
+                    <span className="whitespace-nowrap font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">
+                      {access && !onAutopilotPlan ? (level === 'active' ? 'Autopilot' : 'Needs a plan') : autopilot[key] ? 'On' : 'Asks first'}
                     </span>
                     <Toggle on={!!autopilot[key]} busy={busyKey === key} onClick={() => flip(key)} label={label} />
                   </div>
