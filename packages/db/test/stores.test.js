@@ -524,6 +524,47 @@ test('dashStore.expectAlert (fix plan move 17): seen, and on the anomaly calenda
   assert.strictEqual((await s.expectAlert('t1', 'al1', '2020-01-01T00:00:00Z', now)).ok, false);
 });
 
+test('agencyStore (fix plan move 14): an invite mints a join link and emails it; the seat binds on arrival; a client account asks the owner to connect', async () => {
+  const { agencyStore, authStore, opsStore } = require('../src/stores');
+  const f = routedFetch({
+    agency_seats: (url, init) => (init.method === 'POST' ? [{ id: 'seat-9' }] : /id=eq\.s1/.test(url) ? [{ tenant_id: 'tn-admin', name: 'Ana', email: 'ana@northlight.ae' }] : /id=eq\.seat-9/.test(url) ? [{ id: 'seat-9', agency_id: 'ag1', status: 'invited', email: 'mo@northlight.ae' }] : []),
+    agencies: (url, init) => (init.method === 'POST' ? [{ id: 'ag-new' }] : [{ name: 'Northlight' }]),
+    agency_audit_log: [], magic_links: [], emails: [],
+    tenants: (url, init) => (init.method === 'POST' ? [{ id: 'tn-client' }] : [{ id: 'tn-client' }]),
+    agency_accounts: (url, init) => (init.method === 'POST' ? [{ id: 'acc-1', display_name: 'Glow', status: 'pending' }] : [{ id: 'acc-1', tenant_id: 'tn-client' }]),
+    assets: [{ id: 'a1' }], users: [{ email: 'max@galco.ae', name: 'Max', google_sub: 'sub-max' }], ledger: [],
+  });
+  const ag = agencyStore(mkDb(f));
+  await ag.addSeat('ag1', 's1', { email: 'Mo@Northlight.ae', name: 'Mo', role: 'am' }, { baseUrl: 'https://app', now: 1000 });
+  const link = f.calls.find((c) => c.method === 'POST' && /magic_links/.test(c.url)).body[0];
+  assert.deepStrictEqual([link.purpose, link.target_id, link.tenant_id], ['join_agency', 'seat-9', 'tn-admin']);
+  const email = f.calls.find((c) => c.method === 'POST' && /emails/.test(c.url)).body[0];
+  assert.deepStrictEqual([email.template_id, email.to_email, email.payload.agency, email.payload.role_label], ['agency_invite', 'mo@northlight.ae', 'Northlight', 'an account manager']);
+  assert.match(email.payload.join_url, /^https:\/\/app\/m\//);
+  const { renderTemplate } = require('../../emails/src/templates');
+  assert.doesNotThrow(() => renderTemplate('agency_invite', email.payload));
+
+  assert.deepStrictEqual(await ag.activateSeat('seat-9', { tenantId: 'tn-mo', googleSub: 'sub-new', email: 'mo@northlight.ae' }), { ok: true, agency_id: 'ag1' });
+  const bind = f.calls.find((c) => c.method === 'PATCH' && /agency_seats\?id=eq\.seat-9/.test(c.url)).body;
+  assert.deepStrictEqual(bind, { tenant_id: 'tn-mo', google_sub: 'sub-new', status: 'active' });
+
+  const acc = await ag.addAccount('ag1', 's1', { display_name: 'Glow', email: 'owner@glow.ae', website: 'https://glowstudio.ae/' }, { baseUrl: 'https://app', now: 1000 });
+  assert.strictEqual(acc.id, 'acc-1');
+  const req = f.calls.filter((c) => c.method === 'POST' && /emails/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([req.template_id, req.to_email, req.payload.site, req.payload.from_name], ['access_request', 'owner@glow.ae', 'glowstudio.ae', 'Northlight']);
+  const accLink = f.calls.filter((c) => c.method === 'POST' && /magic_links/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([accLink.purpose, accLink.tenant_id], ['join_account', 'tn-client']);
+
+  const auth = authStore(mkDb(routedFetch({ users: (url, init) => (init.method === 'GET' ? [] : [{ id: 'u-new' }]), tenants: [{ id: 'tn-client' }], ledger: [] })));
+  assert.strictEqual(await auth.findOrCreateTenantByGoogle({ sub: 'sub-client', email: 'owner@glow.ae', preferTenantId: 'tn-client' }), 'tn-client', 'the client lands on the account the agency made');
+
+  const ops = opsStore(mkDb(f));
+  assert.deepStrictEqual(await ops.createAgencyForTenant('tn-max', 'Galco'), { ok: true, agency_id: 'ag-new' });
+  const seatRow = f.calls.filter((c) => c.method === 'POST' && /agency_seats/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([seatRow.role, seatRow.status, seatRow.tenant_id, seatRow.google_sub], ['admin', 'active', 'tn-max', 'sub-max']);
+  assert.deepStrictEqual(await ops.activatePendingAgencyAccounts(), ['acc-1']);
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

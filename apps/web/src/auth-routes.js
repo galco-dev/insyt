@@ -108,17 +108,29 @@ async function handleGoogleAuth(req, res, u, session, deps) {
     // Signed-out start (or a different person on a signed-in browser): find or
     // create THEIR tenant, remember the site they checked, and set the session
     // cookie to that tenant on the way out.
+    // A join in progress (fix plan move 14): `insyt_join=seat:<id>` binds an
+    // agency seat to whoever arrives; `insyt_join=account:<tenant>` lands a
+    // client on the account their agency made for them.
+    const joinRaw = (req.headers && req.headers.cookie ? req.headers.cookie : '').split(';').map((s) => s.trim()).find((s) => s.startsWith('insyt_join='));
+    const join = joinRaw ? /^insyt_join=(seat|account):([A-Za-z0-9-]{1,64})$/.exec(joinRaw) : null;
     if (!st.tenantId || switched) {
       if (!deps.findOrCreateTenantByGoogle || !deps.issueSession || !deps.cookieFor) return fail('Sign-in is not available right now.');
-      st.tenantId = await deps.findOrCreateTenantByGoogle({ sub: who.sub, email: who.email, name: who.name });
+      st.tenantId = await deps.findOrCreateTenantByGoogle({ sub: who.sub, email: who.email, name: who.name, preferTenantId: join && join[1] === 'account' ? join[2] : null });
       if (st.site) {
         const t = await db.select('tenants', `id=eq.${q(st.tenantId)}&select=website_url`, { single: true }).catch(() => null);
         if (t && !t.website_url) await db.update('tenants', `id=eq.${q(st.tenantId)}`, { website_url: st.site }).catch(() => {});
       }
       setCookie = deps.cookieFor(deps.issueSession({ tenantId: st.tenantId, secret: sessionSecret, now: now() }));
     }
+    let joinedAgency = false;
+    if (join && join[1] === 'seat' && deps.activateSeat) {
+      const r = await deps.activateSeat(join[2], { tenantId: st.tenantId, googleSub: who.sub, email: who.email }).catch(() => ({ ok: false }));
+      joinedAgency = !!(r && r.ok);
+    }
+    const clearJoin = join ? 'insyt_join=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax' : null;
     const redirectWithSession = (loc) => {
-      res.writeHead(302, setCookie ? { location: loc, 'set-cookie': setCookie } : { location: loc });
+      const cookies = [setCookie, clearJoin].filter(Boolean);
+      res.writeHead(302, cookies.length ? { location: loc, 'set-cookie': cookies } : { location: loc });
       res.end();
       return true;
     };
@@ -157,7 +169,7 @@ async function handleGoogleAuth(req, res, u, session, deps) {
           tenant_id: st.tenantId, event: 'discovery_partial', detail: { errors },
         }], { returning: false }).catch(() => {});
       }
-      return redirectWithSession(`/app/confirm?found=${assets.length}&matched=${result.matched}`);
+      return redirectWithSession(joinedAgency ? '/app/agency' : `/app/confirm?found=${assets.length}&matched=${result.matched}`);
     }
     return redirectWithSession(st.site && st.site.startsWith('/app') ? `${st.site}${st.site.includes('?') ? '&' : '?'}fix_access=1` : '/app');
   }

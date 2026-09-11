@@ -1043,22 +1043,28 @@ function Accounts() {
   const { data, error } = useAgency('/api/agency/accounts');
   const [bill, setBill] = useState(null);
   const [name, setName] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [website, setWebsite] = useState('');
   const [added, setAdded] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [addNote, setAddNote] = useState(null);
   const refreshBilling = () => api('/api/agency/billing').then(setBill).catch(() => {});
   useEffect(() => { refreshBilling(); }, []);
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading accounts" />;
 
+  // Connect for the client (fix plan move 14): their email gets one tap that
+  // lands their Google login on this account; the first audit runs by itself.
   async function add() {
     if (!name.trim()) return;
-    setBusy(true);
+    setBusy(true); setAddNote(null);
     try {
-      const r = await api('/api/agency/accounts', { method: 'POST', body: { display_name: name.trim() } });
+      const r = await api('/api/agency/accounts', { method: 'POST', body: { display_name: name.trim(), email: clientEmail.trim() || undefined, website: website.trim() || undefined } });
       setAdded((xs) => [...xs, r.account || { id: `new-${xs.length}`, display_name: name.trim(), status: 'pending', created_at: new Date().toISOString() }]);
-      setName('');
+      setAddNote(r.requested ? `Added. We asked ${clientEmail.trim()} to connect Google; the account goes live the moment they do.` : 'Added. Send the client an access request from here once you have their email.');
+      setName(''); setClientEmail(''); setWebsite('');
       refreshBilling();
-    } catch { /* keep form */ }
+    } catch (e) { setAddNote(e.message); }
     setBusy(false);
   }
 
@@ -1104,6 +1110,11 @@ function Accounts() {
           <Plus size={14} aria-hidden /> Add account
         </button>
       </div>
+      <div className="mt-2 grid max-w-m2 gap-2 sm:grid-cols-2">
+        <input value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} type="email" placeholder="Client's Google email (optional): we ask them to connect" aria-label="Client email" className="rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)" />
+        <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Their website (optional)" aria-label="Client website" className="rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)" />
+      </div>
+      {addNote && <p className="mt-2 text-tiny text-neutral-900">{addNote}</p>}
       <p className="mt-2 max-w-[72ch] text-tiny text-neutral-900">
         A new account starts as "awaiting Google connection" - connect its Ads/GA4/GTM access (or send the client an access request) and the first audit runs the same day. Pause an account any time: paused accounts keep their full history but are not checked and not billed.
       </p>
@@ -1196,24 +1207,68 @@ function Brand() {
 function Seats() {
   const { data, error } = useAgency('/api/agency/seats');
   const { data: log } = useAgency('/api/agency/log');
+  const { data: me } = useAgency('/api/agency/me');
+  const [seats, setSeats] = useState(null);
+  const [form, setForm] = useState({ email: '', name: '', role: 'am' });
+  const [busy, setBusy] = useState(null);
+  const [note, setNote] = useState(null);
+  useEffect(() => { if (data) setSeats(data.seats); }, [data]);
   if (error) return <ErrorNote message={error.message} />;
-  if (!data) return <Spinner label="Loading seats" />;
+  if (!data || !seats) return <Spinner label="Loading seats" />;
   const roleLabel = { admin: 'Admin - billing, brand, seats, all accounts', am: 'Account manager - scoped to assigned accounts', readonly: 'Read-only' };
+  const isAdmin = !me || !me.seat || me.seat.role === 'admin';
+  // The door (fix plan move 14): add a seat, and the invite goes out with a
+  // seven-day link that signs them in with Google and binds the seat.
+  async function add() {
+    if (!form.email.includes('@')) return;
+    setBusy('add'); setNote(null);
+    try {
+      const r = await api('/api/agency/seats', { method: 'POST', body: form });
+      setSeats((xs) => [...xs, r.seat || { id: `new-${xs.length}`, ...form, status: 'invited' }]);
+      setNote(`Invited ${form.email}. The email carries a link that signs them in with Google.`);
+      setForm({ email: '', name: '', role: 'am' });
+    } catch (e) { setNote(e.message); }
+    setBusy(null);
+  }
+  async function setRole(id, role) {
+    setBusy(id);
+    try { await api(`/api/agency/seats/${id}`, { method: 'POST', body: { role } }); setSeats((xs) => xs.map((s) => (s.id === id ? { ...s, role } : s))); } catch (e) { setNote(e.message); }
+    setBusy(null);
+  }
+  const field = 'rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)';
   return (
     <div>
       <MonoLabel>Seats &amp; roles</MonoLabel>
-      <h1 className="mt-1 text-h3 tracking-tight">{data.seats.length} seats</h1>
+      <h1 className="mt-1 text-h3 tracking-tight">{seats.length} seats</h1>
       <div className="mt-5 flex flex-col gap-2">
-        {data.seats.map((s) => (
+        {seats.map((s) => (
           <Card key={s.id} className="flex flex-col items-start gap-1 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-body font-medium">{s.name || s.email} {s.status === 'invited' && <span className="ml-1 rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">invited</span>}</div>
               <div className="text-small text-neutral-900">{s.email}</div>
             </div>
-            <div className="text-small text-neutral-900">{roleLabel[s.role] || s.role}</div>
+            {isAdmin ? (
+              <select value={s.role} onChange={(e) => setRole(s.id, e.target.value)} disabled={busy === s.id} className={field} aria-label={`Role for ${s.name || s.email}`}>
+                <option value="admin">Admin</option><option value="am">Account manager</option><option value="readonly">Read-only</option>
+              </select>
+            ) : <div className="text-small text-neutral-900">{roleLabel[s.role] || s.role}</div>}
           </Card>
         ))}
       </div>
+      {isAdmin && (
+        <Card className="mt-4 p-4">
+          <MonoLabel>Add a seat</MonoLabel>
+          <div className="mt-2 grid gap-2 sm:grid-cols-4">
+            <input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} type="email" placeholder="email" aria-label="Email" className={field} />
+            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="name" aria-label="Name" className={field} />
+            <select value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))} className={field} aria-label="Role">
+              <option value="am">Account manager</option><option value="admin">Admin</option><option value="readonly">Read-only</option>
+            </select>
+            <Button variant="secondary" onClick={add} disabled={busy === 'add' || !form.email.includes('@')} className="!px-4 !py-2">Invite</Button>
+          </div>
+          {note && <p className="mt-2 text-tiny text-neutral-900">{note}</p>}
+        </Card>
+      )}
       {log && (
         <div className="mt-8">
           <MonoLabel>Per-seat audit trail</MonoLabel>

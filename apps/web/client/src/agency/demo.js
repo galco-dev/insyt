@@ -257,6 +257,7 @@ export function agencyDemo(path, method, body) {
     if (p === '/review') return { queue: s.review };
     if (p === '/brand') return { kit: s.brand };
     if (p === '/seats') return { seats: s.seats };
+    if (p === '/me') return s.me;
     if (p === '/credits') return { balance: s.credits.balance, events: s.credits.events };
     if (p === '/accounts') return { accounts: s.accounts };
     if (p === '/billing') return billingView(s);
@@ -328,6 +329,17 @@ export function agencyDemo(path, method, body) {
     s.drafts.unshift(draft);
     log(s, 'draft_created', { draft_id: draft.id, account: name, template });
     return { ok: true, draft };
+  }
+  if (p === '/seats') {
+    const seat = { id: `seat-${Date.now()}`, email: (body && body.email) || '', name: (body && body.name) || null, role: (body && body.role) || 'am', status: 'invited', created_at: new Date().toISOString() };
+    s.seats.push(seat);
+    log(s, 'seat_invited', { email: seat.email, role: seat.role });
+    return { ok: true, seat };
+  }
+  if (/^\/seats\/[^/]+$/.test(p)) {
+    const seat = s.seats.find((x) => x.id === p.split('/')[2]);
+    if (seat && body && body.role) { seat.role = body.role; log(s, 'seat_updated', { seat_id: seat.id, role: body.role }); }
+    return { ok: true };
   }
   if (p.startsWith('/drafts/')) {
     const [, , id, action] = p.split('/');

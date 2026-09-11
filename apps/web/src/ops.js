@@ -105,6 +105,8 @@ async function handleOps(req, res, u, { opsStore, queue, opsToken, rediscover = 
       <form method="post" action="/ops/merge">People and their Google connection move to: <input name="to" placeholder="target tenant id" size="40"><input type="hidden" name="from" value="${esc(id)}"><button>merge</button></form>
       <h3>Delete this tenant</h3>
       <form method="post" action="/ops/delete/${esc(id)}" onsubmit="return confirm('Delete every row for this tenant? This cannot be undone.')">Type the tenant id to confirm: <input name="confirm" size="40"><button>delete</button></form>
+      <h3>Make this tenant an agency</h3>
+      <form method="post" action="/ops/agency/${esc(id)}">Agency name: <input name="name" size="30" placeholder="Northlight Digital"><button>create agency</button> <span style="font-size:12px;color:#666">The owner becomes the admin seat; invites go from the Seats tab.</span></form>
       <h3>Platform notice (everyone's Home)</h3>
       <form method="post" action="/ops/notice"><input name="text" size="60" value="${esc(d.notice ? d.notice.text : '')}" placeholder="Empty clears it"><button>set</button></form>`;
     return html(200, page(`tenant ${id.slice(0, 8)}`, body)), true;
@@ -134,6 +136,16 @@ async function handleOps(req, res, u, { opsStore, queue, opsToken, rediscover = 
     if (form.confirm !== id) return html(400, page('not deleted', '<p>The confirmation did not match the tenant id.</p>')), true;
     if (opsStore.deleteTenant) await opsStore.deleteTenant(id);
     res.writeHead(302, { location: '/ops' });
+    return res.end(), true;
+  }
+  if (req.method === 'POST' && path.startsWith('/ops/agency/')) {
+    const id = path.split('/')[3];
+    const form = await readForm(req);
+    if (opsStore.createAgencyForTenant) {
+      const r = await opsStore.createAgencyForTenant(id, form.name);
+      if (!r.ok) return html(400, page('not created', `<p>${esc(r.error)}</p>`)), true;
+    }
+    res.writeHead(302, { location: `/ops/tenant/${id}` });
     return res.end(), true;
   }
   if (req.method === 'POST' && path === '/ops/notice') {

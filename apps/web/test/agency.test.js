@@ -11,6 +11,26 @@ const baseStore = () => ({
   getReportHtml: () => null, magicLinks: { insertLink: () => {}, findByHash: () => null, markUsed: () => {} },
 });
 
+test('agency door (fix plan move 14): brief-only is enforced on approve; adding an account with an email asks the client to connect', async () => {
+  const store = fakeAgencyStore();
+  store.briefOnlyFor = async (ag, id) => id === 'chg-brief';
+  store.addAccount = async (ag, seat, body, opts) => { store.actions.push(['acc_add', body.display_name, body.email || null, !!(opts && opts.baseUrl)]); return { id: 'a9', display_name: body.display_name, status: 'pending' }; };
+  const app = createApp({ store: baseStore(), crawler: okCrawler, agencyStore: store, sessionSecret: 'test-secret' });
+  await new Promise((r) => app.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${app.address().port}`;
+  const cookie = cookieFor(issueSession({ tenantId: 'tn-admin', secret: 'test-secret', now: Date.now() })).split(';')[0];
+  try {
+    const brief = await fetch(`${base}/api/agency/approve/chg-brief`, { method: 'POST', headers: { cookie } });
+    assert.strictEqual(brief.status, 403);
+    assert.ok(!store.actions.some((a) => a[0] === 'approve'), 'nothing approved on a brief-only account');
+    const ok = await fetch(`${base}/api/agency/approve/chg1`, { method: 'POST', headers: { cookie } });
+    assert.strictEqual(ok.status, 200);
+    const add = await (await fetch(`${base}/api/agency/accounts`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ display_name: 'New Client', email: 'owner@client.ae' }) })).json();
+    assert.strictEqual(add.requested, true);
+    assert.deepStrictEqual(store.actions.find((a) => a[0] === 'acc_add'), ['acc_add', 'New Client', 'owner@client.ae', true]);
+  } finally { app.close(); }
+});
+
 function fakeAgencyStore() {
   const actions = [];
   const seats = { 'tn-admin': { id: 's1', agency_id: 'ag1', role: 'admin', name: 'Ana', email: 'ana@x.com' },

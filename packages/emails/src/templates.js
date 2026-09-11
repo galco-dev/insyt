@@ -70,6 +70,14 @@ const TEMPLATES = [
     ],
     (v) => ({ label: 'Pay and start the plan', url: v.pay_url || 'https://app.tryinsyt.com/app/plan' })),
 
+  T('agency_invite', 'transactional',
+    (v) => `${v.agency || 'Your agency'} invited you to Insyt`,
+    (v) => [
+      `${v.from_name || 'An admin'} added you to ${v.agency || 'the agency'}'s Insyt console as ${v.role_label || 'an account manager'}.`,
+      'One tap signs you in with Google. Every approval you make is logged under your name.',
+    ],
+    (v) => ({ label: 'Join with Google', url: v.join_url || 'https://app.tryinsyt.com/app/agency' })),
+
   T('unlock_receipt', 'transactional',
     () => 'Your full report is unlocked',
     (v) => [

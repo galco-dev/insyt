@@ -11,6 +11,7 @@ const TTL_HOURS = {
   approve_all: 168, approve_one: 168, // 7 days
   view_report: 72, revert: 72, reconnect: 72, resume_journey: 72,
   join_viewer: 168, join_approve: 168, // fix plan move 12: invites and joins, 7 days
+  join_agency: 168, join_account: 168, // fix plan move 14: agency seats and client accounts, 7 days
 };
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');

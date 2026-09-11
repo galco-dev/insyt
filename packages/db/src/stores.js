@@ -394,6 +394,26 @@ function opsStore(db) {
     cogsByTenant: async () => db.select('token_metering', 'select=tenant_id,cost_usd.sum()'),
     enqueueRun: async (row) => { const [r] = await db.insert('runs', [row]); return r; },
     activeTenants: async () => db.select('tenants', "select=id&status=eq.active"),
+    // The first agency (fix plan move 14): this tenant's owner becomes its admin seat.
+    createAgencyForTenant: async (tenantId, name) => {
+      const owner = await db.select('users', `tenant_id=eq.${q(tenantId)}&role=eq.owner&select=email,name,google_sub`, { single: true }).catch(() => null);
+      if (!owner) return { ok: false, error: 'No owner user on that tenant.' };
+      const [agency] = await db.insert('agencies', [{ name: String(name || owner.email).slice(0, 120) }]);
+      await db.insert('agency_seats', [{ agency_id: agency.id, email: owner.email, name: owner.name || null, google_sub: owner.google_sub, tenant_id: tenantId, role: 'admin', status: 'active' }], { returning: false });
+      return { ok: true, agency_id: agency.id };
+    },
+    // A pending client account becomes active the moment its Google login has linked something.
+    activatePendingAgencyAccounts: async () => {
+      const pending = await db.select('agency_accounts', 'status=eq.pending&select=id,tenant_id').catch(() => []);
+      const out = [];
+      for (const a of pending || []) {
+        const linked = await db.select('assets', `tenant_id=eq.${q(a.tenant_id)}&linked=eq.true&select=id&limit=1`, { single: true }).catch(() => null);
+        if (!linked) continue;
+        await db.update('agency_accounts', `id=eq.${q(a.id)}`, { status: 'active' }).catch(() => {});
+        out.push(a.id);
+      }
+      return out;
+    },
     // Four ops buttons (fix plan move 15): so nobody writes SQL against production again.
     tenantDetail: async (tenantId) => {
       const [tenant, assets, users, notice] = await Promise.all([
@@ -1607,10 +1627,43 @@ function agencyStore(db, deps = {}) {
 
     seats: async (agencyId) => db.select('agency_seats',
       `agency_id=eq.${q(agencyId)}&select=id,email,name,role,status,created_at&order=created_at.asc`),
-    addSeat: async (agencyId, seatId, { email, name, role }) => {
-      const [row] = await db.insert('agency_seats', [{ agency_id: agencyId, email, name: name || null, role: role || 'am' }]);
-      await log(agencyId, seatId, 'seat_invited', { email, role: role || 'am' });
+    addSeat: async (agencyId, seatId, { email, name, role }, { baseUrl = 'https://app.tryinsyt.com', now = Date.now() } = {}) => {
+      const to = String(email || '').trim().toLowerCase();
+      const [row] = await db.insert('agency_seats', [{ agency_id: agencyId, email: to, name: name || null, role: role || 'am' }]);
+      await log(agencyId, seatId, 'seat_invited', { email: to, role: role || 'am' });
+      // The door (fix plan move 14): a seven-day link that runs the Google
+      // sign-in and binds this seat to the identity that arrives.
+      try {
+        const [inviter, agency] = await Promise.all([
+          db.select('agency_seats', `id=eq.${q(seatId)}&select=tenant_id,name,email`, { single: true }).catch(() => null),
+          db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null),
+        ]);
+        const linkTenant = inviter && inviter.tenant_id;
+        if (linkTenant && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+          const { mintLink } = require('../../emails/src/magic-links');
+          const inserts = [];
+          const link = mintLink({ tenantId: linkTenant, purpose: 'join_agency', targetId: row.id, baseUrl, now }, { insertLink: (r) => inserts.push(db.insert('magic_links', [r], { returning: false })) });
+          await Promise.all(inserts);
+          const ROLE = { admin: 'an admin', am: 'an account manager', readonly: 'read-only' };
+          await db.insert('emails', [{ tenant_id: linkTenant, template_id: 'agency_invite', to_email: to, stream: 'transactional', status: 'queued', payload: { agency: (agency && agency.name) || 'the agency', from_name: (inviter && (inviter.name || inviter.email)) || 'An admin', role_label: ROLE[role || 'am'], join_url: link.url } }], { returning: false });
+        }
+      } catch { /* the seat exists; the invite can be re-sent */ }
       return row;
+    },
+    // The invited person arrived through Google: bind the seat to that identity.
+    activateSeat: async (seatId, { tenantId, googleSub, email }) => {
+      const seat = await db.select('agency_seats', `id=eq.${q(seatId)}&select=id,agency_id,status,email`, { single: true }).catch(() => null);
+      if (!seat || seat.status !== 'invited') return { ok: false };
+      await db.update('agency_seats', `id=eq.${q(seatId)}`, { tenant_id: tenantId, google_sub: googleSub || null, status: 'active' });
+      await log(seat.agency_id, seatId, 'seat_joined', { email: email || seat.email, invited_as: seat.email });
+      return { ok: true, agency_id: seat.agency_id };
+    },
+    // Brief-only accounts (fix plan move 14): enforced here, not only hidden on the button.
+    briefOnlyFor: async (agencyId, changeId) => {
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&select=tenant_id`, { single: true }).catch(() => null);
+      if (!ch) return false;
+      const acc = await db.select('agency_accounts', `agency_id=eq.${q(agencyId)}&tenant_id=eq.${q(ch.tenant_id)}&select=brief_only`, { single: true }).catch(() => null);
+      return !!(acc && acc.brief_only);
     },
     updateSeat: async (agencyId, seatId, targetSeatId, patch) => {
       const allowed = {};
@@ -1638,11 +1691,26 @@ function agencyStore(db, deps = {}) {
     // its own clients.
     accountsList: async (agencyId) => db.select('agency_accounts',
       `agency_id=eq.${q(agencyId)}&status=in.(pending,active,paused)&select=id,tenant_id,display_name,status,brief_only,report_register,created_at,seat:agency_seats(name)&order=created_at.asc`),
-    addAccount: async (agencyId, seatId, { display_name }) => {
-      const [tenant] = await db.insert('tenants', [{ status: 'active', business_name: display_name }]);
+    addAccount: async (agencyId, seatId, { display_name, email = null, website = null }, { baseUrl = 'https://app.tryinsyt.com', now = Date.now() } = {}) => {
+      const site = website ? String(website).trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase().slice(0, 200) : null;
+      const [tenant] = await db.insert('tenants', [{ status: 'active', business_name: display_name, ...(site ? { website_url: site } : {}) }]);
       const [row] = await db.insert('agency_accounts',
         [{ agency_id: agencyId, tenant_id: tenant.id, display_name, status: 'pending' }]);
       await log(agencyId, seatId, 'account_added', { account_id: row.id, display_name });
+      // Connect for the client (fix plan move 14): one email, one tap, their
+      // Google login lands on this account and the first audit runs by itself.
+      const to = String(email || '').trim().toLowerCase();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+        try {
+          const agency = await db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null);
+          const { mintLink } = require('../../emails/src/magic-links');
+          const inserts = [];
+          const link = mintLink({ tenantId: tenant.id, purpose: 'join_account', targetId: row.id, baseUrl, now }, { insertLink: (r) => inserts.push(db.insert('magic_links', [r], { returning: false })) });
+          await Promise.all(inserts);
+          await db.insert('emails', [{ tenant_id: tenant.id, template_id: 'access_request', to_email: to, stream: 'transactional', status: 'queued', payload: { site: site || display_name, from_name: (agency && agency.name) || 'Your agency', start_url: link.url } }], { returning: false });
+          await log(agencyId, seatId, 'access_requested', { account_id: row.id, email: to });
+        } catch { /* the account exists; the request can be re-sent */ }
+      }
       return row;
     },
     setAccountStatus: async (agencyId, seatId, accountId, status) => {
@@ -1673,12 +1741,22 @@ function agencyStore(db, deps = {}) {
 function authStore(db) {
   return {
     /** users by google sub → tenant; first login creates tenant + user. */
-    findOrCreateTenantByGoogle: async ({ sub, email, name }) => {
+    findOrCreateTenantByGoogle: async ({ sub, email, name, preferTenantId = null }) => {
       // One login may own several businesses (fix plan move 12): the last one used opens.
       const existing = await db.select('users', `google_sub=eq.${q(sub)}&select=tenant_id&order=last_seen_at.desc.nullslast&limit=1`, { single: true });
       if (existing) {
         await db.update('users', `google_sub=eq.${q(sub)}&tenant_id=eq.${q(existing.tenant_id)}`, { last_seen_at: new Date().toISOString() }).catch(() => {});
         return existing.tenant_id;
+      }
+      // A client answering an agency's request (fix plan move 14) lands on the
+      // account the agency made for them, not on a fresh one.
+      if (preferTenantId) {
+        const t = await db.select('tenants', `id=eq.${q(preferTenantId)}&select=id`, { single: true }).catch(() => null);
+        if (t) {
+          await db.insert('users', [{ tenant_id: preferTenantId, google_sub: sub, email, name: name || null }], { returning: false });
+          await db.insert('ledger', [{ tenant_id: preferTenantId, event: 'connection_changed', actor: 'system', summary_text: 'Google connected by the account owner, at the agency\'s request.' }], { returning: false }).catch(() => {});
+          return preferTenantId;
+        }
       }
       const [tenant] = await db.insert('tenants', [{ status: 'active' }]);
       await db.insert('users', [{ tenant_id: tenant.id, google_sub: sub, email, name: name || null }], { returning: false });

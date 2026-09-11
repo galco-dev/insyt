@@ -224,6 +224,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         const handled = await handleGoogleAuth(req, res, u, session, {
           ...googleAuth, sessionSecret, now, issueSession, cookieFor,
           findOrCreateTenantByGoogle: authBridge ? authBridge.findOrCreateTenantByGoogle : null,
+          activateSeat: agencyStore && agencyStore.activateSeat ? agencyStore.activateSeat : null,
         });
         if (handled) return undefined;
       }
@@ -292,6 +293,13 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             : r.reason === 'used' ? 'This link was already used. Open your dashboard instead.'
               : 'This link is not valid.';
           return html(res, 410, `<p style="font-family:sans-serif">${msg}</p>`);
+        }
+        // Agency joins (fix plan move 14) do not sign anyone in: they set a short
+        // join cookie and start the Google sign-in, which binds the identity.
+        if (r.link.purpose === 'join_agency' || r.link.purpose === 'join_account') {
+          const value = r.link.purpose === 'join_agency' ? `seat:${r.link.target_id}` : `account:${r.link.tenant_id}`;
+          res.writeHead(302, { location: '/auth/google/start?step=discovery&switch=1', 'set-cookie': `insyt_join=${value}; HttpOnly; Path=/; Max-Age=900; SameSite=Lax` });
+          return res.end();
         }
         // Redemption signs the tenant in (one tap from inbox — master §5).
         // A viewer link signs in read-only; an approve-join link adds the requester (fix plan move 12).
@@ -648,7 +656,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             const r = await agencyStore.approveBatch(ag, seat.id, parsed.ids);
             return json(res, 200, { ok: true, approved: r.approved });
           }
-          if (sub.startsWith('/approve/')) { await agencyStore.approveChange(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (sub.startsWith('/approve/')) {
+            // Brief-only is enforced here, not only hidden on the button (fix plan move 14).
+            if (agencyStore.briefOnlyFor && await agencyStore.briefOnlyFor(ag, sub.split('/')[2])) return json(res, 403, { error: 'This account is brief-only. Send the brief; do not apply.' });
+            await agencyStore.approveChange(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true });
+          }
           if (sub.startsWith('/dismiss/')) { await agencyStore.dismissChange(ag, seat.id, sub.split('/')[2], parsed.reason); return json(res, 200, { ok: true }); }
           if (sub.startsWith('/snooze/')) {
             const r = await agencyStore.snoozeChange(ag, seat.id, sub.split('/')[2], parsed.days, parsed.reason);
@@ -683,8 +695,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/accounts') {
             if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
             if (!parsed.display_name) return json(res, 400, { error: 'display_name required' });
-            const row = await agencyStore.addAccount(ag, seat.id, parsed);
-            return json(res, 200, { ok: true, account: row });
+            const row = await agencyStore.addAccount(ag, seat.id, parsed, { baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com', now: now() });
+            return json(res, 200, { ok: true, account: row, requested: !!parsed.email });
           }
           {
             const m = /^\/accounts\/([^/]+)\/(pause|resume|remove)$/.exec(sub);
@@ -697,7 +709,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           }
           if (sub === '/seats') {
             if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
-            const row = await agencyStore.addSeat(ag, seat.id, parsed);
+            const row = await agencyStore.addSeat(ag, seat.id, parsed, { baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com', now: now() });
             return json(res, 200, { ok: true, seat: row });
           }
           if (sub.startsWith('/seats/')) {

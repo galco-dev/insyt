@@ -173,6 +173,31 @@ test('start: signed-out discovery goes to google (one-tap sign-in), signed-out w
   assert.match(res2.headers.location, /adwords/);
 });
 
+test('agency join (fix plan move 14): the join cookie binds the arriving Google identity to the seat and lands on the console', async () => {
+  const now = () => 5_000_000;
+  const state = issueState({ tenantId: '', step: 'discovery', secret: SECRET, now: now() });
+  const activated = [];
+  const deps = {
+    db: fakeDb({ users: [{ id: 'u1', google_sub: 'sub-new' }], google_connections: [], tenants: [], crawls: [], assets: [] }),
+    config: { clientId: 'cid', clientSecret: 'cs', redirectUri: 'https://app/cb' }, sessionSecret: SECRET, now,
+    fetchUserinfo: async () => ({ sub: 'sub-new', email: 'mo@northlight.ae', name: 'Mo' }),
+    exchangeCode: async () => ({ tokens: { access_token: 'at', refresh_token: 'rt' }, grantedScopes: ['https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/analytics.readonly', 'https://www.googleapis.com/auth/tagmanager.readonly'] }),
+    listClients: () => ({}), discoverAssets: async () => ({ assets: [], errors: [] }),
+    findOrCreateTenantByGoogle: async () => 'tn-mo',
+    issueSession: ({ tenantId }) => `sess-${tenantId}`, cookieFor: (s) => `insyt_s=${s}; Path=/`,
+    activateSeat: async (seatId, who) => { activated.push([seatId, who]); return { ok: true, agency_id: 'ag1' }; },
+  };
+  const res = fakeRes();
+  const u = new URL(`http://x/auth/google/callback?code=abc&state=${encodeURIComponent(state)}`);
+  await handleGoogleAuth({ method: 'GET', headers: { cookie: 'insyt_join=seat:seat-9' } }, res, u, null, deps);
+  assert.strictEqual(res.code, 302);
+  assert.strictEqual(res.headers.location, '/app/agency');
+  assert.deepStrictEqual(activated, [['seat-9', { tenantId: 'tn-mo', googleSub: 'sub-new', email: 'mo@northlight.ae' }]]);
+  const cookies = [].concat(res.headers['set-cookie']);
+  assert.ok(cookies.some((c) => /^insyt_s=sess-tn-mo/.test(c)), 'signed in');
+  assert.ok(cookies.some((c) => /^insyt_join=; .*Max-Age=0/.test(c)), 'join cookie cleared');
+});
+
 test('write step (fix plan move 5): asked in place, next rides in the state, the callback returns there', async () => {
   const now = () => 5_000_000;
   const deps = {
