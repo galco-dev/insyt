@@ -397,7 +397,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub === '/pause' || sub === '/invite' || sub === '/add-business' || sub === '/switch-tenant' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub === '/pause' || sub === '/invite' || /^\/alerts\/[^/]+\/expected$/.test(sub) || sub === '/add-business' || sub === '/switch-tenant' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -451,6 +451,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                     }
                   }
                   return json(res, r.ok ? 200 : 400, r.ok ? r : { error: 'Nothing to save.' });
+                }
+                if (/^\/alerts\/[^/]+\/expected$/.test(sub)) {
+                  if (!dashStore.expectAlert) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.expectAlert(t, sub.split('/')[2], parsed.until, new Date(now()));
+                  return json(res, r.ok ? 200 : 400, r);
                 }
                 // People (fix plan move 12): a viewer invite, another business, switching between them.
                 if (sub === '/invite') {

@@ -154,11 +154,13 @@ export function PerformanceChart({ w = 660, days, checks = [], fixes = [], label
       {panel(conv, ysB, SERIES[1], 'Results', (v) => fmt(v))}
       {fixMarks.map((f, k) => {
         const color = VERDICT[f.state] || STATUS.neutral;
+        // Shape carries the verdict as well as colour: circle verified, square put back, triangle still watching.
+        const shape = f.state === 'verified' ? 'circle' : f.state === 'reverted' ? 'square' : 'triangle';
         const y = top.t - 8;
         return (
           <g key={`f${k}`}>
             <line x1={x(f.i)} x2={x(f.i)} y1={y + 4} y2={ysT.y(spend[f.i])} stroke={color} strokeWidth={1} />
-            <Marker shape="triangle" x={x(f.i)} y={y} fill={color} />
+            <Marker shape={shape} x={x(f.i)} y={y} fill={color} />
             {w >= 520 && k < 3 && <Txt x={Math.min(x(f.i) + 6, w - padR - 60)} y={y + 3.5} size={9.5} fill={color}>{short(f.title)}</Txt>}
             <title>{f.title}</title>
           </g>

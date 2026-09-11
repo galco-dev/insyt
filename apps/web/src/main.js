@@ -105,8 +105,9 @@ if (googleAuth && googleAuth.config.developerToken) {
   const adsAsset = async (tenantId) => db.select('assets', `tenant_id=eq.${qd(tenantId)}&kind=eq.ads_account&linked=eq.true&select=external_id,metadata&limit=1`, { single: true });
   draftGoogle = {
     // Customer's own account acts as itself; the MCC header only for accounts under it.
-    fetchAds: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? loginCustomerId : a.external_id }); },
-    transportsFor: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return createTransports({ auth, tenantId, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? loginCustomerId : a.external_id, customerId: a.external_id }); },
+    // A string under_mcc names the manager account to log in through (fix plan move 17); true means our own.
+    fetchAds: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? (typeof a.metadata.under_mcc === 'string' ? a.metadata.under_mcc : loginCustomerId) : a.external_id }); },
+    transportsFor: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return createTransports({ auth, tenantId, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? (typeof a.metadata.under_mcc === 'string' ? a.metadata.under_mcc : loginCustomerId) : a.external_id, customerId: a.external_id }); },
   };
 }
 const draftModel = process.env.ANTHROPIC_API_KEY ? {

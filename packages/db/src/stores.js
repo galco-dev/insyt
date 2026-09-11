@@ -771,6 +771,17 @@ function dashStore(db, deps = {}) {
       if (t && t.assistant_enabled === true) return true;
       return planIsActive(sub);
     },
+    // "Expected, until Sunday" (fix plan move 17): the alert is seen and the
+    // period goes on the anomaly calendar, so the pulse stays quiet about it.
+    expectAlert: async (tenantId, alertId, untilIso, now = new Date()) => {
+      const until = Date.parse(untilIso);
+      if (!until || until < now.getTime() || until > now.getTime() + 60 * 86_400_000) return { ok: false, error: 'Pick a date within the next 60 days.' };
+      const alert = await db.select('alerts', `id=eq.${q(alertId)}&tenant_id=eq.${q(tenantId)}&select=title,kind`, { single: true }).catch(() => null);
+      if (!alert) return { ok: false, error: 'Not found.' };
+      await db.update('alerts', `id=eq.${q(alertId)}&tenant_id=eq.${q(tenantId)}`, { acked_at: now.toISOString() });
+      await db.insert('anomaly_calendar', [{ tenant_id: tenantId, starts_on: now.toISOString().slice(0, 10), ends_on: new Date(until).toISOString().slice(0, 10), label: `Expected: ${alert.title}`.slice(0, 200), created_from: 'ui' }], { returning: false });
+      return { ok: true, until: new Date(until).toISOString().slice(0, 10) };
+    },
     // Alerts on Home (spec §2.7): acknowledging is a tap.
     ackAlert: async (tenantId, alertId) => {
       await db.update('alerts', `id=eq.${q(alertId)}&tenant_id=eq.${q(tenantId)}`, { acked_at: new Date().toISOString() });
@@ -960,7 +971,7 @@ function dashStore(db, deps = {}) {
         }
       }
       const isMatched = (x) => x.linked || !!(x.metadata && x.metadata.matched_via);
-      const plain = (x) => ({ id: x.id, kind: x.kind, external_id: x.external_id, display_name: x.display_name, currency: x.currency, linked: x.linked, matched_via: (x.metadata && x.metadata.matched_via) || null, spend_30d_usd: x.metadata && x.metadata.spend_30d_usd != null ? Number(x.metadata.spend_30d_usd) : null, test_account: !!(x.metadata && x.metadata.test_account), suspended: !!(x.metadata && /suspended|canceled|cancelled|closed/i.test(String(x.metadata.account_status || ''))) });
+      const plain = (x) => ({ id: x.id, kind: x.kind, external_id: x.external_id, display_name: x.display_name, currency: x.currency, linked: x.linked, matched_via: (x.metadata && x.metadata.matched_via) || null, spend_30d_usd: x.metadata && x.metadata.spend_30d_usd != null ? Number(x.metadata.spend_30d_usd) : null, test_account: !!(x.metadata && x.metadata.test_account), suspended: !!(x.metadata && /suspended|canceled|cancelled|closed/i.test(String(x.metadata.account_status || ''))), via_manager: x.metadata && typeof x.metadata.under_mcc === 'string' ? (x.metadata.manager_name || 'a manager account') : null });
       const onSite = { gtm_container: !!(tags && (tags.gtm_containers || []).length), ga4_property: !!(tags && (tags.ga4_ids || []).length), ads_account: !!(tags && (tags.aw_conversion_ids || []).length) };
       const doors = {};
       for (const kind of ['ads_account', 'ga4_property', 'gtm_container']) {

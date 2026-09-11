@@ -49,7 +49,9 @@ async function linkedAsset(tenantId, kind) {
 // header only applies to accounts that sit under the MCC (Journey B creates,
 // agency imports). Sending the MCC for an unrelated account = USER_PERMISSION_DENIED.
 function loginFor(a) {
-  return a && a.metadata && a.metadata.under_mcc ? mccId : (a ? a.external_id : mccId);
+  // A string under_mcc names the manager to log in through (fix plan move 17); true means our own MCC.
+  if (a && a.metadata && a.metadata.under_mcc) return typeof a.metadata.under_mcc === 'string' ? a.metadata.under_mcc : mccId;
+  return a ? a.external_id : mccId;
 }
 
 const notConfigured = (what) => async () => { throw new Error(`${what} not configured yet (needs Google OAuth client)`); };

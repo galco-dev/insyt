@@ -96,8 +96,10 @@ function MoneyStrip({ overview, access, money }) {
             <MonoLabel>{t.label}</MonoLabel>
             {t.chip && <Chip />}
           </div>
-          <div className={`mt-1 text-h3 ${t.tone === 'critical' ? 'text-critical' : t.tone === 'success' ? 'text-success' : ''}`}>
-            {t.value}{t.per ? <span className="text-small text-neutral-900">{t.per}</span> : null}
+          <div className={`mt-1 flex items-center gap-2 text-h3 ${t.tone === 'critical' ? 'text-critical' : t.tone === 'success' ? 'text-success' : ''}`}>
+            {t.tone === 'critical' && <AlertTriangle size={18} aria-label="needs attention" />}
+            {t.tone === 'success' && <Check size={18} aria-label="good" />}
+            <span>{t.value}{t.per ? <span className="text-small text-neutral-900">{t.per}</span> : null}</span>
           </div>
           {t.sub && <div className="mt-0.5 text-tiny text-neutral-900">{t.sub}</div>}
         </Card>
@@ -177,7 +179,7 @@ function Performance({ performance, money }) {
             <div ref={box}>
               {w > 0 && <PerformanceChart w={Math.max(300, w)} days={days} checks={performance.checks || []} fixes={performance.fixes || []} labelMoney={(n) => money(n)} />}
             </div>
-            <p className="mt-2 text-tiny text-neutral-900">Dotted lines are weekly checks. Marks are fixes you approved.</p>
+            <p className="mt-2 text-tiny text-neutral-900">Dotted lines are weekly checks. Marks are fixes you approved: a circle held, a square was put back, a triangle is still being watched.</p>
           </>
         ) : (
           <p className="text-small text-neutral-900">Your daily numbers start building after the first check. The chart appears once a week of them is in.</p>
@@ -199,6 +201,13 @@ function Alerts({ alerts, onAck }) {
     try { await api(`/api/app/alerts/${id}/ack`, { method: 'POST' }); onAck(id); } catch { /* stays listed */ }
     setBusy(null);
   }
+  // "Expected, until Sunday" (fix plan move 17): a sale week is not a spike.
+  const sunday = (() => { const d = new Date(); d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7)); return d; })();
+  async function expected(id) {
+    setBusy(id);
+    try { await api(`/api/app/alerts/${id}/expected`, { method: 'POST', body: { until: sunday.toISOString() } }); onAck(id); } catch { /* stays listed */ }
+    setBusy(null);
+  }
   return (
     <div className="mt-8">
       <h2 className="text-h4">Alerts</h2>
@@ -214,7 +223,14 @@ function Alerts({ alerts, onAck }) {
             </div>
             {a.acked
               ? <span className="inline-flex items-center gap-1 text-tiny text-neutral-900"><Check size={13} aria-hidden /> Seen</span>
-              : <Button variant="secondary" onClick={() => ack(a.id)} disabled={busy === a.id} className="!px-3 !py-1.5 text-tiny">Got it</Button>}
+              : (
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <Button variant="secondary" onClick={() => ack(a.id)} disabled={busy === a.id} className="!px-3 !py-1.5 text-tiny">Got it</Button>
+                  {(a.kind === 'spend_spike' || a.kind === 'pace_over') && (
+                    <button type="button" onClick={() => expected(a.id)} disabled={busy === a.id} className="text-tiny text-neutral-900 underline underline-offset-2">Expected, until Sunday</button>
+                  )}
+                </span>
+              )}
           </div>
         ))}
       </Card>

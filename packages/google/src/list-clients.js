@@ -36,20 +36,48 @@ function createListClients({ accessToken, developerToken, loginCustomerId, fetch
         e.code = 'NOT_CONFIGURED';
         throw e;
       }
-      const headers = {
-        'developer-token': developerToken,
-        ...(loginCustomerId ? { 'login-customer-id': String(loginCustomerId).replace(/-/g, '') } : {}),
+      const baseHeaders = { 'developer-token': developerToken };
+      const headersFor = (login) => ({ ...baseHeaders, ...(login ? { 'login-customer-id': String(login).replace(/-/g, '') } : {}) });
+      const search = (cid, query, login) => api(`https://googleads.googleapis.com/${ADS_VERSION}/customers/${cid}/googleAds:search`, { method: 'POST', headers: headersFor(login), body: JSON.stringify({ query }) });
+
+      // Signals for matching and choosing (fix plan move 2): what the account
+      // spent in the last 30 days, where its ads point, and its campaign names
+      // for the "leave alone" list. Best effort, never a reason to drop a row.
+      const signals = async (cid, login) => {
+        const out = { spend30dUsd: null, domains: [], campaigns: [] };
+        try {
+          const camps = await search(cid, 'SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros FROM campaign WHERE segments.date DURING LAST_30_DAYS AND campaign.status != \'REMOVED\' LIMIT 200', login);
+          const byId = new Map();
+          for (const x of camps.results || []) {
+            const id = String(x.campaign && x.campaign.id);
+            const prev = byId.get(id) || { id, name: (x.campaign && x.campaign.name) || id, status: String((x.campaign && x.campaign.status) || '').toLowerCase(), spend_30d_usd: 0 };
+            prev.spend_30d_usd += Number((x.metrics && x.metrics.costMicros) || 0) / 1e6;
+            byId.set(id, prev);
+          }
+          out.campaigns = [...byId.values()].map((k) => ({ ...k, spend_30d_usd: Math.round(k.spend_30d_usd * 100) / 100 })).sort((x, y) => y.spend_30d_usd - x.spend_30d_usd).slice(0, 60);
+          out.spend30dUsd = Math.round(out.campaigns.reduce((s, k) => s + k.spend_30d_usd, 0) * 100) / 100;
+        } catch { /* no spend signal; the account is still listed */ }
+        try {
+          const ads = await search(cid, 'SELECT ad_group_ad.ad.final_urls FROM ad_group_ad WHERE ad_group_ad.status != \'REMOVED\' LIMIT 100', login);
+          const domains = new Set();
+          for (const x of ads.results || []) {
+            for (const u of (x.adGroupAd && x.adGroupAd.ad && x.adGroupAd.ad.finalUrls) || []) {
+              try { domains.add(new URL(u).hostname.replace(/^www\./, '').toLowerCase()); } catch { /* skip */ }
+            }
+          }
+          out.domains = [...domains].slice(0, 20);
+        } catch { /* no url signal */ }
+        return out;
       };
-      const listed = await api(`https://googleads.googleapis.com/${ADS_VERSION}/customers:listAccessibleCustomers`, { headers });
+
+      const listed = await api(`https://googleads.googleapis.com/${ADS_VERSION}/customers:listAccessibleCustomers`, { headers: headersFor(loginCustomerId) });
       const out = [];
+      const seen = new Set();
+      const managers = [];
       for (const rn of listed.resourceNames || []) {
         const cid = rn.split('/')[1];
         try {
-          const r = await api(`https://googleads.googleapis.com/${ADS_VERSION}/customers/${cid}/googleAds:search`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ query: 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager, customer.test_account, customer.status FROM customer' }),
-          });
+          const r = await search(cid, 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager, customer.test_account, customer.status FROM customer', loginCustomerId);
           const c = r.results && r.results[0] && r.results[0].customer;
           const row = {
             customerId: cid,
@@ -58,45 +86,40 @@ function createListClients({ accessToken, developerToken, loginCustomerId, fetch
             manager: !!(c && c.manager),
             testAccount: !!(c && c.testAccount),
             status: (c && c.status) ? String(c.status).toLowerCase() : null,
+            underManager: null,
             spend30dUsd: null, domains: [], campaigns: [],
           };
-          // Signals for matching and choosing (fix plan move 2): what the
-          // account spent in the last 30 days, where its ads point, and its
-          // campaign names for the "leave alone" list. Best effort.
-          if (!row.manager) {
-            try {
-              const camps = await api(`https://googleads.googleapis.com/${ADS_VERSION}/customers/${cid}/googleAds:search`, {
-                method: 'POST', headers,
-                body: JSON.stringify({ query: 'SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros FROM campaign WHERE segments.date DURING LAST_30_DAYS AND campaign.status != \'REMOVED\' LIMIT 200' }),
-              });
-              const byId = new Map();
-              for (const x of camps.results || []) {
-                const id = String(x.campaign && x.campaign.id);
-                const prev = byId.get(id) || { id, name: (x.campaign && x.campaign.name) || id, status: String((x.campaign && x.campaign.status) || '').toLowerCase(), spend_30d_usd: 0 };
-                prev.spend_30d_usd += Number((x.metrics && x.metrics.costMicros) || 0) / 1e6;
-                byId.set(id, prev);
-              }
-              row.campaigns = [...byId.values()].map((k) => ({ ...k, spend_30d_usd: Math.round(k.spend_30d_usd * 100) / 100 })).sort((a, b) => b.spend_30d_usd - a.spend_30d_usd).slice(0, 60);
-              row.spend30dUsd = Math.round(row.campaigns.reduce((s, k) => s + k.spend_30d_usd, 0) * 100) / 100;
-            } catch { /* no spend signal; the account is still listed */ }
-            try {
-              const ads = await api(`https://googleads.googleapis.com/${ADS_VERSION}/customers/${cid}/googleAds:search`, {
-                method: 'POST', headers,
-                body: JSON.stringify({ query: 'SELECT ad_group_ad.ad.final_urls FROM ad_group_ad WHERE ad_group_ad.status != \'REMOVED\' LIMIT 100' }),
-              });
-              const domains = new Set();
-              for (const x of ads.results || []) {
-                for (const u of (x.adGroupAd && x.adGroupAd.ad && x.adGroupAd.ad.finalUrls) || []) {
-                  try { domains.add(new URL(u).hostname.replace(/^www\./, '').toLowerCase()); } catch { /* skip */ }
-                }
-              }
-              row.domains = [...domains].slice(0, 20);
-            } catch { /* no url signal */ }
-          }
-          out.push(row);
+          if (row.manager) managers.push(row);
+          else Object.assign(row, await signals(cid, null));
+          out.push(row); seen.add(cid);
         } catch {
-          out.push({ customerId: cid, descriptiveName: null, currencyCode: null, manager: false, testAccount: false, spend30dUsd: null, domains: [], campaigns: [] });
+          out.push({ customerId: cid, descriptiveName: null, currencyCode: null, manager: false, testAccount: false, status: null, underManager: null, spend30dUsd: null, domains: [], campaigns: [] });
+          seen.add(cid);
         }
+      }
+      // Accounts reached only through a manager account (fix plan move 17):
+      // an agency's clients, a franchise's branches. Listed with the manager
+      // as the login so every later read and write goes through it.
+      for (const m of managers) {
+        try {
+          const r = await search(m.customerId, 'SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.manager, customer_client.test_account, customer_client.status, customer_client.level FROM customer_client WHERE customer_client.level <= 2 AND customer_client.status = \'ENABLED\'', m.customerId);
+          for (const x of r.results || []) {
+            const cc = x.customerClient || {};
+            const cid = String(cc.id || '');
+            if (!cid || cc.manager || seen.has(cid)) continue;
+            seen.add(cid);
+            out.push({
+              customerId: cid,
+              descriptiveName: cc.descriptiveName || null,
+              currencyCode: cc.currencyCode || null,
+              manager: false,
+              testAccount: !!cc.testAccount,
+              status: cc.status ? String(cc.status).toLowerCase() : null,
+              underManager: { id: m.customerId, name: m.descriptiveName || m.customerId },
+              ...(await signals(cid, m.customerId)),
+            });
+          }
+        } catch { /* a manager we cannot read through; its clients stay unlisted */ }
       }
       return out;
     },

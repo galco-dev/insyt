@@ -34,6 +34,15 @@ test('daily pulse: writes alert + email + ledger, enqueues a triggered run, stam
   assert.strictEqual(enq[0][0], 'runs-weekly');
 });
 
+test('daily pulse (fix plan move 17): an expected period keeps spend alerts quiet, never a breakage alert', async () => {
+  const db = fakeDb();
+  const base = db.select;
+  db.select = async (table, query, opts) => (table === 'anomaly_calendar' ? [{ label: 'Expected: sale week' }] : base(table, query, opts));
+  const r = await pumpDailyPulse({ db, google: { fetchPulse: async () => spikePulse }, queue: { enqueue: async () => {} }, now });
+  assert.deepStrictEqual(r, { checked: 1, alerts: 0, runs: 0, errors: 0 }, 'the spike is expected: no alert, no run');
+  assert.deepStrictEqual(db.writes.map((w) => w.table), ['pulse_state']);
+});
+
 test('daily pulse: once a day per account; one alert per kind per day; idle without Google', async () => {
   const fresh = fakeDb({ lastPulse: '2026-08-27T01:00:00Z' });
   assert.strictEqual((await pumpDailyPulse({ db: fresh, google: { fetchPulse: async () => spikePulse }, now })).checked, 0);

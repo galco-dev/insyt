@@ -17,3 +17,4 @@ deploy request: Fix plan push 4 (yes, later, no; partial yes; leave this alone f
 deploy request: Fix plan push 5 (look again by itself, the band sets itself, ROAS tile, pause with a date, the $20 tail, undo free after cancel, refunds relock; migration 31) - 2026-09-11T20:40:48Z
 deploy request: Fix plan push 6a (switch, join by website, viewers, another business; four ops buttons and the platform notice; migration 32) - 2026-09-11T20:47:15Z
 deploy request: Fix plan push 6b (the small things: check again, pages read, own-site limits, suspended accounts, Stripe Tax and the pay link, print this month, campaign groups) - 2026-09-11T20:51:48Z
+deploy request: Fix plan push 7 (accounts behind a manager account, expected until Sunday, colour never alone) - 2026-09-11T20:55:15Z

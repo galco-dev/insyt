@@ -62,6 +62,32 @@ test('matchAssets (fix plan move 2): an Ads account matches through the GA4 link
   assert.strictEqual(noSite.matched.length, 0, 'no signal, no link, never a guess');
 });
 
+test('listAdsAccounts (fix plan move 17): clients reached only through a manager account are listed with the manager as login', async () => {
+  const { createListClients } = require('../src/list-clients');
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, login: init.headers['login-customer-id'] || null, body: init.body ? JSON.parse(init.body).query : '' });
+    const ok = (body) => ({ ok: true, json: async () => body });
+    if (/listAccessibleCustomers/.test(url)) return ok({ resourceNames: ['customers/111'] });
+    if (/customers\/111\/googleAds:search/.test(url) && /FROM customer$/.test(calls.at(-1).body)) return ok({ results: [{ customer: { id: '111', descriptiveName: 'Northlight MCC', manager: true } }] });
+    if (/customers\/111\/googleAds:search/.test(url) && /customer_client/.test(calls.at(-1).body)) return ok({ results: [
+      { customerClient: { id: '222', descriptiveName: 'Glow Studio', currencyCode: 'AED', manager: false, status: 'ENABLED', level: 1 } },
+      { customerClient: { id: '333', descriptiveName: 'Sub manager', manager: true, level: 1 } },
+    ] });
+    if (/customers\/222\/googleAds:search/.test(url) && /FROM campaign/.test(calls.at(-1).body)) return ok({ results: [{ campaign: { id: '9', name: 'Brand', status: 'ENABLED' }, metrics: { costMicros: '5000000' } }] });
+    return ok({ results: [] });
+  };
+  const clients = createListClients({ accessToken: 't', developerToken: 'd', loginCustomerId: null, fetchImpl });
+  const rows = await clients.listAdsAccounts();
+  const glow = rows.find((r) => r.customerId === '222');
+  assert.ok(glow, 'the client under the manager is listed');
+  assert.deepStrictEqual(glow.underManager, { id: '111', name: 'Northlight MCC' });
+  assert.strictEqual(glow.spend30dUsd, 5, 'its signals were read through the manager');
+  const viaManager = calls.filter((c) => /customers\/222\//.test(c.url));
+  assert.ok(viaManager.length > 0 && viaManager.every((c) => c.login === '111'), 'every read of the client logs in through the manager');
+  assert.ok(!rows.some((r) => r.customerId === '333'), 'a sub-manager is a container, not an account');
+});
+
 test('rediscoverTenant (fix plan move 10): stores what is new over the tenant connection, never unlinks, and logs it', async () => {
   const { rediscoverTenant } = require('../src/discovery-store');
   const inserts = []; const updates = [];

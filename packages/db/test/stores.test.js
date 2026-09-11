@@ -510,6 +510,20 @@ test('fix plan move 16: suspended accounts are named, the pay link is emailed, w
   assert.doesNotThrow(() => renderTemplate('pay_link', email.payload));
 });
 
+test('dashStore.expectAlert (fix plan move 17): seen, and on the anomaly calendar until the date', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({ alerts: [{ title: 'Yesterday cost 2.4x a normal day', kind: 'spend_spike' }], anomaly_calendar: [] });
+  const s = dashStore(mkDb(f));
+  const now = new Date('2026-09-12T09:00:00Z');
+  const r = await s.expectAlert('t1', 'al1', '2026-09-13T00:00:00Z', now);
+  assert.deepStrictEqual(r, { ok: true, until: '2026-09-13' });
+  const ack = f.calls.find((c) => c.method === 'PATCH' && /alerts/.test(c.url));
+  assert.ok(ack.body.acked_at);
+  const cal = f.calls.find((c) => c.method === 'POST' && /anomaly_calendar/.test(c.url)).body[0];
+  assert.deepStrictEqual([cal.tenant_id, cal.starts_on, cal.ends_on, cal.label, cal.created_from], ['t1', '2026-09-12', '2026-09-13', 'Expected: Yesterday cost 2.4x a normal day', 'ui']);
+  assert.strictEqual((await s.expectAlert('t1', 'al1', '2020-01-01T00:00:00Z', now)).ok, false);
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

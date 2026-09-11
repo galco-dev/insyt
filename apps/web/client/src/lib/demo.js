@@ -457,7 +457,7 @@ function customerDemo(path, method, body) {
     if (body && body.website !== undefined) s.business.website = String(body.website).trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
     return { ok: true, business_name: s.business.name, website_url: s.business.website };
   }
-  if (/^\/api\/app\/alerts\/[^/]+\/ack$/.test(p)) { if (!s.ackedAlerts) s.ackedAlerts = new Set(); s.ackedAlerts.add(p.split('/')[4]); return { ok: true }; }
+  if (/^\/api\/app\/alerts\/[^/]+\/(ack|expected)$/.test(p)) { if (!s.ackedAlerts) s.ackedAlerts = new Set(); s.ackedAlerts.add(p.split('/')[4]); return { ok: true }; }
   if (p === '/api/app/emails') { s.emails = { reports: !!(body && body.reports) }; return { ok: true, reports: s.emails.reports }; }
   if (p === '/api/app/confirm') return { ok: true, run_id: 'demo-run' };
   if (p.startsWith('/api/app/snooze/')) { const id = p.split('/').pop(); const i = s.pending.findIndex((x) => x.id === id); if (i !== -1) s.pending.splice(i, 1); return { ok: true, until: new Date(Date.now() + 7 * 86_400_000).toISOString() }; }

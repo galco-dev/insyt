@@ -57,6 +57,7 @@ function Row({ door, def, money, chosen, onChoose }) {
                   <span className="font-medium">{name(a)}</span>
                   {a.test_account && <span className="ml-2 font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">test account</span>}
                   {a.suspended && <span className="block text-tiny text-warning">Google has suspended this account. We can read it, not fix it.</span>}
+                  {a.via_manager && <span className="block text-tiny text-neutral-900">via {a.via_manager}</span>}
                   {a.spend_30d_usd != null && <span className="block text-tiny text-neutral-900">{a.spend_30d_usd > 0 ? `${money(a.spend_30d_usd)} in the last 30 days` : 'nothing spent in the last 30 days'}</span>}
                 </span>
                 <span className={`font-mono text-tiny uppercase tracking-[0.1em] ${on ? 'text-strong' : 'text-neutral-900'}`}>{on ? 'this one' : 'choose'}</span>

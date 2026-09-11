@@ -32,8 +32,12 @@ async function pumpDailyPulse({ db, google, queue = null, now = Date.now, limit 
     actions.checked += 1;
     try {
       const pulse = await google.fetchPulse(tenantId);
-      const alerts = judgePulse({ pulse, thresholds: th, now: nowMs });
       const todayStart = new Date(nowMs).toISOString().slice(0, 10);
+      // An expected period (fix plan move 17): a sale the owner told us about, or a
+      // market-wide one from ops. Spend and pace alerts stay quiet; breakage never does.
+      const periods = await db.select('anomaly_calendar', `or=(tenant_id.eq.${q(tenantId)},tenant_id.is.null)&starts_on=lte.${q(todayStart)}&ends_on=gte.${q(todayStart)}&select=label`).catch(() => []);
+      const expected = !!(periods && periods.length);
+      const alerts = judgePulse({ pulse, thresholds: th, now: nowMs }).filter((a) => !(expected && (a.kind === 'spend_spike' || a.kind === 'pace_over')));
       const existing = await db.select('alerts', `tenant_id=eq.${q(tenantId)}&created_at=gte.${q(todayStart)}&select=kind`).catch(() => []);
       const seen = new Set((existing || []).map((a) => a.kind));
       let triggerRun = false;
