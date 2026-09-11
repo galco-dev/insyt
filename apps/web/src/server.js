@@ -317,7 +317,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           // story, the three accounts, alerts and the 28-day series in one trip.
           if (sub === '/overview') return json(res, 200, { overview: dashStore.overview ? await dashStore.overview(t, new Date(now())) : null, access: await accessFor(dashStore, t) });
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
-          if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
+          if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_change : {}, access: await accessFor(dashStore, t) });
           if (sub === '/reports') return json(res, 200, { reports: await dashStore.reports(t) });
           if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t), access: await accessFor(dashStore, t) });
           if (sub === '/discovery') return json(res, 200, await dashStore.discovery(t));
@@ -339,7 +339,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!r) return json(res, 404, { error: 'Report not found.' });
             // Pending changes ride along so each finding can carry its
             // "Fix this" (spec §4, Report), and the gate decides what it does.
-            return json(res, 200, { report: r, pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
+            return json(res, 200, { report: r, pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_finding : {}, access: await accessFor(dashStore, t) });
           }
         }
         if (req.method === 'POST') {

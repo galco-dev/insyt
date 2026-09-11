@@ -623,7 +623,46 @@ function dashStore(db, deps = {}) {
       const row = await db.select('ledger_cumulative', `tenant_id=eq.${q(tenantId)}`, { single: true });
       return row ? { fixes: row.fixes_applied, waste_removed_usd: Math.round(row.waste_removed_usd) } : null;
     },
-    reports: async (tenantId) => db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id,type,created_at,viewed_at&order=created_at.desc&limit=50`),
+    reports: async (tenantId) => db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id,type,created_at,viewed_at,summary&order=created_at.desc&limit=50`),
+    // Receipts (richer-platform spec §3, §5): for every applied change in the
+    // last 90 days, what happened after. The per-change watch (change_verify)
+    // carries the verdict and the measured line; the 48-hour changeset watch
+    // covers changes without one. Keyed by change id and by finding id.
+    receipts: async (tenantId, now = new Date()) => {
+      const since = new Date(now.getTime() - 90 * 86_400_000).toISOString();
+      const changes = await db.select('changes',
+        `tenant_id=eq.${q(tenantId)}&status=in.(applied,reverted)&applied_at=gte.${q(since)}&select=id,finding_id,applied_at,changeset_id,status&order=applied_at.desc&limit=200`).catch(() => []);
+      if (!changes || !changes.length) return { by_change: {}, by_finding: {} };
+      const changeIds = changes.map((c) => c.id);
+      const setIds = [...new Set(changes.map((c) => c.changeset_id).filter(Boolean))];
+      const targets = [...changeIds, ...setIds].map(q).join(',');
+      const [watches, lines] = await Promise.all([
+        db.select('watches', `tenant_id=eq.${q(tenantId)}&kind=in.(change_verify,changeset_verify)&target_id=in.(${targets})&select=target_id,kind,status,outcome,closed_at,schedule`).catch(() => []),
+        db.select('ledger', `tenant_id=eq.${q(tenantId)}&event=in.(watch_verified,watch_inconclusive,watch_regressed,auto_reverted,fix_reverted)&change_id=in.(${changeIds.map(q).join(',')})&select=change_id,event,summary_text,created_at`).catch(() => []),
+      ]);
+      const byTarget = new Map((watches || []).map((w) => [`${w.kind}:${w.target_id}`, w]));
+      const lineFor = new Map();
+      for (const l of lines || []) if (!lineFor.has(l.change_id)) lineFor.set(l.change_id, l);
+      const by_change = {}; const by_finding = {};
+      for (const c of changes) {
+        const own = byTarget.get(`change_verify:${c.id}`) || null;
+        const set = c.changeset_id ? byTarget.get(`changeset_verify:${c.changeset_id}`) || null : null;
+        const l = lineFor.get(c.id) || null;
+        const line = l ? l.summary_text.replace(/^.*?: /, '') : null;
+        let state = 'watching'; let verified_at = null;
+        if (c.status === 'reverted' || (l && (l.event === 'auto_reverted' || l.event === 'fix_reverted'))) state = 'reverted';
+        else if (own && own.outcome === 'verified') { state = 'verified'; verified_at = own.closed_at; }
+        else if (own && own.outcome === 'inconclusive') { state = 'inconclusive'; verified_at = own.closed_at; }
+        else if (own && own.outcome === 'regressed') state = 'reverted';
+        else if (!own && set && set.status === 'resolved') { state = 'verified'; verified_at = set.closed_at || (set.schedule && set.schedule.until) || null; }
+        else if (!own && set && set.status === 'triggered') state = 'reverted';
+        const until = (own && own.schedule && own.schedule.until) || (set && set.schedule && set.schedule.until) || null;
+        const r = { change_id: c.id, finding_id: c.finding_id || null, applied_at: c.applied_at, state, verified_at, line, watch_until: state === 'watching' ? until : null };
+        by_change[c.id] = r;
+        if (c.finding_id && !by_finding[c.finding_id]) by_finding[c.finding_id] = r;
+      }
+      return { by_change, by_finding };
+    },
     reportData: async (tenantId, reportId) => {
       const r = await db.select('reports',
         `id=eq.${q(reportId)}&tenant_id=eq.${q(tenantId)}&select=id,type,created_at,findings_snapshot,unlocked,summary`, { single: true });

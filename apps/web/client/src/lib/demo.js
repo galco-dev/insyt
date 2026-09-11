@@ -44,19 +44,25 @@ const pending = [
   },
 ];
 
+// The latest fix lands a few days ago so the month line and the receipt read
+// as current whenever the sample is opened.
+const daysAgo = (n, h = 9) => { const d = new Date(); d.setUTCDate(d.getUTCDate() - n); d.setUTCHours(h, 10, 0, 0); return d.toISOString(); };
+const RECEIPTS = {
+  'chg-0': { change_id: 'chg-0', finding_id: null, applied_at: daysAgo(3), state: 'verified', verified_at: daysAgo(1), line: 'Wasted-term clicks down 92% over 48 hours', watch_until: null },
+};
 const ledger = [
-  { id: 'l6', event: 'watch_triggered', actor: 'system', summary_text: 'We started a 48-hour watch on your latest fixes.', created_at: '2026-08-18T09:12:00Z' },
-  { id: 'l5', event: 'change_applied', actor: 'system', summary_text: 'Applied: 14 searches excluded from your ads. Reversible with one tap.', created_at: '2026-08-18T09:10:00Z' },
-  { id: 'l4', event: 'approval', actor: 'user', summary_text: 'You approved 2 fixes from your inbox.', created_at: '2026-08-18T08:57:00Z' },
+  { id: 'l6', event: 'watch_triggered', actor: 'system', summary_text: 'We started a 48-hour watch on your latest fixes.', created_at: daysAgo(3, 9) },
+  { id: 'l5', event: 'fix_applied', actor: 'system', change_id: 'chg-0', money_impact_usd: 430, summary_text: 'Excluded 14 searches from your ads. Reversible with one tap.', created_at: daysAgo(3, 9) },
+  { id: 'l4', event: 'approval', actor: 'user', summary_text: 'You approved 2 fixes from your inbox.', created_at: daysAgo(3, 8) },
   { id: 'l3', event: 'report_sent', actor: 'system', summary_text: 'Weekly report delivered - 7 findings, about $1,240 a month at stake.', created_at: '2026-08-17T07:00:00Z' },
   { id: 'l2', event: 'tag_verified', actor: 'system', summary_text: 'Your tracking is live - checked 12 pages, firing correctly.', created_at: '2026-08-12T15:20:00Z' },
   { id: 'l1', event: 'connection_changed', actor: 'user', summary_text: 'Google connected - read access granted.', created_at: '2026-08-12T15:04:00Z' },
 ];
 
 const reports = [
-  { id: 'rep-3', type: 'weekly', created_at: '2026-08-17T07:00:00Z', viewed_at: null },
-  { id: 'rep-2', type: 'weekly', created_at: '2026-08-10T07:00:00Z', viewed_at: '2026-08-10T09:14:00Z' },
-  { id: 'rep-1', type: 'audit', created_at: '2026-08-05T11:30:00Z', viewed_at: '2026-08-05T11:41:00Z' },
+  { id: 'rep-3', type: 'weekly', created_at: '2026-08-17T07:00:00Z', viewed_at: null, summary: { health_score: 58, waste_monthly_usd: 1240 } },
+  { id: 'rep-2', type: 'weekly', created_at: '2026-08-10T07:00:00Z', viewed_at: '2026-08-10T09:14:00Z', summary: { health_score: 52, waste_monthly_usd: 1610 } },
+  { id: 'rep-1', type: 'audit', created_at: '2026-08-05T11:30:00Z', viewed_at: '2026-08-05T11:41:00Z', summary: { health_score: 41, waste_monthly_usd: 2380 } },
 ];
 
 const DEMO = {
@@ -237,7 +243,17 @@ function customerDemo(path, method, body) {
 
   if (method === 'GET') {
     if (p === '/api/app/access') return { access };
-    if (p.startsWith('/api/app/report/')) { const report = demoReport(s, access.level, p.split('/')[4]); return { report, pending: gatedPending(s, access.level), access }; }
+    if (p.startsWith('/api/app/report/')) {
+      const report = demoReport(s, access.level, p.split('/')[4]);
+      // One receipt on a finding no pending change claims, at active only.
+      const receipts = {};
+      if (access.level === 'active') {
+        const claimed = new Set(s.pending.map((x) => x.finding_id).filter(Boolean));
+        const f = report.findings_snapshot.find((x) => !claimed.has(x.finding_id));
+        if (f) receipts[f.finding_id] = { ...RECEIPTS['chg-0'], finding_id: f.finding_id };
+      }
+      return { report, pending: gatedPending(s, access.level), receipts, access };
+    }
     if (p === '/api/app/home') {
       const base = DEMO['GET /api/app/home'];
       return {
@@ -251,7 +267,7 @@ function customerDemo(path, method, body) {
     }
     if (p === '/api/app/overview') return { overview: demoOverview(s, access.level), access };
     if (p === '/api/app/approvals') return { pending: gatedPending(s, access.level), access };
-    if (p === '/api/app/ledger') return { entries: access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event)), pending: gatedPending(s, access.level), access };
+    if (p === '/api/app/ledger') return { entries: access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event)), pending: gatedPending(s, access.level), receipts: access.level === 'active' ? structuredClone(RECEIPTS) : {}, access };
     if (p === '/api/app/settings') {
       const base = structuredClone(DEMO['GET /api/app/settings']);
       base.settings.autopilot = { ...s.autopilot };

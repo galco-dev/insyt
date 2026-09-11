@@ -56,8 +56,21 @@ export function HealthDial({ score, label }) {
 
 // ---------------------------------------------------------------- finding card
 
-function FindingCard({ f, locked, index = 0, action = null }) {
+// The receipt on a finding that has been fixed since (richer-platform spec
+// §3): "Fixed 3 Sep, verified 5 Sep" from changes joined to their watch.
+function receiptText(r) {
+  if (!r || !r.applied_at) return null;
+  const d = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const tail = r.state === 'verified' ? `verified${r.verified_at ? ` ${d(r.verified_at)}` : ''}`
+    : r.state === 'reverted' ? 'put back'
+      : r.state === 'inconclusive' ? 'checked, too early to tell'
+        : 'watching';
+  return `Fixed ${d(r.applied_at)}, ${tail}`;
+}
+
+function FindingCard({ f, locked, index = 0, action = null, receipt = null }) {
   const m = severityMeta[f.severity] || severityMeta.info;
+  const receiptLine = receiptText(receipt);
   return (
     <div
       className={clsx('rise rounded border border-neutral-300 bg-card border-l-[3px]', COLOR[m.color].borderL)}
@@ -69,6 +82,12 @@ function FindingCard({ f, locked, index = 0, action = null }) {
           {f.money && <span className="text-small font-semibold">{f.money}</span>}
         </div>
         <h3 className="mt-2 text-h5">{f.title}</h3>
+        {receiptLine && (
+          <p className={clsx('mt-1.5 text-small font-medium', receipt.state === 'verified' ? 'text-success' : receipt.state === 'reverted' ? 'text-warning' : 'text-neutral-900')}>
+            <CheckCircle2 size={14} className="mr-1.5 inline-block align-[-2px]" aria-hidden />
+            {receiptLine}{receipt.line ? <span className="font-normal text-neutral-900">: {receipt.line}</span> : null}
+          </p>
+        )}
         <p className="mt-1.5 text-body text-neutral-900">{f.body}</p>
         {f.fix !== undefined && (
           <div className={clsx('mt-3 flex items-start gap-2 rounded-sm px-3 py-2.5', COLOR[m.color].tint)}>
@@ -289,9 +308,10 @@ const SNAPSHOT_SEV = { critical: 'critical', warning: 'warning', info: 'info', o
 function RealReport({ reportId }) {
   const [report, setReport] = useState(null);
   const [pending, setPending] = useState([]);
+  const [receipts, setReceipts] = useState({});
   const [error, setError] = useState(null);
   const { gate, level, access, version } = useAccess();
-  useEffect(() => { api(`/api/app/report/${reportId}`).then((d) => { setReport(d.report); setPending(d.pending || []); }).catch((e) => setError(e.message)); }, [reportId, version]);
+  useEffect(() => { api(`/api/app/report/${reportId}`).then((d) => { setReport(d.report); setPending(d.pending || []); setReceipts(d.receipts || {}); }).catch((e) => setError(e.message)); }, [reportId, version]);
 
   if (error) return <div className="mx-auto max-w-l2 px-5 pt-14"><ErrorNote message={error} /></div>;
   if (!report) return <Spinner label="Loading your report" />;
@@ -378,6 +398,7 @@ function RealReport({ reportId }) {
                   index={i}
                   locked={f.lockedFix}
                   f={{ ...f, title: f.campaign ? `${f.title} - ${f.campaign}` : f.title }}
+                  receipt={receipts[f.id] || null}
                   action={<FixAction change={changeByFinding.get(f.id) || null} gate={gate} level={level} />}
                 />
               ))}

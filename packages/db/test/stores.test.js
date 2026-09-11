@@ -208,6 +208,38 @@ test('dashStore.approveBatch: one yes per id via approveChange, de-duplicated, a
   for (const c of patches) assert.match(c.url, /tenant_id=eq\.t1&status=eq\.proposed/);
 });
 
+test('dashStore.receipts: verdict from the per-change watch, the 48h changeset watch as fallback, reverts say why', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({
+    changes: [
+      { id: 'c1', finding_id: 'f1', applied_at: '2026-09-03T10:00:00Z', changeset_id: 'cs1', status: 'applied' },
+      { id: 'c2', finding_id: 'f2', applied_at: '2026-09-03T10:00:00Z', changeset_id: 'cs1', status: 'applied' },
+      { id: 'c3', finding_id: 'f3', applied_at: '2026-09-08T10:00:00Z', changeset_id: 'cs2', status: 'reverted' },
+      { id: 'c4', finding_id: null, applied_at: '2026-09-09T10:00:00Z', changeset_id: 'cs3', status: 'applied' },
+    ],
+    watches: [
+      { target_id: 'c1', kind: 'change_verify', status: 'resolved', outcome: 'verified', closed_at: '2026-09-05T10:00:00Z', schedule: {} },
+      { target_id: 'cs1', kind: 'changeset_verify', status: 'resolved', outcome: null, closed_at: null, schedule: { until: '2026-09-05T10:00:00Z' } },
+      { target_id: 'cs3', kind: 'changeset_verify', status: 'active', outcome: null, closed_at: null, schedule: { until: '2026-09-11T10:00:00Z' } },
+    ],
+    ledger: [
+      { change_id: 'c1', event: 'watch_verified', summary_text: 'Excluded 14 searches: Wasted-term clicks down 92% over 48 hours', created_at: '2026-09-05T10:00:00Z' },
+      { change_id: 'c3', event: 'fix_reverted', summary_text: 'Undid the budget change: Cost per result rose to $41 (from $22)', created_at: '2026-09-09T10:00:00Z' },
+    ],
+  });
+  const s = dashStore(mkDb(f));
+  const r = await s.receipts('t1', new Date('2026-09-10T12:00:00Z'));
+  assert.deepStrictEqual(r.by_change.c1, { change_id: 'c1', finding_id: 'f1', applied_at: '2026-09-03T10:00:00Z', state: 'verified', verified_at: '2026-09-05T10:00:00Z', line: 'Wasted-term clicks down 92% over 48 hours', watch_until: null });
+  assert.strictEqual(r.by_change.c2.state, 'verified', 'no own watch: the resolved changeset watch verifies it');
+  assert.strictEqual(r.by_change.c2.verified_at, '2026-09-05T10:00:00Z');
+  assert.deepStrictEqual([r.by_change.c3.state, r.by_change.c3.line], ['reverted', 'Cost per result rose to $41 (from $22)']);
+  assert.deepStrictEqual([r.by_change.c4.state, r.by_change.c4.watch_until], ['watching', '2026-09-11T10:00:00Z']);
+  assert.deepStrictEqual(Object.keys(r.by_finding).sort(), ['f1', 'f2', 'f3']);
+  for (const c of f.calls) assert.ok(!/in\.\(select/.test(c.url), c.url);
+  const empty = dashStore(mkDb(routedFetch({ changes: [] })));
+  assert.deepStrictEqual(await empty.receipts('t1'), { by_change: {}, by_finding: {} });
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

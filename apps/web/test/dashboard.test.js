@@ -109,6 +109,24 @@ test('api: /api/app/approve-batch needs a plan, then approves each id through th
   });
 });
 
+test('api: ledger and report carry receipts when the store has them', async () => {
+  const ds = dashStore();
+  ds.receipts = async () => ({ by_change: { ch0: { state: 'verified', line: 'held' } }, by_finding: { f1: { state: 'watching' } } });
+  ds.reportData = async () => ({ id: 'rep1', type: 'weekly', created_at: '2026-08-16T00:00:00Z', findings_snapshot: [], unlocked: true, summary: {} });
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const led = await (await fetch(`${base}/api/app/ledger`, { headers: { cookie: authedCookie() } })).json();
+    assert.deepStrictEqual(led.receipts, { ch0: { state: 'verified', line: 'held' } });
+    const rep = await (await fetch(`${base}/api/app/report/rep1`, { headers: { cookie: authedCookie() } })).json();
+    assert.deepStrictEqual(rep.receipts, { f1: { state: 'watching' } });
+  });
+  const older = dashStore();
+  older.reportData = ds.reportData;
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: older, sessionSecret: SECRET }, async (base) => {
+    const led = await (await fetch(`${base}/api/app/ledger`, { headers: { cookie: authedCookie() } })).json();
+    assert.deepStrictEqual(led.receipts, {});
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;

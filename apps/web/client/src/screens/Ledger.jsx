@@ -16,7 +16,38 @@ const EVENT_ICON = {
   change_requested: FileText,
 };
 
-const TYPE_LABEL = { weekly: 'Weekly report', audit: 'Your audit', deep: 'Deep review', monthly: 'Monthly pulse' };
+const TYPE_LABEL = { weekly: 'Weekly report', audit: 'Your audit', signup: 'Your audit', deep: 'Deep review', monthly: 'Monthly pulse' };
+const APPLIED = new Set(['fix_applied', 'change_applied', 'autopilot_applied']);
+const UNDONE = new Set(['fix_reverted', 'change_reverted', 'auto_reverted']);
+const shortDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+// The receipt under an applied fix (richer-platform spec §5): what the watch
+// measured, in one line. Reverts say why.
+function receiptLine(r) {
+  if (!r) return null;
+  if (r.state === 'verified') return `Verified${r.verified_at ? ` ${shortDate(r.verified_at)}` : ''}: ${r.line || 'the numbers held after the change'}`;
+  if (r.state === 'inconclusive') return `Checked${r.verified_at ? ` ${shortDate(r.verified_at)}` : ''}: ${r.line || 'too early to tell, watching the next run'}`;
+  if (r.state === 'reverted') return `Put back${r.line ? `: ${r.line}` : ''}`;
+  return r.watch_until ? `Watching until ${shortDate(r.watch_until)}` : 'Watching';
+}
+
+// The month in one line (spec §5): applied, verified, undone, recovered.
+function MonthLine({ entries, receipts, money }) {
+  const now = new Date();
+  const ym = now.toISOString().slice(0, 7);
+  const inMonth = entries.filter((e) => String(e.created_at || '').slice(0, 7) === ym);
+  const applied = inMonth.filter((e) => APPLIED.has(e.event));
+  if (!applied.length) return null;
+  const verified = applied.filter((e) => e.change_id && receipts[e.change_id] && receipts[e.change_id].state === 'verified').length;
+  const undone = inMonth.filter((e) => UNDONE.has(e.event)).length;
+  const recovered = Math.round(applied.reduce((s, e) => s + Number(e.money_impact_usd || 0), 0));
+  return (
+    <p className="mb-4 text-small text-neutral-900">
+      <span className="font-medium text-strong">{now.toLocaleDateString('en-GB', { month: 'long' })}:</span>{' '}
+      {applied.length} fix{applied.length === 1 ? '' : 'es'} applied, {verified} verified, {undone} undone{recovered > 0 ? `, about ${money(recovered)} a month recovered` : ''}.
+    </p>
+  );
+}
 
 // Next Sunday, when the weekly check runs and approved fixes go out.
 function nextSunday() {
@@ -56,9 +87,10 @@ function FirstWeekPreview({ pending, level, money, access }) {
 function Activity() {
   const [entries, setEntries] = useState(null);
   const [pending, setPending] = useState([]);
+  const [receipts, setReceipts] = useState({});
   const [error, setError] = useState(null);
   const { access, level, gate, money, version } = useAccess();
-  useEffect(() => { api('/api/app/ledger').then((d) => { setEntries(d.entries); setPending(d.pending || []); }).catch((e) => setError(e.message)); }, [version]);
+  useEffect(() => { api('/api/app/ledger').then((d) => { setEntries(d.entries); setPending(d.pending || []); setReceipts(d.receipts || {}); }).catch((e) => setError(e.message)); }, [version]);
 
   if (error) return <ErrorNote message={error} />;
   if (!entries) return <Spinner label="Loading your history" />;
@@ -72,6 +104,7 @@ function Activity() {
       await api(`/api/app/revert/${changeId}`, { method: 'POST' });
       const d = await api('/api/app/ledger');
       setEntries(d.entries);
+      setReceipts(d.receipts || {});
     };
     try { await gate(run, { kind: 'revert', id: changeId, title: title ? `Undo: ${title}` : 'Undo this change' }); } catch (err) { setError(err.message); }
   }
@@ -83,25 +116,34 @@ function Activity() {
         {pending.length ? <FirstWeekPreview pending={pending} level={level} money={money} access={access} /> : (
           <EmptyState title="Nothing here yet" body="Once your first check runs, every action lands here - permanently." />
         )}
-        {entries.length > 0 && <ActivityList entries={entries} requestRevert={requestRevert} />}
+        {entries.length > 0 && <ActivityList entries={entries} receipts={receipts} requestRevert={requestRevert} />}
       </div>
     );
   }
-  return <ActivityList entries={entries} requestRevert={requestRevert} />;
+  return (
+    <div>
+      <MonthLine entries={entries} receipts={receipts} money={money} />
+      <ActivityList entries={entries} receipts={receipts} requestRevert={requestRevert} />
+    </div>
+  );
 }
 
-function ActivityList({ entries, requestRevert }) {
+function ActivityList({ entries, receipts = {}, requestRevert }) {
   const reverted = new Set(entries.filter((e) => e.event === 'fix_reverted' && e.change_id).map((e) => e.change_id));
   return (
     <Card className="divide-y divide-neutral-200">
       {entries.map((e) => {
         const IconEl = EVENT_ICON[e.event] || AlertTriangle;
         const canRevert = e.event === 'fix_applied' && e.change_id && !reverted.has(e.change_id);
+        const r = e.change_id && (APPLIED.has(e.event) || UNDONE.has(e.event)) ? receipts[e.change_id] : null;
+        const receipt = r ? (UNDONE.has(e.event) ? (r.line ? `Why: ${r.line}` : null) : receiptLine(r)) : null;
+        const receiptTone = r && r.state === 'verified' && !UNDONE.has(e.event) ? 'text-success' : r && r.state === 'reverted' ? 'text-warning' : 'text-neutral-900';
         return (
           <div key={e.id} className="flex items-start gap-3 p-4">
             <IconEl size={16} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
             <div className="min-w-0 flex-1">
               <div className="text-small">{e.summary_text}</div>
+              {receipt && <div className={`mt-1 text-small ${receiptTone}`}>{receipt}</div>}
               <div className="mt-0.5 font-mono text-tiny text-neutral-900">
                 {new Date(e.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ·{' '}
                 {e.actor === 'user' ? 'you' : 'Insyt'}
@@ -122,6 +164,7 @@ function ActivityList({ entries, requestRevert }) {
 function ReportList() {
   const [reports, setReports] = useState(null);
   const [error, setError] = useState(null);
+  const { money } = useAccess();
   useEffect(() => { api('/api/app/reports').then((d) => setReports(d.reports)).catch((e) => setError(e.message)); }, []);
 
   if (error) return <ErrorNote message={error} />;
@@ -142,6 +185,14 @@ function ReportList() {
               {!r.viewed_at && <span className="ml-2 rounded-full bg-info-tint px-2 py-0.5 text-info">New</span>}
             </div>
           </div>
+          {r.summary && (r.summary.health_score != null || r.summary.waste_monthly_usd != null) && (
+            <div className="shrink-0 text-right">
+              {r.summary.health_score != null && <div className="text-small font-medium">Health {Math.round(r.summary.health_score)}</div>}
+              {r.summary.waste_monthly_usd != null && (
+                <div className={`text-tiny ${Number(r.summary.waste_monthly_usd) > 0 ? 'text-critical' : 'text-neutral-900'}`}>{money(Math.round(r.summary.waste_monthly_usd))}/mo waste</div>
+              )}
+            </div>
+          )}
           <ArrowRight size={15} className="shrink-0 text-neutral-800" aria-hidden />
         </Link>
       ))}
