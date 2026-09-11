@@ -5,7 +5,7 @@ import { ArrowRight, Zap, Lock01 as Lock } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { useAccess } from '../lib/access.jsx';
-import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote, Sparkline, useCountUp } from '../lib/ui.jsx';
+import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote, Sparkline, useCountUp } from '../lib/ui.jsx';
 
 function MiniDial({ score }) {
   const sevColor = score < 50 ? 'var(--ui-critical)' : score < 70 ? 'var(--ui-warning)' : 'var(--ui-success)';
@@ -28,11 +28,147 @@ function MiniDial({ score }) {
   );
 }
 
-function WasteFigure({ value, money }) {
-  const shown = useCountUp(value);
+// ---------------------------------------------------------------- time helpers
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+function ago(iso, now = Date.now()) {
+  if (!iso) return null;
+  const mins = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins} minutes ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return plural(hours, 'hour', 'hours') + ' ago';
+  const days = Math.round(hours / 24);
+  if (days === 1) return 'yesterday';
+  return `${days} days ago`;
+}
+function whenChecked(iso, now = Date.now()) {
+  if (!iso) return null;
+  const days = (now - Date.parse(iso)) / 86_400_000;
+  if (days < 1) return 'today';
+  if (days < 2) return 'yesterday';
+  const d = new Date(iso);
+  if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+const nextCheck = (days) => (days === 0 ? 'Next check today.' : days === 1 ? 'Next check tomorrow.' : `Next check in ${days} days.`);
+
+// ---------------------------------------------------------------- money strip
+// Three tiles (richer-platform spec §2.2): spent, going to waste, recovered.
+// Below a plan the third tile is the projection with the "if approved" chip.
+// A tile is left out only when its data has never existed; never a blank.
+function MoneyStrip({ overview, access, money }) {
+  const tiles = [];
+  const spend = overview.spend;
+  if (spend) {
+    tiles.push({
+      key: 'spent', label: 'Spent this month', value: money(spend.month_usd),
+      sub: spend.month_budget_usd ? `of ${money(spend.month_budget_usd)}${spend.pace_line ? ` · ${spend.pace_line}` : ''}` : spend.pace_line,
+    });
+  }
+  if (overview.waste_monthly_usd != null) {
+    tiles.push({ key: 'waste', label: 'Going to waste', value: money(overview.waste_monthly_usd), per: '/mo', sub: 'from your latest report', tone: overview.waste_monthly_usd > 0 ? 'critical' : null });
+  }
+  const active = access && access.level === 'active';
+  const rec = overview.recovered || { fixes: 0, usd: 0 };
+  if (active) {
+    tiles.push({ key: 'recovered', label: 'Recovered since you joined', value: money(rec.usd), sub: rec.fixes > 0 ? plural(rec.fixes, 'fix applied', 'fixes applied') : 'first receipt lands 48 hours after your first fix', tone: rec.usd > 0 ? 'success' : null });
+  } else if (access && access.pending_count > 0) {
+    tiles.push({
+      key: 'would', label: 'Would recover', chip: true,
+      value: access.pending_value_usd > 0 ? `about ${money(access.pending_value_usd)}` : plural(access.pending_count, 'fix drafted', 'fixes drafted'),
+      per: access.pending_value_usd > 0 ? '/mo' : '',
+      sub: plural(access.pending_count, 'fix waiting for your yes', 'fixes waiting for your yes'),
+    });
+  }
+  if (!tiles.length) return null;
+  const cols = tiles.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : tiles.length === 2 ? 'grid-cols-2' : 'grid-cols-1';
   return (
-    <div className="mt-1 text-h3">
-      {money ? money(shown) : `$${shown.toLocaleString()}`}<span className="text-small text-neutral-900">/mo</span>
+    <div className={`mt-3 grid gap-3 ${cols}`} data-testid="money-strip">
+      {tiles.map((t) => (
+        <Card key={t.key} className="p-4">
+          <div className="flex items-center justify-between gap-2">
+            <MonoLabel>{t.label}</MonoLabel>
+            {t.chip && <Chip />}
+          </div>
+          <div className={`mt-1 text-h3 ${t.tone === 'critical' ? 'text-critical' : t.tone === 'success' ? 'text-success' : ''}`}>
+            {t.value}{t.per ? <span className="text-small text-neutral-900">{t.per}</span> : null}
+          </div>
+          {t.sub && <div className="mt-0.5 text-tiny text-neutral-900">{t.sub}</div>}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- this week
+// One card, the weekly story (spec §2.3): last check, what was applied and
+// how it is doing, next check. Tapping opens History.
+function ThisWeek({ week, access }) {
+  if (!week) return null;
+  const active = access && access.level === 'active';
+  let line;
+  if (!week.last_check_at) {
+    line = 'Your first check is running now. Each week\'s story lands here: what we found, what was fixed, and whether it held.';
+  } else {
+    const head = `Checked ${whenChecked(week.last_check_at)}${week.findings != null ? `, ${plural(week.findings, 'finding', 'findings')}` : ''}.`;
+    let middle;
+    if (active) {
+      if (week.applied > 0) {
+        const parts = [];
+        if (week.verified) parts.push(`${week.verified} verified working`);
+        if (week.watching) parts.push(`${week.watching} still being watched`);
+        if (week.reverted) parts.push(`${week.reverted} put back, we told you`);
+        middle = `${plural(week.applied, 'fix applied', 'fixes applied')}${parts.length ? `, ${parts.join(', ')}` : ''}.`;
+      } else {
+        middle = 'No fixes applied this week.';
+      }
+    } else {
+      middle = access && access.pending_count > 0
+        ? `${plural(access.pending_count, 'fix drafted', 'fixes drafted')}, waiting for your yes.`
+        : 'Nothing waiting for your yes right now.';
+    }
+    line = `${head} ${middle} ${nextCheck(week.next_check_days)}`;
+  }
+  return (
+    <Link to="/app/ledger" className="block">
+      <Card className="lift mt-3 flex items-center justify-between gap-3 p-5">
+        <div>
+          <MonoLabel>This week</MonoLabel>
+          <p className="mt-1 text-body">{line}</p>
+        </div>
+        <ArrowRight size={16} className="shrink-0 text-neutral-900" aria-hidden />
+      </Card>
+    </Link>
+  );
+}
+
+// ---------------------------------------------------------------- your accounts
+// Three compact rows (spec §2.6): status dot, name or id, last read time.
+// Each row opens the matching Connected data tab; reconnect appears inline.
+const DOT = { ok: 'bg-success', reconnect: 'bg-warning', missing: 'bg-neutral-800' };
+function Accounts({ accounts }) {
+  if (!accounts || !accounts.length) return null;
+  return (
+    <div className="mt-8">
+      <h2 className="text-h4">Your accounts</h2>
+      <Card className="mt-3 divide-y divide-neutral-200">
+        {accounts.map((a) => (
+          <div key={a.kind} className="flex items-center gap-3 p-4">
+            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${DOT[a.status] || DOT.missing}`} />
+            <div className="min-w-0 flex-1">
+              <MonoLabel>{a.label}</MonoLabel>
+              <div className="truncate text-body">
+                {a.name ? <Link to={a.href} className="underline-offset-2 hover:underline">{a.name}</Link> : <span className="text-neutral-900">Not matched to your site yet</span>}
+              </div>
+            </div>
+            <div className="shrink-0 text-right text-tiny text-neutral-900">
+              {a.status === 'reconnect' && <a href="/auth/google/start?step=discovery" className="text-warning underline underline-offset-2">Reconnect</a>}
+              {a.status === 'ok' && (a.read_at ? `read ${ago(a.read_at)}` : 'not read yet')}
+              {a.status === 'missing' && ''}
+            </div>
+          </div>
+        ))}
+      </Card>
     </div>
   );
 }
@@ -83,14 +219,18 @@ function NextStep({ access, pending, latest, money, goUnlock, openSheet }) {
 
 export default function Home() {
   const [data, setData] = useState(null);
+  const [overview, setOverview] = useState(null);
   const [error, setError] = useState(null);
   const { access, goUnlock, openSheet, money: accessMoney, version } = useAccess();
   useEffect(() => { api('/api/app/home').then(setData).catch((e) => setError(e.message)); }, [version]);
+  // The overview rides separately so an older server (or a hiccup) never
+  // takes the whole screen down: the new sections simply wait.
+  useEffect(() => { api('/api/app/overview').then((d) => setOverview(d.overview || null)).catch(() => setOverview(null)); }, [version]);
 
   if (error) return <div className="mx-auto max-w-m2 px-5 pt-14"><ErrorNote message={error} /></div>;
   if (!data) return <Spinner label="Loading your account" />;
 
-  const { health, pending, cumulative, reports, streak, plan, spend } = data;
+  const { health, pending, reports, streak, plan } = data;
   const code = data.currency || 'USD';
   const money = (n) => (code === 'USD' ? `$${Math.round(n).toLocaleString()}` : `${code} ${Math.round(n).toLocaleString()}`);
   const latest = reports && reports[0];
@@ -147,30 +287,8 @@ export default function Home() {
         </Card>
       )}
 
-      {cumulative && (cumulative.fixes > 0 || cumulative.waste_removed_usd > 0) && (
-        <div className={`mt-3 grid gap-3 ${spend ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
-          <Card className="p-4">
-            <MonoLabel>Fixes applied</MonoLabel>
-            <div className="mt-1 text-h3">{cumulative.fixes}</div>
-          </Card>
-          <Card className="p-4">
-            <MonoLabel>Waste removed</MonoLabel>
-            <WasteFigure value={cumulative.waste_removed_usd} money={money} />
-          </Card>
-          {spend && (
-            <Card className="col-span-2 p-4 sm:col-span-1">
-              <MonoLabel>Spent this month</MonoLabel>
-              <div className="mt-1 text-h3">
-                {money(spend.month_usd)}
-                {spend.month_budget_usd ? (
-                  <span className="text-small text-neutral-900"> of {money(spend.month_budget_usd)}</span>
-                ) : null}
-              </div>
-              {spend.pace_line && <div className="mt-0.5 text-tiny text-neutral-900">{spend.pace_line}</div>}
-            </Card>
-          )}
-        </div>
-      )}
+      {overview && <MoneyStrip overview={overview} access={access} money={accessMoney} />}
+      {overview && <ThisWeek week={overview.this_week} access={access} />}
 
       {plan && plan.tier && (
         <div className="mt-3 flex items-center justify-between rounded border border-neutral-300 bg-neutral-50 px-4 py-2.5 text-small text-neutral-900">
@@ -204,6 +322,8 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {overview && <Accounts accounts={overview.accounts} />}
     </div>
   );
 }

@@ -313,6 +313,19 @@ export function Button({ children, onClick, href, variant = 'primary', className
 
 /* --------------------------------------------------------------------- Card
    Never flat 1px borders: an inset ring over a subtle vertical gradient. */
+// The projection chip (richer-platform spec §7): the two words that mark a
+// figure as "what the drafted fixes would do", used the same way everywhere
+// a result appears before the customer has a plan.
+export function Chip({ children = 'if approved', tone = 'info', className }) {
+  const d = PILL_DOT[tone] || PILL_DOT.info;
+  return (
+    <span className={clsx('inline-flex items-center gap-1.5 rounded-full bg-(--ui-well) px-2 py-0.5 font-mono text-tiny uppercase tracking-[0.08em] text-neutral-900 ring-1 ring-inset ring-(--ui-ring)', className)}>
+      <span aria-hidden className={clsx('h-1.5 w-1.5 rounded-full', d.bg)} />
+      {children}
+    </span>
+  );
+}
+
 export function Card({ children, className, accent, style }) {
   return (
     <div

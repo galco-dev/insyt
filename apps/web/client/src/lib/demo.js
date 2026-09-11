@@ -187,6 +187,47 @@ function demoReport(s, level, id) {
   };
 }
 
+// Home overview for the sample tenant at every gate level (richer-platform
+// spec §8): a 28-day series, two watches, the three accounts, one alert.
+function demoOverview(s, level) {
+  const now = Date.now();
+  const days = [];
+  for (let i = 27; i >= 0; i -= 1) {
+    const d = new Date(now - i * 86_400_000);
+    const dow = d.getUTCDay();
+    const base = dow === 5 || dow === 6 ? 34 : 58;
+    const wobble = ((i * 7) % 11) - 5;
+    days.push({ date: d.toISOString().slice(0, 10), spend_usd: base + wobble, conversions: dow === 0 ? 1 : 2 + ((i * 3) % 3) });
+  }
+  const sunday = (weeksAgo) => { const d = new Date(now); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 7 * weeksAgo) || 7)); d.setUTCHours(3, 0, 0, 0); return d.toISOString(); };
+  const lastCheck = sunday(0);
+  const active = level === 'active';
+  const appliedFixes = s.ledger.filter((e) => /applied/.test(e.event)).length;
+  const nextDays = (7 - new Date(now + 4 * 3600_000).getUTCDay()) % 7 || 0;
+  return {
+    spend: { month_usd: 1240, month_budget_usd: 1950, pace_line: 'On pace - 64% spent, 68% of the month gone' },
+    waste_monthly_usd: 1240,
+    recovered: active ? { fixes: s.cumulative.fixes, usd: s.cumulative.waste_removed_usd } : { fixes: 0, usd: 0 },
+    this_week: {
+      last_check_at: lastCheck, last_check_type: 'weekly', findings: 7, next_check_days: nextDays,
+      applied: active ? Math.max(3, appliedFixes) : 0, verified: active ? 2 : 0, watching: active ? Math.max(1, appliedFixes - 2) : 0, reverted: 0,
+    },
+    accounts: [
+      { kind: 'ads_account', label: 'Google Ads', href: '/app/connected', name: 'Glow Studio - Ads', external_id: '642-459-1230', status: 'ok', read_at: lastCheck },
+      { kind: 'ga4_property', label: 'Analytics', href: '/app/connected/analytics', name: 'Glow Studio - Analytics', external_id: '3418867', status: 'ok', read_at: lastCheck },
+      { kind: 'gtm_container', label: 'Tag Manager', href: '/app/connected/tag-manager', name: 'glowstudio.ae', external_id: 'GTM-K2P9QX', status: 'ok', read_at: lastCheck },
+    ],
+    alerts: [
+      { id: 'al-1', severity: 'warning', kind: 'spend_spike', title: 'Yesterday cost 2.4x a normal day', at: new Date(now - 26 * 3600_000).toISOString(), acked: false },
+    ],
+    performance: {
+      days,
+      checks: [sunday(0), sunday(1), sunday(2), sunday(3)],
+      fixes: active ? [{ at: sunday(1), title: 'Excluded 14 searches that never book' }, { at: sunday(2), title: 'Moved budget to the campaign that books' }] : [],
+    },
+  };
+}
+
 function customerDemo(path, method, body) {
   const s = cstate();
   const p = path.split('?')[0];
@@ -206,6 +247,7 @@ function customerDemo(path, method, body) {
         access,
       };
     }
+    if (p === '/api/app/overview') return { overview: demoOverview(s, access.level), access };
     if (p === '/api/app/approvals') return { pending: gatedPending(s, access.level), access };
     if (p === '/api/app/ledger') return { entries: access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event)), pending: gatedPending(s, access.level), access };
     if (p === '/api/app/settings') {

@@ -135,6 +135,65 @@ test('dashStore.spendPosition: explicit target wins; no snapshots → null (card
   assert.strictEqual(await dark.spendPosition('t1'), null);
 });
 
+test('dashStore.overview: money strip, the week from changes + watches, three accounts, one round trip', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({
+    spend_daily: [{ date: '2026-09-01', spend_usd: '40', conversions: '2' }, { date: '2026-09-08', spend_usd: '60', conversions: '1' }],
+    account_targets: [],
+    campaigns: [{ budget_daily_usd: '10' }],
+    reports: [{ id: 'rep1', created_at: '2026-09-06T03:00:00Z', summary: { waste_monthly_usd: 430.4, counts: { critical: 1, warning: 4, info: 2 } }, findings_snapshot: [] }],
+    ledger_cumulative: [{ tenant_id: 't1', fixes_applied: 6, waste_removed_usd: '730.2' }],
+    changes: [
+      { id: 'c1', changeset_id: 'cs1', applied_at: '2026-09-07T10:00:00Z' },
+      { id: 'c2', changeset_id: 'cs1', applied_at: '2026-09-07T10:00:00Z' },
+      { id: 'c3', changeset_id: 'cs2', applied_at: '2026-09-09T10:00:00Z' },
+    ],
+    watches: [{ target_id: 'cs1', status: 'resolved' }, { target_id: 'cs2', status: 'active' }],
+    runs: [{ id: 'r2', type: 'weekly', status: 'complete', finished_at: '2026-09-06T03:10:00Z' }, { id: 'r1', type: 'signup_audit', status: 'degraded', finished_at: '2026-08-30T03:10:00Z' }],
+    assets: [{ kind: 'ads_account', external_id: '6424596144', display_name: 'JobPeak' }, { kind: 'gtm_container', external_id: 'GTM-KR92FJZS', display_name: null }],
+    users: [{ id: 'u1' }],
+    google_connections: [{ status: 'valid' }],
+    alerts: [{ id: 'a1', severity: 'warning', kind: 'spend_spike', title: 'Yesterday cost 2.4x a normal day', created_at: '2026-09-09T06:00:00Z', acked_at: '2026-09-09T07:00:00Z' }, { id: 'a2', severity: 'critical', kind: 'tag_down', title: 'Tracking stopped', created_at: '2026-09-08T06:00:00Z', acked_at: null }],
+    ledger: [{ summary_text: 'Excluded 14 searches', created_at: '2026-09-07T10:00:00Z' }],
+  });
+  const s = dashStore(mkDb(f));
+  const o = await s.overview('t1', new Date('2026-09-10T12:00:00Z')); // a Thursday: 3 days to Sunday
+
+  assert.strictEqual(o.spend.month_usd, 100);
+  assert.strictEqual(o.waste_monthly_usd, 430);
+  assert.deepStrictEqual(o.recovered, { fixes: 6, usd: 730 });
+  assert.deepStrictEqual(o.this_week, {
+    last_check_at: '2026-09-06T03:10:00Z', last_check_type: 'weekly', findings: 7, next_check_days: 3,
+    applied: 3, verified: 2, watching: 1, reverted: 0,
+  });
+  assert.deepStrictEqual(o.accounts.map((a) => [a.kind, a.status, a.name, a.read_at]), [
+    ['ads_account', 'ok', 'JobPeak', '2026-09-06T03:10:00Z'],
+    ['ga4_property', 'missing', null, null],
+    ['gtm_container', 'ok', 'GTM-KR92FJZS', '2026-09-06T03:10:00Z'],
+  ]);
+  assert.deepStrictEqual(o.alerts.map((a) => a.id), ['a2', 'a1'], 'unacknowledged alerts first');
+  assert.strictEqual(o.performance.days.length, 2);
+  assert.deepStrictEqual(o.performance.fixes, [{ at: '2026-09-07T10:00:00Z', title: 'Excluded 14 searches' }]);
+  // Every query is tenant-scoped and single-table: no `in.(select` anywhere.
+  for (const c of f.calls) assert.ok(!/in\.\(select/.test(c.url), c.url);
+  const watchCall = f.calls.find((c) => /watches/.test(c.url));
+  assert.match(watchCall.url, /target_id=in\.\(cs1,cs2\)/);
+});
+
+test('dashStore.overview: brand-new tenant (no report, no run, no spend) renders honest empties', async () => {
+  const { dashStore } = require('../src/stores');
+  const s = dashStore(mkDb(routedFetch({ users: [{ id: 'u1' }], google_connections: [{ status: 'expired' }], assets: [{ kind: 'gtm_container', external_id: 'GTM-1', display_name: null }] })));
+  const o = await s.overview('t1', new Date('2026-09-13T12:00:00Z')); // Sunday
+  assert.strictEqual(o.spend, null);
+  assert.strictEqual(o.waste_monthly_usd, null);
+  assert.deepStrictEqual(o.recovered, { fixes: 0, usd: 0 });
+  assert.strictEqual(o.this_week.last_check_at, null);
+  assert.strictEqual(o.this_week.findings, null);
+  assert.strictEqual(o.this_week.next_check_days, 0);
+  assert.strictEqual(o.accounts.find((a) => a.kind === 'gtm_container').status, 'reconnect');
+  assert.deepStrictEqual(o.alerts, []);
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

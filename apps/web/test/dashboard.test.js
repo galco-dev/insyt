@@ -67,6 +67,27 @@ test('dashboard: unauthenticated /app redirects to landing; session cookie unloc
   });
 });
 
+test('api: /api/app/overview rides the session, carries access, and is null on a store without it', async () => {
+  const ds = dashStore();
+  ds.access = async () => ({ level: 'unlocked', pending_count: 2, pending_value_usd: 340 });
+  ds.overview = async (t, now) => ({ tenant: t, spend: null, this_week: { next_check_days: now instanceof Date ? 3 : -1 }, accounts: [] });
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const anon = await fetch(`${base}/api/app/overview`);
+    assert.strictEqual(anon.status, 401);
+    const r = await fetch(`${base}/api/app/overview`, { headers: { cookie: authedCookie() } });
+    assert.strictEqual(r.status, 200);
+    const body = await r.json();
+    assert.strictEqual(body.overview.tenant, 'tn1');
+    assert.strictEqual(body.overview.this_week.next_check_days, 3, 'the server clock is passed as a Date');
+    assert.strictEqual(body.access.level, 'unlocked');
+  });
+  const older = dashStore();
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: older, sessionSecret: SECRET }, async (base) => {
+    const body = await (await fetch(`${base}/api/app/overview`, { headers: { cookie: authedCookie() } })).json();
+    assert.strictEqual(body.overview, null);
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;

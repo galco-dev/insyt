@@ -313,6 +313,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             ]);
             return json(res, 200, { health, pending, cumulative, reports, streak, plan, spend, currency, access: await accessFor(dashStore, t) });
           }
+          // Home overview (richer-platform spec §2/§8): money strip, the week's
+          // story, the three accounts, alerts and the 28-day series in one trip.
+          if (sub === '/overview') return json(res, 200, { overview: dashStore.overview ? await dashStore.overview(t, new Date(now())) : null, access: await accessFor(dashStore, t) });
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
           if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
           if (sub === '/reports') return json(res, 200, { reports: await dashStore.reports(t) });

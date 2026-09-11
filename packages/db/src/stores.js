@@ -354,7 +354,7 @@ function dashStore(db, deps = {}) {
   const tel = createTelemetry({ db });
   const draftsSvc = createDraftService({ db, google: deps.google || null, model: deps.model || null, modelId: deps.modelId || null });
   const plainDraft = (d) => ({ id: d.id, status: d.status, template: d.template, plain: renderPlain(d.spec), gates: d.spec.gates || null, budget_daily_usd: d.spec.budget_daily_usd, name: d.spec.name, ad_groups: d.spec.ad_groups.map((g) => ({ name: g.name, rsa: g.rsa })), created_at: d.created_at });
-  return {
+  const store = {
     // ---- §5 consumer door: "your ad" drafts in the customer register.
     drafts: async (tenantId) => (await db.select('campaign_drafts', `tenant_id=eq.${q(tenantId)}&agency_id=is.null&status=neq.dismissed&select=*&order=created_at.desc&limit=20`).catch(() => [])).map(plainDraft),
     createDraft: async (tenantId, { template, inputs }) => plainDraft(await draftsSvc.create({ tenantId, template, inputs: inputs || {} })),
@@ -410,6 +410,95 @@ function dashStore(db, deps = {}) {
         pace_line: paceLine,
         as_of: days.map((d) => d.date).sort().at(-1),
         budget_source: target && target.monthly_budget_usd != null ? 'target' : (budget ? 'daily_budgets' : null),
+      };
+    },
+    // Home overview (richer-platform spec §2, §8): the money strip, the
+    // week's story, the three accounts, alerts and the 28-day series, in one
+    // round trip. Every query is tenant-scoped and single-table (no PostgREST
+    // subqueries, the 31 Aug settings bug).
+    overview: async (tenantId, now = new Date()) => {
+      const nowMs = now.getTime();
+      const iso = (ms) => new Date(ms).toISOString();
+      const day28 = iso(nowMs - 28 * 86_400_000).slice(0, 10);
+      const ago7 = iso(nowMs - 7 * 86_400_000);
+      const ago28 = iso(nowMs - 28 * 86_400_000);
+      const [days, report, cum, applied, runs, assets, owner, alerts, fixes, spend] = await Promise.all([
+        db.select('spend_daily', `tenant_id=eq.${q(tenantId)}&date=gte.${q(day28)}&select=date,spend_usd,conversions&order=date.asc`).catch(() => []),
+        db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id,created_at,summary,findings_snapshot&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+        db.select('ledger_cumulative', `tenant_id=eq.${q(tenantId)}`, { single: true }).catch(() => null),
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.applied&applied_at=gte.${q(ago7)}&select=id,changeset_id,applied_at`).catch(() => []),
+        db.select('runs', `tenant_id=eq.${q(tenantId)}&status=in.(complete,degraded)&select=id,type,status,finished_at&order=finished_at.desc.nullslast&limit=8`).catch(() => []),
+        db.select('assets', `tenant_id=eq.${q(tenantId)}&linked=eq.true&kind=in.(ads_account,ga4_property,gtm_container)&select=kind,external_id,display_name`).catch(() => []),
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=id&limit=1`, { single: true }).catch(() => null),
+        db.select('alerts', `tenant_id=eq.${q(tenantId)}&created_at=gte.${q(ago7)}&select=id,severity,kind,title,created_at,acked_at&order=created_at.desc&limit=10`).catch(() => []),
+        db.select('ledger', `tenant_id=eq.${q(tenantId)}&event=eq.fix_applied&created_at=gte.${q(ago28)}&select=summary_text,created_at&order=created_at.asc`).catch(() => []),
+        store.spendPosition(tenantId, now).catch(() => null),
+      ]);
+      const changesetIds = [...new Set((applied || []).map((c) => c.changeset_id).filter(Boolean))];
+      const [conn, watches] = await Promise.all([
+        owner ? db.select('google_connections', `user_id=eq.${q(owner.id)}&select=status&limit=1`, { single: true }).catch(() => null) : null,
+        changesetIds.length
+          ? db.select('watches', `tenant_id=eq.${q(tenantId)}&kind=eq.changeset_verify&target_id=in.(${changesetIds.map(q).join(',')})&select=target_id,status`).catch(() => [])
+          : [],
+      ]);
+
+      const summary = (report && report.summary) || {};
+      const counts = summary.counts || null;
+      const findingsCount = counts
+        ? Object.values(counts).reduce((s, n) => s + Number(n || 0), 0)
+        : ((report && report.findings_snapshot) || []).length;
+      const finished = (runs || []).filter((r) => r.finished_at);
+      const lastRun = finished[0] || null;
+      // Weekly checks run in the Sunday window, Gulf time (journeys/scheduling).
+      const localDow = new Date(nowMs + 4 * 3600_000).getUTCDay();
+      const nextCheckDays = localDow === 0 ? 0 : 7 - localDow;
+
+      const watchState = new Map((watches || []).map((w) => [w.target_id, w.status]));
+      const week = { applied: 0, verified: 0, watching: 0, reverted: 0 };
+      for (const c of applied || []) {
+        week.applied += 1;
+        const st = watchState.get(c.changeset_id);
+        if (st === 'resolved') week.verified += 1;
+        else if (st === 'triggered') week.reverted += 1;
+        else week.watching += 1;
+      }
+
+      const LABEL = { ads_account: 'Google Ads', ga4_property: 'Analytics', gtm_container: 'Tag Manager' };
+      const HREF = { ads_account: '/app/connected', ga4_property: '/app/connected/analytics', gtm_container: '/app/connected/tag-manager' };
+      const connOk = !!(conn && conn.status === 'valid');
+      const accounts = ['ads_account', 'ga4_property', 'gtm_container'].map((kind) => {
+        const a = (assets || []).find((x) => x.kind === kind) || null;
+        return {
+          kind,
+          label: LABEL[kind],
+          href: HREF[kind],
+          name: a ? (a.display_name || a.external_id) : null,
+          external_id: a ? a.external_id : null,
+          status: !a ? 'missing' : (connOk ? 'ok' : 'reconnect'),
+          read_at: a && lastRun ? lastRun.finished_at : null,
+        };
+      });
+
+      return {
+        spend: spend || null,
+        waste_monthly_usd: summary.waste_monthly_usd != null ? Math.round(Number(summary.waste_monthly_usd)) : null,
+        recovered: { fixes: Number((cum && cum.fixes_applied) || 0), usd: Math.round(Number((cum && cum.waste_removed_usd) || 0)) },
+        this_week: {
+          last_check_at: lastRun ? lastRun.finished_at : null,
+          last_check_type: lastRun ? lastRun.type : null,
+          findings: report ? findingsCount : null,
+          next_check_days: nextCheckDays,
+          ...week,
+        },
+        accounts,
+        alerts: (alerts || [])
+          .map((a) => ({ id: a.id, severity: a.severity, kind: a.kind, title: a.title, at: a.created_at, acked: !!a.acked_at }))
+          .sort((x, y) => Number(x.acked) - Number(y.acked)),
+        performance: {
+          days: (days || []).map((d) => ({ date: d.date, spend_usd: Number(d.spend_usd || 0), conversions: Number(d.conversions || 0) })),
+          checks: finished.map((r) => r.finished_at),
+          fixes: (fixes || []).map((f) => ({ at: f.created_at, title: f.summary_text })),
+        },
       };
     },
     healthLatest: async (tenantId) => {
@@ -688,6 +777,7 @@ function dashStore(db, deps = {}) {
       return !!row;
     },
   };
+  return store;
 }
 
 // ---------------------------------------------------------------- agency (master §13)
