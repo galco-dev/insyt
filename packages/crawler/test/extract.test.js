@@ -78,6 +78,12 @@ test('findings strip (fix plan move 3): tones, consent is not a fault, no tracki
   assert.match(link.headline, /link page/);
 });
 
+test('findings strip carries pages read (fix plan move 16)', () => {
+  const { findingsStrip } = require('../src/findings-strip');
+  const s = findingsStrip({ status: 'complete', booking_provider: null, pages_crawled: 6, tags_found: { gtm_containers: ['GTM-1'], ga4_ids: ['G-1'], legacy_ua: [] } });
+  assert.strictEqual(s.pages_read, 6);
+});
+
 test('booking provider detection', () => {
   assert.strictEqual(detectBookingProvider('<a href="https://wa.me/9715xxxxxxx">chat</a>'), 'whatsapp');
   assert.strictEqual(detectBookingProvider('<a href="https://www.fresha.com/x">book</a>'), 'fresha');

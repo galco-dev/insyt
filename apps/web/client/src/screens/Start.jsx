@@ -6,6 +6,15 @@ import { api, isDemo } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { MonoLabel, Button, Card, ErrorNote } from '../lib/ui.jsx';
 
+// "checked 12 minutes ago" on the strip (fix plan move 16).
+function agoLine(ms) {
+  const mins = Math.max(0, Math.round((Date.now() - Number(ms)) / 60_000));
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins} minutes ago`;
+  const h = Math.round(mins / 60);
+  return `${h} hour${h === 1 ? '' : 's'} ago`;
+}
+
 const STAGES = [
   'Opening your website…',
   'Reading every page a customer would…',
@@ -32,6 +41,7 @@ export default function Start() {
   const [state, setState] = useState('idle'); // idle | crawling | done | failed
   const [stage, setStage] = useState(0);
   const [strip, setStrip] = useState(null);
+  const [checkedAt, setCheckedAt] = useState(null);
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
   const autoRef = useRef(false);
@@ -58,7 +68,7 @@ export default function Start() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function begin(given, resumeId = null) {
+  async function begin(given, resumeId = null, { force = false } = {}) {
     const target = (typeof given === 'string' ? given : url).trim();
     setError(null);
     if (!target && !resumeId) { setError('Type your website address - like glowstudio.ae'); return; }
@@ -70,14 +80,14 @@ export default function Start() {
       return;
     }
     try {
-      const { id } = resumeId ? { id: resumeId } : await api('/api/crawl', { method: 'POST', body: { url: target } });
+      const { id } = resumeId ? { id: resumeId } : await api('/api/crawl', { method: 'POST', body: { url: target, ...(force ? { force: true } : {}) } });
       const startedAt = Date.now();
       pollRef.current = setInterval(async () => {
         try {
           const c = await api(`/api/crawl/${id}`);
           if (c.status && c.status !== 'running') {
             clearInterval(pollRef.current); clearInterval(stageTimer);
-            if (c.strip) { setStrip(c.strip); setState('done'); } else { setState('failed'); }
+            if (c.strip) { setStrip(c.strip); setCheckedAt(c.checked_at || null); setState('done'); } else { setState('failed'); }
           } else if (Date.now() - startedAt > 4 * 60_000) {
             // Never spin forever: after four minutes, say so and offer a retry.
             clearInterval(pollRef.current); clearInterval(stageTimer);
@@ -188,6 +198,14 @@ export default function Start() {
           <Card className="p-6">
             <MonoLabel>What we can see from the outside</MonoLabel>
             <h2 className="mt-2 text-h5">{strip.headline}</h2>
+            {(strip.pages_read || checkedAt) && (
+              <p className="mt-1 text-tiny text-neutral-900">
+                {strip.pages_read ? `We read ${strip.pages_read} of your pages` : ''}{strip.pages_read && checkedAt ? ' · ' : ''}{checkedAt ? `checked ${agoLine(checkedAt)}` : ''}
+                {checkedAt && Date.now() - Number(checkedAt) > 5 * 60_000 && !isDemo() && (
+                  <> · Fixed something? <button type="button" onClick={() => begin(url || site, null, { force: true })} className="underline underline-offset-2">Check again</button></>
+                )}
+              </p>
+            )}
             <ul className="mt-4 flex flex-col gap-2.5">
               {strip.items.map((item, i) => {
                 const tone = strip.tones && strip.tones[i] ? strip.tones[i] : (/no |outdated|double|more than one|couldn't|invisible/i.test(item) ? 'issue' : 'ok');

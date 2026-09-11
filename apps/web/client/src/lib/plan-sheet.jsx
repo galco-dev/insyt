@@ -51,6 +51,7 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
   const [cadence, setCadence] = useState('monthly');
   const [busy, setBusy] = useState(null);
   const [note, setNote] = useState(null);
+  const [payer, setPayer] = useState(null); // null = pay here; '' = asking for an address; 'x@y' = send there
   const [state, setState] = useState(sheet && sheet.mode === 'activating' ? 'activating' : 'offer'); // offer | activating | done | slow
   const [doneTitle, setDoneTitle] = useState(null);
   const action = sheet ? sheet.action : null;
@@ -96,7 +97,8 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
     track('gate.checkout_start', { tier, cadence, credit: !!access.credit_applies });
     const next = path.startsWith('/app') ? path : '/app/approvals';
     try {
-      const r = await api('/api/checkout/subscribe', { method: 'POST', body: { tier, cadence, next, change_id: action && action.kind === 'approve' ? action.id : null } });
+      const r = await api('/api/checkout/subscribe', { method: 'POST', body: { tier, cadence, next, change_id: action && action.kind === 'approve' ? action.id : null, ...(payer && payer.includes('@') ? { payer_email: payer } : {}) } });
+      if (r.emailed) { setNote(`Sent to ${r.emailed}. The plan starts the moment they pay.`); setBusy(null); setPayer(null); return; }
       if (r.url) {
         // Remembered for the return trip (spec §6); the webhook covers approvals on its own.
         try { sessionStorage.setItem('insyt_pending_action', JSON.stringify(action ? { kind: action.kind, id: action.id, title: action.title } : null)); } catch { /* ignore */ }
@@ -215,7 +217,20 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
           {access.credit_applies && <p className="mt-3 text-small text-neutral-900">Your $20 audit is taken off the first month, whichever plan you pick.</p>}
         </div>
       )}
-      {note && <p className="mt-3 text-small text-critical">{note}</p>}
+      {note && <p className={`mt-3 text-small ${/^Sent to/.test(note) ? 'text-success' : 'text-critical'}`}>{note}</p>}
+      {!isDemo() && (
+        <div className="mt-3 text-tiny text-neutral-900">
+          {payer === null
+            ? <button type="button" onClick={() => setPayer('')} className="underline underline-offset-2">Someone else pays? Email this to them</button>
+            : (
+              <span className="flex flex-wrap items-center gap-2">
+                <input value={payer} onChange={(e) => setPayer(e.target.value)} type="email" inputMode="email" autoCapitalize="none" placeholder="their email" aria-label="Email of whoever pays" className="rounded border border-neutral-500 bg-(--ui-well) px-2 py-1 text-small outline-none focus:border-(--ui-focus)" />
+                <span>then tap the plan above and it goes to them instead of opening here.</span>
+                <button type="button" onClick={() => setPayer(null)} className="underline underline-offset-2">Cancel</button>
+              </span>
+            )}
+        </div>
+      )}
       <p className="mt-5 text-tiny text-neutral-900">
         Cancel any time from Settings. Your accounts stay exactly as they are. {inline ? null : <Link to="/app/plan" className="underline underline-offset-2">Plan details</Link>}
       </p>

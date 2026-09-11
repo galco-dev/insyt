@@ -82,7 +82,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
     res.end(fs.readFileSync(file));
     return true;
   }
-  async function handleCrawlRequest(res, urlRaw) {
+  async function handleCrawlRequest(res, urlRaw, { force = false, ownSite = false } = {}) {
     let target;
     try { target = new URL(urlRaw.startsWith('http') ? urlRaw : `https://${urlRaw}`); } catch {
       return json(res, 400, { error: 'That does not look like a website address.' });
@@ -95,12 +95,17 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
     // (same id, instant result) — never a refusal. A check still running is
     // joined. Only completed checks count against the per-domain limits;
     // failed ones never lock a visitor out of retrying.
+    // Check again after a fix (fix plan move 16): a forced check skips the
+    // hour's reuse once the last one is five minutes old; a signed-in owner's
+    // own site is never rate-limited.
     if (store.recentCrawlForDomain) {
       const recent = await store.recentCrawlForDomain(domain, now() - 3_600_000);
-      if (recent && (recent.status === 'complete' || recent.status === 'running')) return json(res, 202, { id: recent.id, reused: true });
+      const fresh = recent && recent.created_at && now() - Number(recent.created_at) < 5 * 60_000;
+      if (recent && recent.status === 'running') return json(res, 202, { id: recent.id, reused: true });
+      if (recent && recent.status === 'complete' && (!force || fresh)) return json(res, 202, { id: recent.id, reused: true, checked_at: recent.created_at || null });
     }
-    if (await store.crawlCountForDomain(domain, now() - 3_600_000) >= LIMITS.perHour
-      || await store.crawlCountForDomain(domain, now() - 86_400_000) >= LIMITS.perDay) {
+    if (!ownSite && !force && (await store.crawlCountForDomain(domain, now() - 3_600_000) >= LIMITS.perHour
+      || await store.crawlCountForDomain(domain, now() - 86_400_000) >= LIMITS.perDay)) {
       return json(res, 429, { error: 'This site was checked very recently — try again in a little while.' });
     }
     const id = await store.createCrawl({ url: target.href, domain, status: 'running', created_at: now() });
@@ -170,15 +175,24 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
         if (!parsed.url) return json(res, 400, { error: 'url required' });
         const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
-        if (!crawlAllowed(ip)) return json(res, 429, { error: 'That is a lot of checks in one hour - try again a little later.' });
-        return handleCrawlRequest(res, parsed.url);
+        const session = readSession(req.headers.cookie, sessionSecret, now());
+        let ownSite = false;
+        if (session && dashStore && dashStore.websiteOf) {
+          try {
+            const site = await dashStore.websiteOf(session.tenantId);
+            const host = new URL(parsed.url.startsWith('http') ? parsed.url : `https://${parsed.url}`).hostname.replace(/^www\./, '');
+            ownSite = !!site && site.replace(/^www\./, '') === host;
+          } catch { ownSite = false; }
+        }
+        if (!ownSite && !crawlAllowed(ip)) return json(res, 429, { error: 'That is a lot of checks in one hour - try again a little later.' });
+        return handleCrawlRequest(res, parsed.url, { force: !!parsed.force, ownSite });
       }
 
       if (req.method === 'GET' && path.startsWith('/api/crawl/')) {
         const c = await store.getCrawl(path.split('/')[3]);
         if (!c) return json(res, 404, { error: 'unknown crawl' });
         // A failed crawl has a placeholder strip; the funnel must show its failure state, not a result card.
-        return json(res, 200, { status: c.status, strip: c.status === 'complete' ? (c.strip || null) : null });
+        return json(res, 200, { status: c.status, strip: c.status === 'complete' ? (c.strip || null) : null, checked_at: c.created_at || null });
       }
 
       if (req.method === 'GET' && path.startsWith('/check/')) {
@@ -237,6 +251,12 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               tenantId: session.tenantId, tier: parsed.tier, cadence: parsed.cadence || 'monthly',
               next: safeNext(parsed.next), changeId: parsed.change_id ? String(parsed.change_id).slice(0, 64) : null,
             });
+            // Email this to whoever pays (fix plan move 16): the same link, sent.
+            const payer = String(parsed.payer_email || '').trim().toLowerCase();
+            if (payer && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payer) && dashStore && dashStore.emailPayLink) {
+              await dashStore.emailPayLink(session.tenantId, { to: payer, url: r.url, tier: parsed.tier }).catch(() => {});
+              return json(res, 200, { url: null, emailed: payer });
+            }
             return json(res, 200, { url: r.url });
           }
           if (path === '/api/checkout/portal') {

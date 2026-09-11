@@ -15,7 +15,7 @@ function mkStore() {
     },
     recentCrawlForDomain(domain, since) {
       const hit = [...crawls.entries()].filter(([, c]) => c.domain === domain && c.created_at >= since && c.status !== 'failed').pop();
-      return hit ? { id: hit[0], status: hit[1].status } : null;
+      return hit ? { id: hit[0], status: hit[1].status, created_at: hit[1].created_at } : null;
     },
     getReportHtml(id) { return id === 'rep1' ? { html_web: '<!doctype html><p>report body</p>' } : null; },
     magicLinks: {
@@ -97,6 +97,22 @@ test('session (fix plan move 12): a viewer role rides in the cookie and reads ba
   const owner = issueSession({ tenantId: 'tn1', secret: 's', now });
   assert.deepStrictEqual(readSession(`insyt_s=${owner}`, 's', now + 10), { tenantId: 'tn1', role: 'owner' });
   assert.strictEqual(readSession(`insyt_s=${viewer}x`, 's', now + 10), null, 'tampered role is rejected');
+});
+
+test('crawl (fix plan move 16): a forced check skips the hour reuse once it is five minutes old; the answer says when it was checked', async () => {
+  const store = mkStore();
+  const t0 = Date.now() - 10 * 60_000;
+  const id = await store.createCrawl({ url: 'https://glowstudio.ae/', domain: 'glowstudio.ae', status: 'running', created_at: t0 });
+  await store.patchCrawl(id, { status: 'complete', strip: { headline: 'ok', items: [], tones: [] } });
+  await withApp({ store, crawler: okCrawler, now: () => Date.now() }, async (base) => {
+    const reused = await (await fetch(`${base}/api/crawl`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: 'glowstudio.ae' }) })).json();
+    assert.strictEqual(reused.reused, true);
+    assert.strictEqual(reused.checked_at, t0);
+    const status = await (await fetch(`${base}/api/crawl/${reused.id}`)).json();
+    assert.strictEqual(status.checked_at, t0);
+    const forced = await (await fetch(`${base}/api/crawl`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: 'glowstudio.ae', force: true }) })).json();
+    assert.ok(forced.id && forced.id !== reused.id && !forced.reused, 'a fresh check runs');
+  });
 });
 
 test('landing + health', async () => {

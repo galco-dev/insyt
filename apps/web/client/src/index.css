@@ -326,6 +326,13 @@
     }
   }
 
+  /* A month page for the accountant (fix plan move 16): History, printed. */
+  @media print {
+    header, nav, button, .print\:hidden { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .page-fade { padding-bottom: 0 !important; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .rise, .page-fade { animation: none; opacity: 1; }
     .shimmer::after, .orbit { animation: none; }

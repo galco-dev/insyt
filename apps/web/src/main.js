@@ -53,7 +53,7 @@ const store = {
     const hits = [...crawlCache.entries()].filter(([, c]) => c.domain === domain && c.created_at >= sinceMs && c.status !== 'failed');
     if (!hits.length) return null;
     const [id, c] = hits.sort((a, b) => b[1].created_at - a[1].created_at)[0];
-    return { id, status: c.status };
+    return { id, status: c.status, created_at: c.created_at };
   },
   getReportHtml: (id) => supa.getReportHtml(id),
   magicLinks: supa.magicLinks,

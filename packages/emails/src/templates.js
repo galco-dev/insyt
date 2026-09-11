@@ -62,6 +62,14 @@ const TEMPLATES = [
     ],
     (v) => ({ label: 'Add them', url: v.approve_url || 'https://app.tryinsyt.com/app/settings' })),
 
+  T('pay_link', 'transactional',
+    (v) => `${v.from_name || 'Someone'} asked you to start the Insyt plan for ${v.business || 'their business'}`,
+    (v) => [
+      `Insyt checks and fixes the Google Ads for ${v.business || 'the business'} every week, with every change approved first. ${v.from_name || 'They'} chose the ${v.tier || 'Core'} plan at ${v.price || 'the listed price'} a month.`,
+      'This link opens the secure card page. It is only for starting the plan; nothing else is shared.',
+    ],
+    (v) => ({ label: 'Pay and start the plan', url: v.pay_url || 'https://app.tryinsyt.com/app/plan' })),
+
   T('unlock_receipt', 'transactional',
     () => 'Your full report is unlocked',
     (v) => [

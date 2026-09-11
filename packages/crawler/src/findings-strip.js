@@ -52,7 +52,7 @@ function findingsStrip(crawl) {
     ? `${issues} thing${issues === 1 ? '' : 's'} worth fixing, visible from the outside`
     : 'Your tracking looks healthy from the outside - the full check looks inside';
 
-  return { headline, items, tones, visible_issue_count: issues, no_tracking: !hasGtm && !hasGa4 };
+  return { headline, items, tones, visible_issue_count: issues, no_tracking: !hasGtm && !hasGa4, pages_read: crawl.pages_crawled || null };
 }
 
 module.exports = { findingsStrip };

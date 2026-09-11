@@ -108,7 +108,7 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
      * changeId rides in metadata so the webhook can approve the tapped fix.
      */
     subscriptionCheckout: async ({ tenantId, tier, band, cadence = 'monthly', customerEmail, customerId, creditUsd = 0, changeId = null, successUrl, cancelUrl }) => {
-      const session = await call('/checkout/sessions', {
+      const base = {
         mode: 'subscription',
         line_items: [{ price: await priceIdByKey(`insyt_${tier}_${band}_${cadence}`), quantity: 1 }],
         client_reference_id: tenantId,
@@ -118,7 +118,20 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
         subscription_data: { metadata: { tenant_id: tenantId, tier, band } },
         success_url: successUrl,
         cancel_url: cancelUrl,
-      });
+      };
+      // VAT invoices (fix plan move 16): Stripe Tax and a tax id on the invoice
+      // when the account has it switched on; otherwise the same session without.
+      const withTax = {
+        ...base,
+        automatic_tax: { enabled: true },
+        tax_id_collection: { enabled: true },
+        ...(customerId ? { customer_update: { name: 'auto', address: 'auto' } } : {}),
+      };
+      let session;
+      try { session = await call('/checkout/sessions', withTax); } catch (e) {
+        if (!/tax/i.test(String(e.message))) throw e;
+        session = await call('/checkout/sessions', base);
+      }
       return { id: session.id, url: session.url };
     },
 

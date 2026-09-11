@@ -244,6 +244,23 @@ test('webhook (fix plan move 13): a refunded audit fee relocks; cancelling stamp
   assert.ok(calls.some((c) => c[0] === 'ledger' && /Undo stays free for 30 days/.test(c[1])));
 });
 
+test('subscriptionCheckout (fix plan move 16): asks Stripe for tax and a tax id, and falls back cleanly when Tax is off', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, body: init.body || '' });
+    if (/\/prices/.test(url)) return { ok: true, json: async () => ({ data: [{ id: 'price_1', lookup_key: 'insyt_core_4k_monthly', metadata: { key: 'insyt_core_4k_monthly' } }] }) };
+    if (/checkout\/sessions/.test(url) && /automatic_tax/.test(init.body)) return { ok: false, status: 400, json: async () => ({ error: { message: 'You must enable Stripe Tax before using automatic_tax' } }) };
+    return { ok: true, json: async () => ({ id: 'cs_1', url: 'https://checkout' }) };
+  };
+  const stripe = createStripeCheckout({ secretKey: 'sk', fetchImpl });
+  const r = await stripe.subscriptionCheckout({ tenantId: 't1', tier: 'core', band: '4k', successUrl: 'https://a', cancelUrl: 'https://b' });
+  assert.strictEqual(r.url, 'https://checkout');
+  const sessions = calls.filter((c) => /checkout\/sessions/.test(c.url));
+  assert.strictEqual(sessions.length, 2, 'once with tax, once without');
+  assert.match(sessions[0].body, /tax_id_collection/);
+  assert.ok(!/automatic_tax/.test(sessions[1].body));
+});
+
 test('webhook prefers metadata.tenant_id over customer lookup', async () => {
   const seen = [];
   const store = {

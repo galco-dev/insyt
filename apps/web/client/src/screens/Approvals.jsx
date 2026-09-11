@@ -294,6 +294,7 @@ export default function Approvals() {
   const [busy, setBusy] = useState(null);
   const [open, setOpen] = useState({});
   const [kept, setKept] = useState({}); // change id → Set of kept list items (partial yes)
+  const [openGroups, setOpenGroups] = useState({}); // campaign groups folded on a phone
   const [note, setNote] = useState(null);
   const [assistant, setAssistant] = useState(false);
   const { access, level, gate, goUnlock, money, version } = useAccess();
@@ -347,6 +348,20 @@ export default function Approvals() {
   const viewer = !!(access && access.role === 'viewer');
   const value = access && access.pending_value_usd > 0 ? money(access.pending_value_usd) : null;
   const safe = safeFixes(pending);
+  // Grouped by campaign (spec §4, fix plan move 16): account-wide fixes last;
+  // on a phone every group after the first starts folded.
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 640;
+  const groups = (() => {
+    const by = new Map();
+    for (const p of pending) {
+      const key = p.fence ? p.fence.target : 'account';
+      if (!by.has(key)) by.set(key, { key, label: p.fence ? p.fence.label : 'Account-wide', items: [] });
+      by.get(key).items.push(p);
+    }
+    const list = [...by.values()];
+    return list.sort((a, b) => (a.key === 'account') - (b.key === 'account'));
+  })();
+  const isGroupOpen = (key, index) => (key in openGroups ? openGroups[key] : !(narrow && index > 0));
   async function approveSafe() {
     setBatchBusy(true);
     try { await batch(safe, `${safe.length} safe fixes`); } catch (e) { setError(e.message); }
@@ -384,7 +399,16 @@ export default function Approvals() {
         </div>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
-          {pending.map((p) => {
+          {groups.map((g, gi) => (
+            <div key={g.key}>
+              {groups.length > 1 && (
+                <button type="button" onClick={() => setOpenGroups((o) => ({ ...o, [g.key]: !isGroupOpen(g.key, gi) }))} aria-expanded={isGroupOpen(g.key, gi)} className="mb-2 mt-2 flex w-full items-center justify-between text-left">
+                  <span className="text-h5">{g.label}</span>
+                  <span className="font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">{g.items.length} fix{g.items.length === 1 ? '' : 'es'}{isGroupOpen(g.key, gi) ? '' : ' · show'}</span>
+                </button>
+              )}
+              <div className={`flex flex-col gap-3 ${groups.length > 1 && !isGroupOpen(g.key, gi) ? 'hidden' : ''}`}>
+          {g.items.map((p) => {
             const hasDetail = !locked && !!(p.explanation || p.before_line || p.after_line);
             const isOpen = !!open[p.id];
             return (
@@ -435,6 +459,9 @@ export default function Approvals() {
               </Card>
             );
           })}
+              </div>
+            </div>
+          ))}
           {locked ? (
             <button type="button" onClick={goUnlock} className="mt-2 inline-flex items-center gap-1.5 text-small underline underline-offset-2">
               <Lock size={12} aria-hidden /> Money lines and the exact changes unlock with the full report, $20.

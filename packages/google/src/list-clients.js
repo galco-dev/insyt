@@ -48,7 +48,7 @@ function createListClients({ accessToken, developerToken, loginCustomerId, fetch
           const r = await api(`https://googleads.googleapis.com/${ADS_VERSION}/customers/${cid}/googleAds:search`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ query: 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager, customer.test_account FROM customer' }),
+            body: JSON.stringify({ query: 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager, customer.test_account, customer.status FROM customer' }),
           });
           const c = r.results && r.results[0] && r.results[0].customer;
           const row = {
@@ -57,6 +57,7 @@ function createListClients({ accessToken, developerToken, loginCustomerId, fetch
             currencyCode: (c && c.currencyCode) || null,
             manager: !!(c && c.manager),
             testAccount: !!(c && c.testAccount),
+            status: (c && c.status) ? String(c.status).toLowerCase() : null,
             spend30dUsd: null, domains: [], campaigns: [],
           };
           // Signals for matching and choosing (fix plan move 2): what the

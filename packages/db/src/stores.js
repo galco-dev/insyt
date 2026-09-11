@@ -913,6 +913,19 @@ function dashStore(db, deps = {}) {
       const rows = await db.select('runs', `tenant_id=eq.${q(tenantId)}&select=id,type,status,started_at,finished_at&order=started_at.desc.nullslast&limit=3`).catch(() => []);
       return (rows || []).map((r) => ({ id: r.id, type: r.type, status: r.status, started_at: r.started_at, finished_at: r.finished_at }));
     },
+    emailPayLink: async (tenantId, { to, url, tier }) => {
+      const [owner, tenant, pricing] = await Promise.all([
+        db.select('users', `tenant_id=eq.${q(tenantId)}&role=eq.owner&select=email,name&limit=1`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=business_name,website_url,size_band`, { single: true }).catch(() => null),
+        db.select('pricing_config', 'select=matrix&order=effective_from.desc&limit=1', { single: true }).catch(() => null),
+      ]);
+      const band = (tenant && tenant.size_band) || '4k';
+      const matrix = (pricing && pricing.matrix) || {};
+      const price = matrix[tier] && matrix[tier][band] ? `$${matrix[tier][band]}` : null;
+      await db.insert('emails', [{ tenant_id: tenantId, template_id: 'pay_link', to_email: to, stream: 'transactional', status: 'queued', payload: { from_name: (owner && (owner.name || owner.email)) || 'The owner', business: (tenant && (tenant.business_name || tenant.website_url)) || 'the business', tier: tier ? tier[0].toUpperCase() + tier.slice(1) : 'Core', price, pay_url: url } }], { returning: false });
+      return { ok: true };
+    },
+    websiteOf: async (tenantId) => { const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=website_url`, { single: true }).catch(() => null); return (t && t.website_url) ? String(t.website_url).replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase() : null; },
     // Business card (spec §6): name and website feed the report header; the
     // timezone is what the browser reported at first sign-in.
     setBusiness: async (tenantId, { name, website, timezone } = {}) => {
@@ -947,7 +960,7 @@ function dashStore(db, deps = {}) {
         }
       }
       const isMatched = (x) => x.linked || !!(x.metadata && x.metadata.matched_via);
-      const plain = (x) => ({ id: x.id, kind: x.kind, external_id: x.external_id, display_name: x.display_name, currency: x.currency, linked: x.linked, matched_via: (x.metadata && x.metadata.matched_via) || null, spend_30d_usd: x.metadata && x.metadata.spend_30d_usd != null ? Number(x.metadata.spend_30d_usd) : null, test_account: !!(x.metadata && x.metadata.test_account) });
+      const plain = (x) => ({ id: x.id, kind: x.kind, external_id: x.external_id, display_name: x.display_name, currency: x.currency, linked: x.linked, matched_via: (x.metadata && x.metadata.matched_via) || null, spend_30d_usd: x.metadata && x.metadata.spend_30d_usd != null ? Number(x.metadata.spend_30d_usd) : null, test_account: !!(x.metadata && x.metadata.test_account), suspended: !!(x.metadata && /suspended|canceled|cancelled|closed/i.test(String(x.metadata.account_status || ''))) });
       const onSite = { gtm_container: !!(tags && (tags.gtm_containers || []).length), ga4_property: !!(tags && (tags.ga4_ids || []).length), ads_account: !!(tags && (tags.aw_conversion_ids || []).length) };
       const doors = {};
       for (const kind of ['ads_account', 'ga4_property', 'gtm_container']) {

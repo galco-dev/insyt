@@ -29,6 +29,7 @@ function Row({ door, def, money, chosen, onChoose }) {
           {state === 'matched' && (
             <div className="mt-0.5 text-body font-medium">{door.matched.map(name).join(', ')} <span className="text-small font-normal text-neutral-900">· on your site</span></div>
           )}
+          {state === 'matched' && door.matched.some((a) => a.suspended) && <div className="mt-0.5 text-tiny text-warning">Google has suspended this account. We can read it, not fix it.</div>}
           {state === 'choose' && <div className="mt-0.5 text-body font-medium">{door.candidates.length === 1 ? 'Is this yours?' : `${door.candidates.length} to choose from`}</div>}
           {state === 'unused' && <div className="mt-0.5 text-small text-neutral-900">{def.unused}</div>}
           {state === 'cannot_see' && (
@@ -55,6 +56,7 @@ function Row({ door, def, money, chosen, onChoose }) {
                 <span>
                   <span className="font-medium">{name(a)}</span>
                   {a.test_account && <span className="ml-2 font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">test account</span>}
+                  {a.suspended && <span className="block text-tiny text-warning">Google has suspended this account. We can read it, not fix it.</span>}
                   {a.spend_30d_usd != null && <span className="block text-tiny text-neutral-900">{a.spend_30d_usd > 0 ? `${money(a.spend_30d_usd)} in the last 30 days` : 'nothing spent in the last 30 days'}</span>}
                 </span>
                 <span className={`font-mono text-tiny uppercase tracking-[0.1em] ${on ? 'text-strong' : 'text-neutral-900'}`}>{on ? 'this one' : 'choose'}</span>

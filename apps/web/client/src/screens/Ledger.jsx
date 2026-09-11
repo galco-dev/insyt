@@ -44,10 +44,13 @@ function MonthLine({ entries, receipts, money }) {
   const undone = inMonth.filter((e) => UNDONE.has(e.event)).length;
   const recovered = Math.round(applied.reduce((s, e) => s + Number(e.money_impact_usd || 0), 0));
   return (
-    <p className="mb-4 text-small text-neutral-900">
-      <span className="font-medium text-strong">{now.toLocaleDateString('en-GB', { month: 'long' })}:</span>{' '}
-      {applied.length} fix{applied.length === 1 ? '' : 'es'} applied, {verified} verified, {undone} undone{recovered > 0 ? `, about ${money(recovered)} a month recovered` : ''}.
-    </p>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <p className="text-small text-neutral-900">
+        <span className="font-medium text-strong">{now.toLocaleDateString('en-GB', { month: 'long' })}:</span>{' '}
+        {applied.length} fix{applied.length === 1 ? '' : 'es'} applied, {verified} verified, {undone} undone{recovered > 0 ? `, about ${money(recovered)} a month recovered` : ''}.
+      </p>
+      <button type="button" onClick={() => window.print()} className="print:hidden text-tiny text-neutral-900 underline underline-offset-2">Print this month</button>
+    </div>
   );
 }
 

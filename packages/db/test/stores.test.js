@@ -491,6 +491,25 @@ test('fix plan move 12 and 15: invite a viewer, approve a join, add a business, 
   assert.deepStrictEqual(await ops.mergeTenants('a', 'a'), { ok: false });
 });
 
+test('fix plan move 16: suspended accounts are named, the pay link is emailed, websiteOf is bare', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({
+    assets: [{ id: 'ad1', kind: 'ads_account', external_id: '111', display_name: 'Main', linked: false, metadata: { account_status: 'SUSPENDED', spend_30d_usd: 0 } }],
+    tenants: [{ website_url: 'https://www.glowstudio.ae/', business_name: 'Glow Studio', size_band: '10k' }], crawls: [], runs: [],
+    users: [{ email: 'owner@glow.ae', name: 'Max' }], pricing_config: [{ matrix: { core: { '10k': 179 } } }], emails: [],
+  });
+  const d = dashStore(mkDb(f));
+  const disc = await d.discovery('t1');
+  assert.strictEqual(disc.doors.ads_account.candidates[0].suspended, true);
+  assert.strictEqual(await d.websiteOf('t1'), 'www.glowstudio.ae');
+  await d.emailPayLink('t1', { to: 'finance@glow.ae', url: 'https://checkout.stripe.com/x', tier: 'core' });
+  const email = f.calls.find((c) => c.method === 'POST' && /emails/.test(c.url)).body[0];
+  assert.strictEqual(email.template_id, 'pay_link');
+  assert.deepStrictEqual([email.to_email, email.payload.price, email.payload.tier, email.payload.pay_url], ['finance@glow.ae', '$179', 'Core', 'https://checkout.stripe.com/x']);
+  const { renderTemplate } = require('../../emails/src/templates');
+  assert.doesNotThrow(() => renderTemplate('pay_link', email.payload));
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));
