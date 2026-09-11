@@ -173,3 +173,14 @@ test('webhook: subscription checkout approves the tapped change and records the 
   assert.ok(calls.some((c) => c[0] === 'credited'));
   assert.ok(calls.some((c) => c[0] === 'audit' && c[1] === 'checkout_completed' && c[2].approved === true));
 });
+
+test('sign out expires the session cookie and lands on the start page', async () => {
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dash('active'), sessionSecret: SECRET }, async (base) => {
+    const r = await fetch(`${base}/auth/signout`, { method: 'POST', headers: { cookie: cookie() }, redirect: 'manual' });
+    assert.strictEqual(r.status, 302);
+    assert.strictEqual(r.headers.get('location'), '/app/start');
+    assert.match(r.headers.get('set-cookie'), /insyt_s=;.*Max-Age=0/);
+    const after = await fetch(`${base}/api/app/access`, { headers: { cookie: 'insyt_s=' } });
+    assert.strictEqual(after.status, 401);
+  });
+});

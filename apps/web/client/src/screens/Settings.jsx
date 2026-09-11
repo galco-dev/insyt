@@ -2,7 +2,7 @@
 // and the your-data actions the legal pages promise (export, delete,
 // disconnect). Autopilot toggles write through /api/app/autopilot.
 import React, { useEffect, useState } from 'react';
-import { CreditCard01 as CreditCard, Link01 as Link2, Zap, ShieldTick as ShieldCheck, Lock01 as Lock } from '@untitledui/icons';
+import { CreditCard01 as CreditCard, Link01 as Link2, Zap, ShieldTick as ShieldCheck, Lock01 as Lock, LogOut01 as LogOut } from '@untitledui/icons';
 import clsx from 'clsx';
 import { api, isDemo } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
@@ -217,6 +217,23 @@ export default function Settings() {
             <div className="mt-3 flex flex-wrap gap-2">
               <Button variant="secondary" href={mail('Data export')} className="!px-4 !py-2">Export my data</Button>
               <Button variant="secondary" href={mail('Delete my data')} className="!px-4 !py-2">Delete my account</Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="mt-3 p-5">
+        <div className="flex items-start gap-3">
+          <LogOut size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
+          <div className="flex-1">
+            <MonoLabel>Signed in</MonoLabel>
+            <p className="mt-0.5 text-small text-neutral-900">
+              Signing out only ends this browser session. Your weekly checks, your plan and the one-tap links in your emails carry on as they are.
+            </p>
+            <div className="mt-3">
+              {isDemo()
+                ? <Button variant="secondary" href="https://tryinsyt.com/" className="!px-4 !py-2">Leave the sample</Button>
+                : <Button variant="secondary" href="/auth/signout" className="!px-4 !py-2">Sign out</Button>}
             </div>
           </div>
         </div>

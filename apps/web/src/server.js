@@ -19,7 +19,7 @@ const { findingsStrip } = require('../../../packages/crawler/src/findings-strip'
 const { redeemLink } = require('../../../packages/emails/src/magic-links');
 const { landingPage, progressPage } = require('./pages');
 const { handleOps } = require('./ops');
-const { issueSession, readSession, cookieFor } = require('./session');
+const { issueSession, readSession, cookieFor, clearCookie } = require('./session');
 const { handleGoogleAuth } = require('./auth-routes');
 const { safeNext } = require('../../../packages/billing/src/access');
 const screens = require('./screens');
@@ -246,6 +246,13 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         } catch (err) {
           return json(res, 400, { error: 'We could not start that payment — try again in a moment.' });
         }
+      }
+
+      // Sign out (Settings → Sign out): expire the session cookie, land on the
+      // sign-in view. POST from the app; GET works for a plain link too.
+      if (path === '/auth/signout' && (req.method === 'POST' || req.method === 'GET')) {
+        res.writeHead(302, { location: '/app/start', 'set-cookie': clearCookie(), 'cache-control': 'no-store' });
+        return res.end();
       }
 
       // Report-stream List-Unsubscribe target (§17).

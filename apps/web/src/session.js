@@ -25,5 +25,7 @@ function readSession(cookieHeader, secret, now) {
 }
 
 const cookieFor = (session) => `insyt_s=${session}; HttpOnly; Path=/; Max-Age=2592000; SameSite=Lax`;
+// Sign out: the same cookie, expired. Nothing server-side to revoke (HMAC sessions).
+const clearCookie = () => 'insyt_s=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax';
 
-module.exports = { issueSession, readSession, cookieFor };
+module.exports = { issueSession, readSession, cookieFor, clearCookie };
