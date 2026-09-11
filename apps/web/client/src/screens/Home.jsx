@@ -1,11 +1,12 @@
 // Dashboard home - §11 screen 2. Health, waiting approvals, cumulative value,
 // latest report. Every element leads somewhere; empty states sell next steps.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Zap, Lock01 as Lock } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { useAccess } from '../lib/access.jsx';
 import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
+import { PerformanceChart } from '../report/charts.jsx';
 import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote, Sparkline, useCountUp } from '../lib/ui.jsx';
 
 function MiniDial({ score }) {
@@ -143,6 +144,42 @@ function ThisWeek({ week, access, money }) {
         <ArrowRight size={16} className="shrink-0 text-neutral-900" aria-hidden />
       </Card>
     </Link>
+  );
+}
+
+// ---------------------------------------------------------------- performance
+// One chart (spec §2.5), only once seven days of numbers exist; before that
+// the card says what will fill it, never an empty chart.
+function Performance({ performance, money }) {
+  // The chart draws at the card's real width so its labels stay legible on a
+  // phone instead of being scaled down from a desktop canvas.
+  const box = useRef(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === 'undefined') { if (el) setW(el.clientWidth); return undefined; }
+    const ro = new ResizeObserver(() => setW(el.clientWidth));
+    ro.observe(el); setW(el.clientWidth);
+    return () => ro.disconnect();
+  }, [performance]);
+  if (!performance) return null;
+  const days = performance.days || [];
+  return (
+    <div className="mt-8">
+      <h2 className="text-h4">Performance, 28 days</h2>
+      <Card className="mt-3 p-4 sm:p-5">
+        {days.length >= 7 ? (
+          <>
+            <div ref={box}>
+              {w > 0 && <PerformanceChart w={Math.max(300, w)} days={days} checks={performance.checks || []} fixes={performance.fixes || []} labelMoney={(n) => money(n)} />}
+            </div>
+            <p className="mt-2 text-tiny text-neutral-900">Dotted lines are weekly checks. Marks are fixes you approved.</p>
+          </>
+        ) : (
+          <p className="text-small text-neutral-900">Your daily numbers start building after the first check. The chart appears once a week of them is in.</p>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -360,6 +397,7 @@ export default function Home() {
         )}
       </div>
 
+      {overview && <Performance performance={overview.performance} money={accessMoney} />}
       {overview && <Accounts accounts={overview.accounts} />}
     </div>
   );

@@ -41,15 +41,18 @@ function useScaleY(values, hTop, hBottom, padRatio = 0.12) {
 
 function Grid({ x0, x1, ys, n = 3 }) {
   const lines = [];
+  let last = null;
   for (let i = 1; i <= n; i++) {
     const v = ys.lo + ((ys.hi - ys.lo) * i) / (n + 1);
     const y = ys.y(v);
+    const label = fmt(v);
     lines.push(
       <g key={i}>
         <line x1={x0} x2={x1} y1={y} y2={y} stroke={GRID} strokeWidth={1} strokeDasharray="3 3" />
-        <Txt x={x0 - 6} y={y + 3.5} anchor="end" size={10}>{fmt(v)}</Txt>
+        {label !== last && <Txt x={x0 - 6} y={y + 3.5} anchor="end" size={10}>{label}</Txt>}
       </g>,
     );
+    last = label;
   }
   return lines;
 }
@@ -100,6 +103,69 @@ export function LineChart({ w = 660, h = 240, xLabels, series, band, annotate = 
       })()}
       {xLabels.map((l, i) => (
         <Txt key={l} x={x(i)} y={h - 10} size={10} anchor={i === 0 ? 'start' : i === xLabels.length - 1 ? 'end' : 'middle'}>{l}</Txt>
+      ))}
+    </svg>
+  );
+}
+
+// Performance, 28 days (richer-platform spec §2.5): cost and results by day
+// as two aligned panels (never a dual axis), weekly checks as small ticks,
+// applied fixes as marks with a short label. Grayscale series; a fix mark
+// takes a severity hue only when it carries a verdict.
+export function PerformanceChart({ w = 660, days, checks = [], fixes = [], labelMoney = (n) => `$${fmt(n)}` }) {
+  const n = days.length;
+  const padL = 52; const padR = 14; const padT = 22; const gap = 26; const padB = 24;
+  const panelH = 92;
+  const h = padT + panelH + gap + panelH + padB;
+  const x = (i) => padL + (i / Math.max(n - 1, 1)) * (w - padL - padR);
+  const idx = (iso) => { const d = String(iso || '').slice(0, 10); const i = days.findIndex((p) => p.date === d); return i; };
+  const spend = days.map((d) => Number(d.spend_usd || 0));
+  const conv = days.map((d) => Number(d.conversions || 0));
+  const top = { t: padT, b: padT + panelH };
+  const bot = { t: padT + panelH + gap, b: padT + panelH + gap + panelH };
+  const ysT = useScaleY(spend, top.t, top.b);
+  const ysB = useScaleY(conv, bot.t, bot.b);
+  const checkIdx = [...new Set(checks.map(idx).filter((i) => i >= 0))];
+  const fixMarks = fixes.map((f) => ({ ...f, i: idx(f.at) })).filter((f) => f.i >= 0).slice(0, 6);
+  const VERDICT = { verified: STATUS.success, reverted: STATUS.warning };
+  const short = (s) => (String(s || '').length > 22 ? `${String(s).slice(0, 21)}…` : String(s || ''));
+  const dateLabel = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const labelAt = [0, Math.floor((n - 1) / 2), n - 1];
+  const panel = (vals, ys, color, label, fmtV) => {
+    const d = vals.map((v, i) => `${i ? 'L' : 'M'} ${x(i)} ${ys.y(v)}`).join(' ');
+    return (
+      <g>
+        <Grid x0={padL} x1={w - padR} ys={ys} n={2} />
+        <path d={d} fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><title>{label}</title></path>
+        {vals.map((v, i) => <circle key={i} cx={x(i)} cy={ys.y(v)} r={1.9} fill={color} />)}
+        <Txt x={padL} y={ys.y(ys.hi) + 2} size={10.5} fill={color} weight={600}>{label}</Txt>
+        <Txt x={w - padR} y={ys.y(vals[n - 1]) - 6} anchor="end" size={10} fill={color}>{fmtV(vals[n - 1])}</Txt>
+      </g>
+    );
+  };
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} role="img" className="block w-full" style={{ maxWidth: w }} aria-label="Cost and results by day, last 28 days">
+      {checkIdx.map((i) => (
+        <line key={`c${i}`} x1={x(i)} x2={x(i)} y1={top.t - 6} y2={bot.b} stroke={GRID} strokeWidth={1} strokeDasharray="2 3">
+          <title>Weekly check</title>
+        </line>
+      ))}
+      {panel(spend, ysT, SERIES[0], 'Cost', labelMoney)}
+      {panel(conv, ysB, SERIES[1], 'Results', (v) => fmt(v))}
+      {fixMarks.map((f, k) => {
+        const color = VERDICT[f.state] || STATUS.neutral;
+        const y = top.t - 8;
+        return (
+          <g key={`f${k}`}>
+            <line x1={x(f.i)} x2={x(f.i)} y1={y + 4} y2={ysT.y(spend[f.i])} stroke={color} strokeWidth={1} />
+            <Marker shape="triangle" x={x(f.i)} y={y} fill={color} />
+            {w >= 520 && k < 3 && <Txt x={Math.min(x(f.i) + 6, w - padR - 60)} y={y + 3.5} size={9.5} fill={color}>{short(f.title)}</Txt>}
+            <title>{f.title}</title>
+          </g>
+        );
+      })}
+      {labelAt.map((i) => (
+        <Txt key={i} x={x(i)} y={h - 6} size={10} anchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}>{dateLabel(days[i].date)}</Txt>
       ))}
     </svg>
   );
