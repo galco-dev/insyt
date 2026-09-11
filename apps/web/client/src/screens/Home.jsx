@@ -5,6 +5,7 @@ import { ArrowRight, Zap, Lock01 as Lock } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { useAccess } from '../lib/access.jsx';
+import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
 import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote, Sparkline, useCountUp } from '../lib/ui.jsx';
 
 function MiniDial({ score }) {
@@ -103,10 +104,11 @@ function MoneyStrip({ overview, access, money }) {
 // ---------------------------------------------------------------- this week
 // One card, the weekly story (spec §2.3): last check, what was applied and
 // how it is doing, next check. Tapping opens History.
-function ThisWeek({ week, access }) {
+function ThisWeek({ week, access, money }) {
   if (!week) return null;
   const active = access && access.level === 'active';
   let line;
+  let projection = null;
   if (!week.last_check_at) {
     line = 'Your first check is running now. Each week\'s story lands here: what we found, what was fixed, and whether it held.';
   } else {
@@ -126,6 +128,7 @@ function ThisWeek({ week, access }) {
       middle = access && access.pending_count > 0
         ? `${plural(access.pending_count, 'fix drafted', 'fixes drafted')}, waiting for your yes.`
         : 'Nothing waiting for your yes right now.';
+      if (access && access.pending_count > 0 && access.pending_value_usd > 0 && money) projection = `about ${money(access.pending_value_usd)} a month`;
     }
     line = `${head} ${middle} ${nextCheck(week.next_check_days)}`;
   }
@@ -135,6 +138,7 @@ function ThisWeek({ week, access }) {
         <div>
           <MonoLabel>This week</MonoLabel>
           <p className="mt-1 text-body">{line}</p>
+          {projection && <p className="mt-1 flex items-center gap-2 text-small text-neutral-900">{projection} <Chip /></p>}
         </div>
         <ArrowRight size={16} className="shrink-0 text-neutral-900" aria-hidden />
       </Card>
@@ -169,6 +173,38 @@ function Accounts({ accounts }) {
           </div>
         ))}
       </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- needs you
+// The total value line under "Waiting for your yes" (spec §2.4) and, at
+// active, the batch yes for the safe categories when two or more are waiting.
+function NeedsYouHead({ pending, access, money }) {
+  const batch = useBatchApprove();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  if (!pending || !pending.length || !access) return null;
+  const active = access.level === 'active';
+  const safe = safeFixes(pending);
+  const value = access.pending_value_usd > 0 ? `about ${money(access.pending_value_usd)} a month` : null;
+  async function all() {
+    setBusy(true); setNote(null);
+    try { await batch(safe, `${plural(safe.length, 'safe fix', 'safe fixes')}`); } catch (e) { setNote(e.message); }
+    setBusy(false);
+  }
+  return (
+    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="flex items-center gap-2 text-small text-neutral-900">
+        {plural(pending.length, 'fix', 'fixes')}{value ? `, ${value}` : ''}
+        {!active && value && <Chip />}
+      </p>
+      {active && safe.length >= 2 && (
+        <Button variant="secondary" onClick={all} disabled={busy} className="!px-4 !py-2">
+          {busy ? 'Approving…' : `Approve all ${safe.length} safe fixes`}
+        </Button>
+      )}
+      {note && <span className="text-tiny text-critical">{note}</span>}
     </div>
   );
 }
@@ -288,7 +324,7 @@ export default function Home() {
       )}
 
       {overview && <MoneyStrip overview={overview} access={access} money={accessMoney} />}
-      {overview && <ThisWeek week={overview.this_week} access={access} />}
+      {overview && <ThisWeek week={overview.this_week} access={access} money={accessMoney} />}
 
       {plan && plan.tier && (
         <div className="mt-3 flex items-center justify-between rounded border border-neutral-300 bg-neutral-50 px-4 py-2.5 text-small text-neutral-900">
@@ -304,6 +340,7 @@ export default function Home() {
           <h2 className="text-h4">Waiting for your yes</h2>
           {pending.length > 0 && <Link to="/app/approvals" className="text-small underline underline-offset-2">See all</Link>}
         </div>
+        <NeedsYouHead pending={pending} access={access} money={accessMoney} />
         {pending.length === 0 ? (
           <div className="mt-3">
             <EmptyState title={latest ? 'Nothing waiting' : 'Your first check is on its way'} body={latest ? 'Your next weekly check will bring anything worth fixing straight here.' : 'Anything worth fixing will appear here the moment the first check finishes.'} />

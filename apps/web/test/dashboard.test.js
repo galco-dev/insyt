@@ -88,6 +88,27 @@ test('api: /api/app/overview rides the session, carries access, and is null on a
   });
 });
 
+test('api: /api/app/approve-batch needs a plan, then approves each id through the store', async () => {
+  const gated = dashStore();
+  gated.access = async () => ({ level: 'unlocked' });
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: gated, sessionSecret: SECRET }, async (base) => {
+    const r = await fetch(`${base}/api/app/approve-batch`, { method: 'POST', headers: { cookie: authedCookie(), 'content-type': 'application/json' }, body: JSON.stringify({ ids: ['c1', 'c2'] }) });
+    assert.strictEqual(r.status, 402);
+    assert.strictEqual((await r.json()).plan_required, true);
+    assert.deepStrictEqual(gated.actions, [], 'nothing approved below a plan');
+  });
+  const active = dashStore();
+  active.access = async () => ({ level: 'active' });
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: active, sessionSecret: SECRET }, async (base) => {
+    const empty = await fetch(`${base}/api/app/approve-batch`, { method: 'POST', headers: { cookie: authedCookie(), 'content-type': 'application/json' }, body: JSON.stringify({ ids: [] }) });
+    assert.strictEqual(empty.status, 400);
+    const r = await fetch(`${base}/api/app/approve-batch`, { method: 'POST', headers: { cookie: authedCookie(), 'content-type': 'application/json' }, body: JSON.stringify({ ids: ['c1', 'c2'] }) });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(await r.json(), { ok: true, approved: 2, requested: 2 });
+    assert.deepStrictEqual(active.actions, [['approve', 'c1'], ['approve', 'c2']]);
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;

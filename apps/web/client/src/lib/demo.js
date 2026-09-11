@@ -8,6 +8,7 @@ import { audit as sampleAudit } from '../report/data.js';
 const pending = [
   {
     id: 'chg-1',
+    category: 'negatives',
     title: '$430 a month goes to searches that never book',
     money_line: 'stopped the same day you approve',
     explanation: 'Over 90 days, 11 recurring search themes - nail courses, salon jobs, DIY kits - spent money and produced zero bookings.',
@@ -24,6 +25,7 @@ const pending = [
   },
   {
     id: 'chg-3',
+    category: 'counting',
     title: 'A 30-second page view is being counted like a booking',
     money_line: 'about $290 a month spent on flattered keywords',
     explanation: 'A quick page view is currently recorded as if it were a booking, which makes weak keywords look like winners.',
@@ -287,7 +289,7 @@ function customerDemo(path, method, body) {
   // The sample console answers like the server: a write that needs a plan is
   // a 402 with plan_required, and the sheet opens over the screen.
   const needsPlan = access.level !== 'active' && (
-    p.startsWith('/api/app/approve/') || p.startsWith('/api/app/revert/') || p === '/api/app/autopilot'
+    p.startsWith('/api/app/approve/') || p.startsWith('/api/app/revert/') || p === '/api/app/autopilot' || p === '/api/app/approve-batch'
     || /^\/api\/app\/drafts\/[^/]+\/(approve|enable)$/.test(p) || /^\/api\/app\/connected\/ads\/campaigns\/\d+\/(pause|negatives)$/.test(p));
   if (needsPlan) return { status: 402, error: 'This needs a plan. Nothing has changed.', plan_required: true, plan_url: '/app/plan' };
   if (p === '/api/checkout/subscribe') {
@@ -338,6 +340,22 @@ function customerDemo(path, method, body) {
     return { ok: true };
   }
 
+  if (p === '/api/app/approve-batch') {
+    const ids = (body && body.ids) || [];
+    let approved = 0;
+    for (const id of ids) {
+      const i = s.pending.findIndex((x) => x.id === id);
+      if (i === -1) continue;
+      const item = s.pending.splice(i, 1)[0];
+      approved += 1;
+      s.cumulative.fixes += 1;
+      const m = /\$([0-9][0-9,]*)/.exec(item.money_line || item.title || '');
+      if (m) s.cumulative.waste_removed_usd += Number(m[1].replace(/,/g, ''));
+      s.health = Math.min(96, s.health + 3);
+      s.ledger.unshift({ id: `l-${Date.now()}-${approved}`, event: 'change_applied', actor: 'system', summary_text: `Applied: ${item.title}. Reversible with one tap.`, created_at: cnow() });
+    }
+    return { ok: true, approved, requested: ids.length };
+  }
   if (p.startsWith('/api/app/approve/')) {
     const id = p.split('/').pop();
     const i = s.pending.findIndex((x) => x.id === id);

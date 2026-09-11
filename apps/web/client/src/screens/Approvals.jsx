@@ -6,7 +6,8 @@ import { ChevronDown, Lock01 as Lock } from '@untitledui/icons';
 import clsx from 'clsx';
 import { api } from '../lib/api.js';
 import { useAccess } from '../lib/access.jsx';
-import { MonoLabel, Button, Card, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';
+import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';
+import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
 
 function Detail({ p }) {
   if (!p.explanation && !p.before_line && !p.after_line) return null;
@@ -280,6 +281,8 @@ export default function Approvals() {
   const [open, setOpen] = useState({});
   const [assistant, setAssistant] = useState(false);
   const { access, level, gate, goUnlock, money, version } = useAccess();
+  const batch = useBatchApprove();
+  const [batchBusy, setBatchBusy] = useState(false);
 
   const load = () => api('/api/app/approvals').then((d) => setPending(d.pending)).catch((e) => setError(e.message));
   useEffect(() => { load(); api('/api/app/settings').then((d) => setAssistant(!!(d.settings && d.settings.assistant_enabled))).catch(() => {}); }, [version]);
@@ -308,7 +311,14 @@ export default function Approvals() {
   // The gated states speak in the customer's numbers (spec §4, Approvals).
   const locked = level === 'locked';
   const unlocked = level === 'unlocked';
+  const active = level === 'active';
   const value = access && access.pending_value_usd > 0 ? money(access.pending_value_usd) : null;
+  const safe = safeFixes(pending);
+  async function approveSafe() {
+    setBatchBusy(true);
+    try { await batch(safe, `${safe.length} safe fixes`); } catch (e) { setError(e.message); }
+    setBatchBusy(false);
+  }
 
   return (
     <div className="mx-auto max-w-m2 px-5 pb-24 pt-10">
@@ -316,9 +326,22 @@ export default function Approvals() {
       <h1 className="mt-1 text-h2 tracking-tight">Approvals</h1>
 
       {unlocked && pending.length > 0 && (
-        <p className="mt-3 text-small text-neutral-900">
-          {pending.length} fix{pending.length === 1 ? '' : 'es'}{value ? ` worth about ${value} a month` : ''} {pending.length === 1 ? 'is' : 'are'} ready. Approving the first one starts your plan.
+        <p className="mt-3 flex flex-wrap items-center gap-2 text-small text-neutral-900">
+          <span>{pending.length} fix{pending.length === 1 ? '' : 'es'}{value ? ` worth about ${value} a month` : ''} {pending.length === 1 ? 'is' : 'are'} ready. Approving the first one starts your plan.</span>
+          {value && <Chip />}
         </p>
+      )}
+      {active && pending.length > 0 && (
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-small text-neutral-900">
+            {pending.length} fix{pending.length === 1 ? '' : 'es'}{value ? `, about ${value} a month` : ''}{safe.length >= 2 ? `. ${safe.length} of them are in the safe categories.` : '.'}
+          </p>
+          {safe.length >= 2 && (
+            <Button variant="secondary" onClick={approveSafe} disabled={batchBusy} className="!px-4 !py-2">
+              {batchBusy ? 'Approving…' : `Approve all ${safe.length} safe fixes`}
+            </Button>
+          )}
+        </div>
       )}
 
       {pending.length === 0 ? (

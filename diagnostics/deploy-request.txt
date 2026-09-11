@@ -5,3 +5,4 @@ deploy request: Connected data screen (Ads, Analytics, Tag Manager tabs; CSV exp
 deploy request: Connected data fixes (rule seed, change_key lookup, GTM built-in trigger names, exclude panel under row) — 2026-09-04T06:05:00Z
 deploy request: Gated platform (locked / unlocked / active, Plan sheet, Fix this, audit fee credited, Autopilot needs a plan) — 2026-09-10T12:53:19Z
 deploy request: Richer platform step 1 (overview endpoint, Home money strip, This week card, Your accounts) - 2026-09-11T10:35:34Z
+deploy request: Richer platform step 2 (projection chip everywhere, approve-batch on Home, Approvals and the report bar) - 2026-09-11T10:41:04Z

@@ -357,7 +357,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -371,6 +371,16 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                   if (!text) return json(res, 400, { error: 'Say what you would like to know or change.' });
                   const r = await dashStore.chat(t, text, parsed.conversation_id || null);
                   return json(res, 200, r);
+                }
+                // Batch yes (richer-platform spec §2.4): same gate as approve.
+                if (sub === '/approve-batch') {
+                  if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
+                  const ids = Array.isArray(parsed.ids) ? parsed.ids.map(String).slice(0, 50) : [];
+                  if (!ids.length) return json(res, 400, { error: 'Nothing selected to approve.' });
+                  let r;
+                  if (dashStore.approveBatch) r = await dashStore.approveBatch(t, ids);
+                  else { for (const id of ids) await dashStore.approveChange(t, id); r = { approved: ids.length, requested: ids.length }; }
+                  return json(res, 200, { ok: true, ...r });
                 }
                 if (sub === '/event') {
                   if (dashStore.trackEvent) dashStore.trackEvent(t, String(parsed.name || ''), parsed.props || {}, parsed.session || null).catch(() => {});

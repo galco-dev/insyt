@@ -723,6 +723,18 @@ function dashStore(db, deps = {}) {
       await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: changeId, channel: 'dashboard' }], { returning: false });
       await tel.event({ tenantId, name: 'approval.approve', props: { change_id: changeId }, source: 'server' });
     },
+    // "Approve all safe fixes" / "Do all N fixes" (richer-platform spec §2.4,
+    // §3, §4): the same yes, once per id, through approveChange so every
+    // guard (idempotent, tenant-scoped, settings cards) holds. The worker
+    // applies them as today.
+    approveBatch: async (tenantId, ids) => {
+      const list = [...new Set((Array.isArray(ids) ? ids : []).map(String))].slice(0, 50);
+      let approved = 0;
+      for (const id of list) {
+        try { await store.approveChange(tenantId, id); approved += 1; } catch { /* one bad id never blocks the rest */ }
+      }
+      return { approved, requested: list.length };
+    },
     dismissChange: async (tenantId, changeId, { reason = null, expandedFirst = false } = {}) => {
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}`, { status: 'failed' });
       const ch = await db.select('changes', `id=eq.${q(changeId)}&select=finding_id,finding:findings(rule_id)`, { single: true });

@@ -194,6 +194,20 @@ test('dashStore.overview: brand-new tenant (no report, no run, no spend) renders
   assert.deepStrictEqual(o.alerts, []);
 });
 
+test('dashStore.approveBatch: one yes per id via approveChange, de-duplicated, a bad id never blocks the rest', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({
+    changes: (url) => (/id=eq\.bad/.test(url) ? [] : [{ tool_id: 'ads.negatives', params: {}, status: 'proposed' }]),
+    approvals: [], events: [], telemetry_heartbeat: [],
+  });
+  const s = dashStore(mkDb(f));
+  const r = await s.approveBatch('t1', ['c1', 'c2', 'c1', 'bad']);
+  assert.deepStrictEqual(r, { approved: 3, requested: 3 });
+  const patches = f.calls.filter((c) => c.method === 'PATCH' && /changes\?id=eq\.c[12]/.test(c.url));
+  assert.strictEqual(patches.length, 2, 'c1 approved once, c2 once');
+  for (const c of patches) assert.match(c.url, /tenant_id=eq\.t1&status=eq\.proposed/);
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

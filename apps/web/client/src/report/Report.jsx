@@ -10,9 +10,10 @@ import { CheckCircle as CheckCircle2, AlertTriangle, Lock01 as Lock, ArrowRight,
 import { audit, deep } from './data.js';
 import { api, isDemo } from '../lib/api.js';
 import { useAccess } from '../lib/access.jsx';
+import { useBatchApprove } from '../lib/batch.jsx';
 import { Link } from '../lib/router.jsx';
 import {
-  COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState, Button,
+  COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState, Button, Chip,
 } from '../lib/ui.jsx';
 
 function VerdictChip({ verdict }) {
@@ -252,6 +253,35 @@ function ChartCard({ children }) {
   );
 }
 
+// "Do all N fixes" (richer-platform spec §3): one bar under the hero when two
+// or more fixes are proposed. Active approves the batch; unlocked opens the
+// Plan sheet with the batch pending; locked shows nothing (the unlock bar is
+// the call).
+function DoAllBar({ pending, access, level, money }) {
+  const batch = useBatchApprove();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  if (!pending || pending.length < 2 || level === 'locked' || !access) return null;
+  const value = access.pending_value_usd > 0 ? `about ${money(access.pending_value_usd)} a month` : null;
+  async function all() {
+    setBusy(true); setNote(null);
+    try { await batch(pending, `${pending.length} fixes`); } catch (e) { setNote(e.message); }
+    setBusy(false);
+  }
+  return (
+    <div className="mt-8 flex flex-col gap-3 rounded-lg bg-gradient-to-b from-card-hi to-card p-5 ring-1 ring-inset ring-(--ui-ring) sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="flex flex-wrap items-center gap-2 text-body font-semibold">
+          <span>Do all {pending.length} fixes{value ? `, ${value}` : ''}</span>
+          {level !== 'active' && value && <Chip />}
+        </div>
+        <div className="mt-0.5 text-small text-neutral-900">{note || 'Every one is applied within the hour, watched for 48 hours, and reversible with one tap.'}</div>
+      </div>
+      <Button onClick={all} disabled={busy} className="shrink-0 !px-5 !py-2.5">{busy ? 'Approving…' : `Do all ${pending.length}`}</Button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- real report (findings snapshot)
 
 const SNAPSHOT_SEV = { critical: 'critical', warning: 'warning', info: 'info', opportunity: 'info' };
@@ -333,6 +363,8 @@ function RealReport({ reportId }) {
             )}
           </div>
         </section>
+
+        <DoAllBar pending={pending} access={access} level={level} money={money} />
 
         {findings.length === 0 ? (
           <div className="mt-8"><EmptyState title="Nothing needed your attention" body="We checked everything on schedule. The next report lands in a week." /></div>

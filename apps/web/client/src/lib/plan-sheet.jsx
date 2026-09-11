@@ -24,6 +24,7 @@ const ACTIVATE_MS = 60_000;
 const REPLAY = {
   approve: (id) => api(`/api/app/approve/${id}`, { method: 'POST' }),
   revert: (id) => api(`/api/app/revert/${id}`, { method: 'POST' }),
+  'approve-batch': (id) => api('/api/app/approve-batch', { method: 'POST', body: { ids: String(id).split(',') } }),
   'draft.approve': (id) => api(`/api/app/drafts/${id}/approve`, { method: 'POST', body: {} }),
   'draft.enable': (id) => api(`/api/app/drafts/${id}/enable`, { method: 'POST', body: {} }),
 };
