@@ -1,8 +1,8 @@
-deploy transcript 2026-09-04T05:46:46Z
-railway 5.49.1
+deploy transcript 2026-09-11T09:15:37Z
+railway 5.52.1
 
 
-Workspace:       galco-dev's Projects
+Workspace:       Galco Dev's Projects
 
 Project:         insyt
 Project ID:      d6255fed-897f-4f9d-a600-08c2c62aca74
@@ -30,19 +30,19 @@ All resources
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=04134fd2-d754-4a4a-80d5-45fdb7de9d9a&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=3edbebdd-df18-4d3a-86be-62ac599eb7fb&
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=9ef67840-dca5-480a-84f2-605cd8338971&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=add8c889-4bab-4a3a-963b-944a9615879e&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=a754ad96-a6ad-4ad3-b419-bb5e30cae617&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=bb28d130-f11b-4298-8744-22fa534ec7af&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=72afa183-9acf-4234-9d25-91107359e981&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=f9faadb1-1780-4d0f-b755-2e8ab8a8e58c&
