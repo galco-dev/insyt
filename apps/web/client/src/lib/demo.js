@@ -196,6 +196,7 @@ function demoAccess(s) {
     fix_access: 'ready',
     undo_until: null,
     paused_until: s.paused_until || null,
+    role: 'owner',
   };
 }
 const gatedPending = (s, level) => (level === 'locked' ? s.pending.map((p) => ({ id: p.id, title: p.title, money_line: p.money_line, finding_id: p.finding_id || null })) : s.pending);
@@ -241,6 +242,7 @@ function demoOverview(s, level) {
     waiting: { approved: 0, oldest_at: null, needs_fix_access: false },
     running: null,
     failed_last: false,
+    notice: null,
     roas: null,
     cadence: 'weekly',
     site: { consent_tool: 'Cookiebot', other_tools: ['Meta'], whatsapp: true, phone: true, server_side_gtm: false },
@@ -306,6 +308,7 @@ function customerDemo(path, method, body) {
     }
     if (p === '/api/app/overview') return { overview: demoOverview(s, access.level), access };
     if (p === '/api/app/runs') return { runs: demoRuns() };
+    if (p === '/api/app/businesses') return { businesses: [{ tenant_id: 'demo', name: 'Glow Studio', website: 'glowstudio.ae', current: true }], role: 'owner' };
     if (p === '/api/app/approvals') return { pending: gatedPending(s, access.level), access };
     if (p === '/api/app/ledger') return { entries: access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event)), pending: gatedPending(s, access.level), receipts: access.level === 'active' ? structuredClone(RECEIPTS) : {}, access };
     if (p === '/api/app/settings') {
@@ -469,6 +472,8 @@ function customerDemo(path, method, body) {
   if (p === '/api/app/pause') { s.paused_until = (body && body.until) || null; return { ok: true, paused_until: s.paused_until }; }
   if (p === '/api/app/resume') { s.paused_until = null; return { ok: true }; }
   if (p === '/api/app/rediscover') return { ok: true, inserted: 0, matched: 0, fresh_unmatched: [] };
+  if (p === '/api/app/invite' || p === '/api/app/join-request') return { ok: true };
+  if (p === '/api/app/add-business' || p === '/api/app/switch-tenant') return { ok: true, demo: true };
   if (p === '/api/app/access-request') return { ok: true };
   if (p === '/api/app/autopilot') {
     const cats = (body && (body.categories || body)) || {};

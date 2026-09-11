@@ -111,7 +111,7 @@ function FindingCard({ f, locked, index = 0, action = null, receipt = null }) {
 function FixAction({ change, gate, level }) {
   const [state, setState] = useState('idle'); // idle | busy | done
   const { access } = useAccess();
-  if (!change || level === 'locked') return null;
+  if (!change || level === 'locked' || (access && access.role === 'viewer')) return null;
   async function fix() {
     setState('busy');
     try {
@@ -284,7 +284,7 @@ function DoAllBar({ pending, access, level, money }) {
   const batch = useBatchApprove();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
-  if (!pending || pending.length < 2 || level === 'locked' || !access) return null;
+  if (!pending || pending.length < 2 || level === 'locked' || !access || access.role === 'viewer') return null;
   const value = access.pending_value_usd > 0 ? `about ${money(access.pending_value_usd)} a month` : null;
   async function all() {
     setBusy(true); setNote(null);

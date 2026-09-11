@@ -274,8 +274,12 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           return html(res, 410, `<p style="font-family:sans-serif">${msg}</p>`);
         }
         // Redemption signs the tenant in (one tap from inbox — master §5).
-        const session = issueSession({ tenantId: r.link.tenant_id, secret: sessionSecret, now: now() });
+        // A viewer link signs in read-only; an approve-join link adds the requester (fix plan move 12).
+        if (r.link.purpose === 'join_approve' && dashStore && dashStore.approveJoin) await dashStore.approveJoin(r.link.tenant_id, r.link.target_id).catch(() => {});
+        const session = issueSession({ tenantId: r.link.tenant_id, secret: sessionSecret, now: now(), role: r.link.purpose === 'join_viewer' ? 'viewer' : 'owner' });
         const dest = {
+          join_viewer: '/app',
+          join_approve: '/app/settings?joined=1',
           view_report: `/app/report/${r.link.target_id}`,
           approve_all: '/app/approvals',
           approve_one: '/app/approvals',
@@ -293,6 +297,10 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         if (!session) return json(res, 401, { error: 'Sign in first.' });
         const t = session.tenantId;
         const sub = path.slice('/api/app'.length) || '/';
+        const role = session.role || 'owner';
+        // A viewer (fix plan move 12) reads everything and changes nothing.
+        if (role === 'viewer' && req.method === 'POST' && sub !== '/event') return json(res, 403, { error: 'View only. Approvals stay with the owner.', view_only: true });
+        const accessWithRole = async () => { const a = await accessFor(dashStore, t); return a ? { ...a, role } : a; };
         // Connected data (Settings → "See what Insyt reads"): the raw objects
         // each granted Google API returns for this tenant, plus the two Ads
         // actions that run through the normal approve → apply → Undo path.
@@ -303,7 +311,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         }
         if (req.method === 'GET') {
           // The gate, on its own: the client polls this after Checkout (spec §6).
-          if (sub === '/access') return json(res, 200, { access: await accessFor(dashStore, t) });
+          if (sub === '/access') return json(res, 200, { access: await accessWithRole() });
           if (sub === '/home') {
             const [health, pending, cumulative, reports, streak, plan, spend, currency] = await Promise.all([
               dashStore.healthLatest(t), dashStore.pendingApprovals(t), dashStore.cumulative(t), dashStore.reports(t),
@@ -314,7 +322,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               dashStore.spendPosition ? dashStore.spendPosition(t) : null,
               dashStore.accountCurrency ? dashStore.accountCurrency(t) : 'USD',
             ]);
-            return json(res, 200, { health, pending, cumulative, reports, streak, plan, spend, currency, access: await accessFor(dashStore, t) });
+            return json(res, 200, { health, pending, cumulative, reports, streak, plan, spend, currency, access: await accessWithRole() });
           }
           // Home overview (richer-platform spec §2/§8): money strip, the week's
           // story, the three accounts, alerts and the 28-day series in one trip.
@@ -322,12 +330,12 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             const overview = dashStore.overview ? await dashStore.overview(t, new Date(now())) : null;
             // The $20 tail (fix plan move 13): say when checks have gone monthly.
             if (overview && opsStore && opsStore.weeklyCadence) { try { overview.cadence = (await opsStore.weeklyCadence(t, now())).cadence; } catch { overview.cadence = 'weekly'; } }
-            return json(res, 200, { overview, access: await accessFor(dashStore, t) });
+            return json(res, 200, { overview, access: await accessWithRole() });
           }
-          if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
-          if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_change : {}, access: await accessFor(dashStore, t) });
+          if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessWithRole() });
+          if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_change : {}, access: await accessWithRole() });
           if (sub === '/reports') return json(res, 200, { reports: await dashStore.reports(t) });
-          if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t, new Date(now())), access: await accessFor(dashStore, t) });
+          if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t, new Date(now())), access: await accessWithRole() });
           if (sub === '/runs') return json(res, 200, { runs: dashStore.runs ? await dashStore.runs(t) : [] });
           if (sub === '/discovery') return json(res, 200, await dashStore.discovery(t));
           if (sub === '/plan') return json(res, 200, { plan: await dashStore.planOptions(t) });
@@ -336,6 +344,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           // §4.5 "what have I told you never to touch?"
           if (sub === '/exceptions') return json(res, 200, { exceptions: dashStore.exceptions ? await dashStore.exceptions(t) : [] });
           if (sub === '/fence-options') return json(res, 200, { options: dashStore.fenceOptions ? await dashStore.fenceOptions(t) : [] });
+          if (sub === '/businesses') return json(res, 200, { businesses: dashStore.businesses ? await dashStore.businesses(t) : [], role });
           if (sub.startsWith('/revert-preview/')) { const p = dashStore.revertPreview ? await dashStore.revertPreview(t, sub.split('/')[2]) : null; return json(res, p ? 200 : 404, p || { error: 'Not found.' }); }
           // §5 consumer door + §5.1 setup checklist
           if (sub === '/drafts') return json(res, 200, { drafts: dashStore.drafts ? await dashStore.drafts(t) : [] });
@@ -350,7 +359,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!r) return json(res, 404, { error: 'Report not found.' });
             // Pending changes ride along so each finding can carry its
             // "Fix this" (spec §4, Report), and the gate decides what it does.
-            return json(res, 200, { report: r, pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_finding : {}, access: await accessFor(dashStore, t) });
+            return json(res, 200, { report: r, pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_finding : {}, access: await accessWithRole() });
           }
         }
         if (req.method === 'POST') {
@@ -368,7 +377,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub === '/pause' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub === '/pause' || sub === '/invite' || sub === '/add-business' || sub === '/switch-tenant' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -422,6 +431,27 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                     }
                   }
                   return json(res, r.ok ? 200 : 400, r.ok ? r : { error: 'Nothing to save.' });
+                }
+                // People (fix plan move 12): a viewer invite, another business, switching between them.
+                if (sub === '/invite') {
+                  if (!dashStore.inviteViewer) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.inviteViewer(t, parsed.email, { baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com', now: now() });
+                  return json(res, r.ok ? 200 : 400, r);
+                }
+                if (sub === '/add-business') {
+                  if (!dashStore.addBusiness) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.addBusiness(t, parsed.website);
+                  if (!r.ok) return json(res, 400, r);
+                  if (rediscover) { try { await rediscover(r.tenant_id); } catch (e) { console.error(`rediscover for new business ${r.tenant_id} failed: ${e.message}`); } }
+                  res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': cookieFor(issueSession({ tenantId: r.tenant_id, secret: sessionSecret, now: now() })) });
+                  return res.end(JSON.stringify({ ok: true, tenant_id: r.tenant_id }));
+                }
+                if (sub === '/switch-tenant') {
+                  if (!dashStore.switchTenant) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.switchTenant(t, String(parsed.tenant_id || ''));
+                  if (!r.ok) return json(res, 403, { error: 'That business is not yours.' });
+                  res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': cookieFor(issueSession({ tenantId: String(parsed.tenant_id), secret: sessionSecret, now: now() })) });
+                  return res.end(JSON.stringify({ ok: true }));
                 }
                 // Pause until a date (fix plan move 13); Stripe stops the bill and resumes it itself.
                 if (sub === '/pause') {
@@ -497,7 +527,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           }
           if (sub.startsWith('/revert/')) {
             // Undo stays free for 30 days after cancelling (fix plan move 13).
-            const a = await accessFor(dashStore, t);
+            const a = await accessWithRole();
             const undoFree = !a || a.level === 'active' || (a.undo_until && Date.parse(a.undo_until) > now());
             if (!undoFree) return json(res, 402, PLAN_REQUIRED);
             const r = await dashStore.requestRevert(t, sub.split('/')[2]);
@@ -506,6 +536,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (/^\/alerts\/[^/]+\/ack$/.test(sub)) {
             if (!dashStore.ackAlert) return json(res, 501, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.ackAlert(t, sub.split('/')[2]));
+          }
+          if (sub === '/join-request') {
+            if (!dashStore.joinRequest) return json(res, 501, { error: 'Not available yet.' });
+            const r = await dashStore.joinRequest(t, { baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com', now: now() });
+            return json(res, r.ok ? 200 : 400, r);
           }
           if (sub === '/resume') {
             if (!dashStore.resumeTenant) return json(res, 501, { error: 'Not available yet.' });
@@ -651,7 +686,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
 
       // ---- ops console (internal)
       if (path.startsWith('/ops') && opsStore) {
-        const handled = await handleOps(req, res, u, { opsStore, queue, opsToken });
+        // Four ops buttons (fix plan move 15) ride on the same console.
+        const handled = await handleOps(req, res, u, { opsStore, queue, opsToken, rediscover });
         if (handled) return undefined;
       }
 

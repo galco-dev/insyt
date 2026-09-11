@@ -151,6 +151,8 @@ function Activity() {
 }
 
 function ActivityList({ entries, receipts = {}, requestRevert, retry = null, preview = null, cancelPreview = null }) {
+  const { access } = useAccess();
+  const viewer = !!(access && access.role === 'viewer');
   const reverted = new Set(entries.filter((e) => e.event === 'fix_reverted' && e.change_id).map((e) => e.change_id));
   return (
     <Card className="divide-y divide-neutral-200">
@@ -171,7 +173,7 @@ function ActivityList({ entries, receipts = {}, requestRevert, retry = null, pre
             </div>
           );
         }
-        const canRevert = e.event === 'fix_applied' && e.change_id && !reverted.has(e.change_id);
+        const canRevert = e.event === 'fix_applied' && e.change_id && !reverted.has(e.change_id) && !viewer;
         const r = e.change_id && (APPLIED.has(e.event) || UNDONE.has(e.event)) ? receipts[e.change_id] : null;
         const receipt = r ? (UNDONE.has(e.event) ? (r.line ? `Why: ${r.line}` : null) : receiptLine(r)) : null;
         const receiptTone = r && r.state === 'verified' && !UNDONE.has(e.event) ? 'text-success' : r && r.state === 'reverted' ? 'text-warning' : 'text-neutral-900';
@@ -191,7 +193,7 @@ function ActivityList({ entries, receipts = {}, requestRevert, retry = null, pre
                 Undo
               </Button>
             )}
-            {FAILED.has(e.event) && e.change_id && retry && (
+            {FAILED.has(e.event) && e.change_id && retry && !viewer && (
               <Button variant="ghost" onClick={() => retry(e.change_id, e.summary_text)} className="!px-2 !py-1 text-tiny">
                 Retry
               </Button>

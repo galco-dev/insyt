@@ -453,6 +453,44 @@ test('fix plan push 5: refunded fee relocks, undo grace after cancel, pause with
   assert.deepStrictEqual(await fresh.weeklyCadence('t1', Date.parse('2026-09-13T12:00:00Z')), { cadence: 'weekly', due: true });
 });
 
+test('fix plan move 12 and 15: invite a viewer, approve a join, add a business, and the ops buttons', async () => {
+  const { dashStore, opsStore } = require('../src/stores');
+  const f = routedFetch({
+    users: (url, init) => (init.method === 'POST' ? [{ id: 'u-new' }] : /role=eq\.owner/.test(url) ? [{ id: 'u1', email: 'owner@glow.ae', name: 'Max', google_sub: 'sub1' }] : /id=eq\.u9/.test(url) ? [{ id: 'u9', tenant_id: 't9', email: 'friend@glow.ae' }] : [{ id: 'u1', google_sub: 'sub1', email: 'owner@glow.ae', name: 'Max' }]),
+    tenants: (url, init) => (init.method === 'POST' ? [{ id: 't-new' }] : [{ business_name: 'Glow Studio', website_url: 'glowstudio.ae' }]),
+    google_connections: [{ refresh_token: 'rt', granted_scopes: [], scope_level: 'readonly', status: 'valid' }],
+    magic_links: [], emails: [], ledger: [], assets: [], platform_notices: [],
+  });
+  const d = dashStore(mkDb(f));
+  assert.deepStrictEqual(await d.inviteViewer('t1', 'not an email'), { ok: false, error: 'That does not look like an email address.' });
+  assert.deepStrictEqual(await d.inviteViewer('t1', 'Friend@Glow.ae', { baseUrl: 'https://app', now: 1000 }), { ok: true });
+  const invite = f.calls.find((c) => c.method === 'POST' && /emails/.test(c.url)).body[0];
+  assert.strictEqual(invite.template_id, 'viewer_invite');
+  assert.strictEqual(invite.to_email, 'friend@glow.ae');
+  assert.match(invite.payload.join_url, /^https:\/\/app\/m\//);
+  const link = f.calls.find((c) => c.method === 'POST' && /magic_links/.test(c.url)).body[0];
+  assert.strictEqual(link.purpose, 'join_viewer');
+
+  assert.deepStrictEqual(await d.approveJoin('t1', 'u9'), { ok: true, email: 'friend@glow.ae' });
+  const moved = f.calls.find((c) => c.method === 'PATCH' && /users\?id=eq\.u9/.test(c.url));
+  assert.deepStrictEqual(moved.body, { tenant_id: 't1', role: 'viewer' });
+
+  const added = await d.addBusiness('t1', 'https://www.Second.ae/about');
+  assert.deepStrictEqual(added, { ok: true, tenant_id: 't-new' });
+  const newTenant = f.calls.find((c) => c.method === 'POST' && /tenants/.test(c.url)).body[0];
+  assert.strictEqual(newTenant.website_url, 'www.second.ae');
+  const conn = f.calls.find((c) => c.method === 'POST' && /google_connections/.test(c.url)).body[0];
+  assert.strictEqual(conn.refresh_token, 'rt', 'the same Google connection serves the new business');
+  assert.deepStrictEqual(await d.addBusiness('t1', 'nope'), { ok: false, error: 'That does not look like a website address.' });
+
+  const ops = opsStore(mkDb(f));
+  await ops.deleteTenant('t-gone');
+  const rpc = f.calls.find((c) => /rpc\/delete_tenant/.test(c.url));
+  assert.deepStrictEqual(rpc.body, { p_tenant: 't-gone' });
+  assert.deepStrictEqual(await ops.setNotice('  Google is slow this morning; checks may land late.  '), { ok: true, text: 'Google is slow this morning; checks may land late.' });
+  assert.deepStrictEqual(await ops.mergeTenants('a', 'a'), { ok: false });
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

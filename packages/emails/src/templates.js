@@ -46,6 +46,22 @@ const TEMPLATES = [
     ],
     (v) => ({ label: 'Connect with Google', url: v.start_url || 'https://app.tryinsyt.com/app/start' })),
 
+  T('viewer_invite', 'transactional',
+    (v) => `${v.from_name || 'The owner'} invited you to see ${v.business || 'their'} ads on Insyt`,
+    (v) => [
+      `${v.from_name || 'The owner'} wants you to see how the ads for ${v.business || 'the business'} are doing: the weekly report, what is waiting for a yes, and the history.`,
+      'You can look at everything. Approving changes stays with the owner. The link signs you in for 30 days.',
+    ],
+    (v) => ({ label: 'Open Insyt', url: v.join_url || 'https://app.tryinsyt.com/app' })),
+
+  T('join_request', 'transactional',
+    (v) => `${v.from_email || 'Someone'} wants to see ${v.business || 'your business'} on Insyt`,
+    (v) => [
+      `${v.from_email || 'Someone'} signed in to Insyt with ${v.site || 'your website'} and it already belongs to your account.`,
+      'Add them as a viewer with one tap: they see everything, approvals stay yours. Ignore this if you do not know them.',
+    ],
+    (v) => ({ label: 'Add them', url: v.approve_url || 'https://app.tryinsyt.com/app/settings' })),
+
   T('unlock_receipt', 'transactional',
     () => 'Your full report is unlocked',
     (v) => [

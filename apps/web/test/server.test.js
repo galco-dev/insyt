@@ -89,6 +89,16 @@ test('magic link: view_report redirects once, then the link is dead', async () =
   });
 });
 
+test('session (fix plan move 12): a viewer role rides in the cookie and reads back; old cookies are owners', () => {
+  const { issueSession, readSession } = require('../src/session');
+  const now = 1_000_000;
+  const viewer = issueSession({ tenantId: 'tn1', secret: 's', now, role: 'viewer' });
+  assert.deepStrictEqual(readSession(`insyt_s=${viewer}`, 's', now + 10), { tenantId: 'tn1', role: 'viewer' });
+  const owner = issueSession({ tenantId: 'tn1', secret: 's', now });
+  assert.deepStrictEqual(readSession(`insyt_s=${owner}`, 's', now + 10), { tenantId: 'tn1', role: 'owner' });
+  assert.strictEqual(readSession(`insyt_s=${viewer}x`, 's', now + 10), null, 'tampered role is rejected');
+});
+
 test('landing + health', async () => {
   await withApp({ store: mkStore(), crawler: okCrawler }, async (base) => {
     const landing = await (await fetch(base + '/')).text();

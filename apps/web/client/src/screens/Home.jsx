@@ -322,7 +322,7 @@ function NeedsYouHead({ pending, access, money }) {
         {plural(pending.length, 'fix', 'fixes')}{value ? `, ${value}` : ''}
         {!active && value && <Chip />}
       </p>
-      {active && safe.length >= 2 && (
+      {active && safe.length >= 2 && access.role !== 'viewer' && (
         <Button variant="secondary" onClick={all} disabled={busy} className="!px-4 !py-2">
           {busy ? 'Approving…' : `Approve all ${safe.length} safe fixes`}
         </Button>
@@ -420,6 +420,9 @@ export default function Home() {
 
   return (
     <div className="mx-auto max-w-m2 px-5 pb-24 pt-10">
+      {overview && overview.notice && (
+        <Card accent="info" className="mb-3 p-4 text-small">{overview.notice}</Card>
+      )}
       <Card className="flex items-center gap-5 p-5">
         {latest ? <MiniDial score={health.score} /> : (
           <div className="flex h-[100px] w-[100px] shrink-0 items-center justify-center" aria-hidden>

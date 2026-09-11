@@ -191,6 +191,67 @@ function LookAgain() {
   );
 }
 
+// People and businesses (fix plan move 12): invite a viewer, open another
+// business you own, add one. A viewer sees a single line instead.
+function People({ access }) {
+  const [email, setEmail] = useState('');
+  const [site, setSite] = useState('');
+  const [businesses, setBusinesses] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [note, setNote] = useState(null);
+  useEffect(() => { api('/api/app/businesses').then((d) => setBusinesses(d.businesses || [])).catch(() => setBusinesses([])); }, []);
+  if (access && access.role === 'viewer') return <p className="mt-3 text-small text-neutral-900">You are viewing this account. Approvals stay with the owner.</p>;
+  async function invite() {
+    setBusy('invite'); setNote(null);
+    try { await api('/api/app/invite', { method: 'POST', body: { email } }); setNote(`Invited ${email}. They can see everything; approvals stay yours.`); setEmail(''); }
+    catch (e) { setNote(e.message); }
+    setBusy(null);
+  }
+  async function open(id) {
+    setBusy(id);
+    try { await api('/api/app/switch-tenant', { method: 'POST', body: { tenant_id: id } }); window.location.href = '/app'; }
+    catch (e) { setNote(e.message); setBusy(null); }
+  }
+  async function add() {
+    setBusy('add'); setNote(null);
+    try { await api('/api/app/add-business', { method: 'POST', body: { website: site } }); window.location.href = '/app/confirm'; }
+    catch (e) { setNote(e.message); setBusy(null); }
+  }
+  const field = 'w-full rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)';
+  return (
+    <div className="mt-4 border-t border-neutral-200 pt-4">
+      <MonoLabel>Who can see this</MonoLabel>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+        <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" inputMode="email" autoCapitalize="none" placeholder="Invite someone to see this, by email" aria-label="Invite someone to see this" className={field} />
+        <Button variant="secondary" onClick={invite} disabled={busy === 'invite' || !email.includes('@')} className="shrink-0 !px-4 !py-2">Invite to view</Button>
+      </div>
+      <p className="mt-1 text-tiny text-neutral-900">They see everything you see. Approving stays with you.</p>
+      {businesses && businesses.length > 1 && (
+        <div className="mt-4">
+          <MonoLabel>Your businesses</MonoLabel>
+          <ul className="mt-2 divide-y divide-neutral-200 rounded border border-neutral-300 bg-neutral-50">
+            {businesses.map((b) => (
+              <li key={b.tenant_id} className="flex items-center justify-between gap-3 px-3 py-2 text-small">
+                <span className="min-w-0 truncate">{b.name}{b.website && b.website !== b.name ? <span className="ml-2 text-tiny text-neutral-900">{b.website}</span> : null}</span>
+                {b.current ? <span className="font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">this one</span> : <Button variant="secondary" onClick={() => open(b.tenant_id)} disabled={busy === b.tenant_id} className="!px-3 !py-1.5">Open</Button>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="mt-4">
+        <MonoLabel>Another business?</MonoLabel>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <input value={site} onChange={(e) => setSite(e.target.value)} inputMode="url" autoCapitalize="none" placeholder="itswebsite.com" aria-label="Website of the other business" className={field} />
+          <Button variant="secondary" onClick={add} disabled={busy === 'add' || !site.includes('.')} className="shrink-0 !px-4 !py-2">Add it</Button>
+        </div>
+        <p className="mt-1 text-tiny text-neutral-900">Same Google sign-in, its own account and report. No second consent screen.</p>
+      </div>
+      {note && <p className="mt-2 text-tiny text-neutral-900">{note}</p>}
+    </div>
+  );
+}
+
 // Pause everything until a date (fix plan move 13).
 function Pause({ access, onChange }) {
   const [until, setUntil] = useState(() => new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10));
@@ -471,6 +532,7 @@ export default function Settings() {
                 ? <Button variant="secondary" href="https://tryinsyt.com/" className="!px-4 !py-2">Leave the sample</Button>
                 : <Button variant="secondary" href="/auth/signout" className="!px-4 !py-2">Sign out</Button>}
             </div>
+            <People access={access} />
           </div>
         </div>
       </Card>

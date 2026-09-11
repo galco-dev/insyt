@@ -6,8 +6,8 @@ const crypto = require('crypto');
 
 const sign = (payload, secret) => crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 
-function issueSession({ tenantId, secret, now, ttlMs = 30 * 86_400_000 }) {
-  const payload = `${tenantId}.${now + ttlMs}`;
+function issueSession({ tenantId, secret, now, ttlMs = 30 * 86_400_000, role = 'owner' }) {
+  const payload = role && role !== 'owner' ? `${tenantId}.${now + ttlMs}.${role}` : `${tenantId}.${now + ttlMs}`;
   return `${payload}.${sign(payload, secret)}`;
 }
 
@@ -19,9 +19,9 @@ function readSession(cookieHeader, secret, now) {
   const payload = value.slice(0, i);
   const mac = value.slice(i + 1);
   if (!payload || sign(payload, secret) !== mac) return null;
-  const [tenantId, expiry] = payload.split('.');
+  const [tenantId, expiry, role] = payload.split('.');
   if (Number(expiry) < now) return null;
-  return { tenantId };
+  return { tenantId, role: role === 'viewer' ? 'viewer' : 'owner' };
 }
 
 const cookieFor = (session) => `insyt_s=${session}; HttpOnly; Path=/; Max-Age=2592000; SameSite=Lax`;

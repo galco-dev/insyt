@@ -394,6 +394,41 @@ function opsStore(db) {
     cogsByTenant: async () => db.select('token_metering', 'select=tenant_id,cost_usd.sum()'),
     enqueueRun: async (row) => { const [r] = await db.insert('runs', [row]); return r; },
     activeTenants: async () => db.select('tenants', "select=id&status=eq.active"),
+    // Four ops buttons (fix plan move 15): so nobody writes SQL against production again.
+    tenantDetail: async (tenantId) => {
+      const [tenant, assets, users, notice] = await Promise.all([
+        db.select('tenants', `id=eq.${q(tenantId)}&select=*`, { single: true }),
+        db.select('assets', `tenant_id=eq.${q(tenantId)}&select=id,kind,external_id,display_name,linked,metadata&order=kind.asc`).catch(() => []),
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=id,email,role,google_sub`).catch(() => []),
+        db.select('platform_notices', 'active=eq.true&select=id,text&order=created_at.desc&limit=1', { single: true }).catch(() => null),
+      ]);
+      return { tenant, assets: assets || [], users: users || [], notice };
+    },
+    linkAsset: async (tenantId, assetId, linked = true) => {
+      const row = await db.select('assets', `id=eq.${q(assetId)}&tenant_id=eq.${q(tenantId)}&select=id,metadata`, { single: true }).catch(() => null);
+      if (!row) return false;
+      await db.update('assets', `id=eq.${q(assetId)}`, { linked: !!linked, metadata: { ...(row.metadata || {}), matched_via: linked ? 'ops' : null } });
+      return true;
+    },
+    mergeTenants: async (fromId, toId) => {
+      if (!fromId || !toId || fromId === toId) return { ok: false };
+      // People and their Google connection move; the empty shell is cancelled, never deleted here.
+      await db.update('users', `tenant_id=eq.${q(fromId)}`, { tenant_id: toId, role: 'viewer' });
+      await db.update('tenants', `id=eq.${q(fromId)}`, { status: 'cancelled' });
+      await db.insert('audit_log', [{ tenant_id: toId, event: 'tenants_merged', detail: { from: fromId } }], { returning: false }).catch(() => {});
+      return { ok: true };
+    },
+    deleteTenant: async (tenantId) => { await db.rpc('delete_tenant', { p_tenant: tenantId }); return { ok: true }; },
+    setNotice: async (text) => {
+      await db.update('platform_notices', 'active=eq.true', { active: false }).catch(() => {});
+      const t = String(text || '').trim().slice(0, 240);
+      if (t) await db.insert('platform_notices', [{ text: t, active: true }], { returning: false });
+      return { ok: true, text: t || null };
+    },
+    activeNotice: async () => {
+      const n = await db.select('platform_notices', 'active=eq.true&select=text&order=created_at.desc&limit=1', { single: true }).catch(() => null);
+      return n ? n.text : null;
+    },
     // Pauses end by themselves (fix plan move 13).
     resumeDue: async (nowIso) => {
       const rows = await db.select('tenants', `status=eq.paused&paused_until=lt.${q(nowIso)}&select=id`).catch(() => []);
@@ -576,12 +611,14 @@ function dashStore(db, deps = {}) {
       const failedRun = !openRun && (openRuns || []).find((r) => r.status === 'failed') || null;
 
       const waitingRows = approvedWaiting || [];
+      const notice = await db.select('platform_notices', 'active=eq.true&select=text&order=created_at.desc&limit=1', { single: true }).catch(() => null);
       // Return on ad spend (fix plan move 11): only when order values exist.
       const spend28 = (days || []).reduce((s, d) => s + Number(d.spend_usd || 0), 0);
       const value28 = (days || []).reduce((s, d) => s + Number(d.conversion_value_usd || 0), 0);
       const roas = value28 > 0 && spend28 > 0 ? { spend_28d_usd: Math.round(spend28), value_28d_usd: Math.round(value28), ratio: Math.round((value28 / spend28) * 10) / 10 } : null;
       return {
         spend: spend || null,
+        notice: notice ? notice.text : null,
         roas,
         running: openRun ? { since: openRun.started_at || null, type: openRun.type } : null,
         failed_last: !!(failedRun && !lastRun) || !!(failedRun && lastRun && failedRun.started_at && lastRun.finished_at && failedRun.started_at > lastRun.finished_at),
@@ -930,7 +967,86 @@ function dashStore(db, deps = {}) {
       // The ga4_stream rows ride under the analytics door for the old screen shape.
       const matched = assets.filter(isMatched).map(plain);
       const unmatched = assets.filter((x) => !isMatched(x)).map(plain);
-      return { matched, unmatched, doors, campaigns, site: domain, no_access: assets.length === 0 };
+      // The business already has an account (fix plan move 12): say so, offer to ask the owner.
+      let duplicate_of = null;
+      if (domain) {
+        const host = domain.replace(/^www\./, '');
+        const others = await db.select('tenants', `id=neq.${q(tenantId)}&status=in.(active,paused)&or=(website_url.ilike.${q(host)},website_url.ilike.www.${q(host)},website_url.ilike.https://${q(host)}*,website_url.ilike.http://${q(host)}*)&select=id,business_name,website_url&order=created_at.asc&limit=1`).catch(() => []);
+        const o = (others || [])[0];
+        if (o) {
+          const runs = await db.select('runs', `tenant_id=eq.${q(o.id)}&status=in.(complete,degraded)&select=id&limit=1`).catch(() => []);
+          if (runs && runs.length) duplicate_of = { tenant_id: o.id, business: o.business_name || o.website_url || 'This business' };
+        }
+      }
+      return { matched, unmatched, doors, campaigns, site: domain, no_access: assets.length === 0, duplicate_of };
+    },
+    // Ask the owner to add me (fix plan move 12): one email with an approve link.
+    joinRequest: async (tenantId, { baseUrl = 'https://app.tryinsyt.com', now = Date.now() } = {}) => {
+      const d = await store.discovery(tenantId);
+      if (!d.duplicate_of) return { ok: false, error: 'No other account for this website.' };
+      const [me, owner] = await Promise.all([
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=id,email&limit=1`, { single: true }).catch(() => null),
+        db.select('users', `tenant_id=eq.${q(d.duplicate_of.tenant_id)}&role=eq.owner&select=email&limit=1`, { single: true }).catch(() => null),
+      ]);
+      if (!me || !owner || !owner.email) return { ok: false, error: 'We could not reach the owner.' };
+      const { mintLink } = require('../../emails/src/magic-links');
+      const inserts = [];
+      const link = mintLink({ tenantId: d.duplicate_of.tenant_id, purpose: 'join_approve', targetId: me.id, baseUrl, now }, { insertLink: (row) => inserts.push(db.insert('magic_links', [row], { returning: false })) });
+      await Promise.all(inserts);
+      await db.insert('emails', [{ tenant_id: d.duplicate_of.tenant_id, template_id: 'join_request', to_email: owner.email, stream: 'transactional', status: 'queued', payload: { from_email: me.email, business: d.duplicate_of.business, site: d.site, approve_url: link.url } }], { returning: false });
+      return { ok: true, business: d.duplicate_of.business };
+    },
+    // The owner tapped Add them: the requester becomes a viewer on the owner's account.
+    approveJoin: async (ownerTenantId, userId) => {
+      const u = await db.select('users', `id=eq.${q(userId)}&select=id,tenant_id,email`, { single: true }).catch(() => null);
+      if (!u || u.tenant_id === ownerTenantId) return { ok: false };
+      await db.update('users', `id=eq.${q(userId)}`, { tenant_id: ownerTenantId, role: 'viewer' });
+      await db.update('tenants', `id=eq.${q(u.tenant_id)}`, { status: 'cancelled' }).catch(() => {});
+      await db.insert('ledger', [{ tenant_id: ownerTenantId, event: 'connection_changed', actor: 'user', summary_text: `${u.email} can now see this account (view only).` }], { returning: false }).catch(() => {});
+      return { ok: true, email: u.email };
+    },
+    // Invite someone to see this (fix plan move 12): a viewer link, read-only, 30 days.
+    inviteViewer: async (tenantId, email, { baseUrl = 'https://app.tryinsyt.com', now = Date.now() } = {}) => {
+      const to = String(email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { ok: false, error: 'That does not look like an email address.' };
+      const [owner, tenant] = await Promise.all([
+        db.select('users', `tenant_id=eq.${q(tenantId)}&role=eq.owner&select=email,name&limit=1`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=business_name,website_url`, { single: true }).catch(() => null),
+      ]);
+      const { mintLink } = require('../../emails/src/magic-links');
+      const inserts = [];
+      const link = mintLink({ tenantId, purpose: 'join_viewer', targetId: null, baseUrl, now }, { insertLink: (row) => inserts.push(db.insert('magic_links', [row], { returning: false })) });
+      await Promise.all(inserts);
+      await db.insert('emails', [{ tenant_id: tenantId, template_id: 'viewer_invite', to_email: to, stream: 'transactional', status: 'queued', payload: { from_name: (owner && (owner.name || owner.email)) || 'The owner', business: (tenant && (tenant.business_name || tenant.website_url)) || 'the business', join_url: link.url } }], { returning: false });
+      await db.insert('ledger', [{ tenant_id: tenantId, event: 'connection_changed', actor: 'user', summary_text: `Invited ${to} to see this account (view only).` }], { returning: false }).catch(() => {});
+      return { ok: true };
+    },
+    // The businesses this login owns, and adding another one.
+    businesses: async (tenantId) => {
+      const me = await db.select('users', `tenant_id=eq.${q(tenantId)}&select=google_sub&limit=1`, { single: true }).catch(() => null);
+      if (!me || !me.google_sub) return [];
+      const rows = await db.select('users', `google_sub=eq.${q(me.google_sub)}&role=eq.owner&select=tenant_id,tenant:tenants(business_name,website_url,status)&order=last_seen_at.desc.nullslast`).catch(() => []);
+      return (rows || []).filter((r) => r.tenant && r.tenant.status !== 'cancelled').map((r) => ({ tenant_id: r.tenant_id, name: r.tenant.business_name || r.tenant.website_url || 'Business', website: r.tenant.website_url || null, current: r.tenant_id === tenantId }));
+    },
+    addBusiness: async (tenantId, website) => {
+      const site = String(website || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase().slice(0, 200);
+      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(site)) return { ok: false, error: 'That does not look like a website address.' };
+      const me = await db.select('users', `tenant_id=eq.${q(tenantId)}&role=eq.owner&select=id,google_sub,email,name`, { single: true }).catch(() => null);
+      if (!me) return { ok: false, error: 'Only the owner can add a business.' };
+      const conn = await db.select('google_connections', `user_id=eq.${q(me.id)}&select=refresh_token,granted_scopes,scope_level,status`, { single: true }).catch(() => null);
+      const [tenant] = await db.insert('tenants', [{ status: 'active', website_url: site }]);
+      const [user] = await db.insert('users', [{ tenant_id: tenant.id, google_sub: me.google_sub, email: me.email, name: me.name || null, role: 'owner', last_seen_at: new Date().toISOString() }]);
+      if (conn && conn.refresh_token) await db.insert('google_connections', [{ user_id: user.id, refresh_token: conn.refresh_token, granted_scopes: conn.granted_scopes, scope_level: conn.scope_level, status: conn.status, last_validated_at: new Date().toISOString() }], { returning: false }).catch(() => {});
+      await db.insert('ledger', [{ tenant_id: tenant.id, event: 'connection_changed', actor: 'user', summary_text: 'Business added from your other Insyt account. Google connected, read access.' }], { returning: false }).catch(() => {});
+      return { ok: true, tenant_id: tenant.id };
+    },
+    switchTenant: async (tenantId, toTenantId) => {
+      const me = await db.select('users', `tenant_id=eq.${q(tenantId)}&select=google_sub&limit=1`, { single: true }).catch(() => null);
+      if (!me) return { ok: false };
+      const other = await db.select('users', `tenant_id=eq.${q(toTenantId)}&google_sub=eq.${q(me.google_sub)}&role=eq.owner&select=id`, { single: true }).catch(() => null);
+      if (!other) return { ok: false };
+      await db.update('users', `id=eq.${q(other.id)}`, { last_seen_at: new Date().toISOString() }).catch(() => {});
+      return { ok: true };
     },
     // Link only what the confirm page presented as "your setup": assets matched
     // to the site (matched_via set by discovery) or chosen by the owner on the
@@ -1534,9 +1650,10 @@ function authStore(db) {
   return {
     /** users by google sub → tenant; first login creates tenant + user. */
     findOrCreateTenantByGoogle: async ({ sub, email, name }) => {
-      const existing = await db.select('users', `google_sub=eq.${q(sub)}&select=tenant_id&limit=1`, { single: true });
+      // One login may own several businesses (fix plan move 12): the last one used opens.
+      const existing = await db.select('users', `google_sub=eq.${q(sub)}&select=tenant_id&order=last_seen_at.desc.nullslast&limit=1`, { single: true });
       if (existing) {
-        await db.update('users', `google_sub=eq.${q(sub)}`, { last_seen_at: new Date().toISOString() }).catch(() => {});
+        await db.update('users', `google_sub=eq.${q(sub)}&tenant_id=eq.${q(existing.tenant_id)}`, { last_seen_at: new Date().toISOString() }).catch(() => {});
         return existing.tenant_id;
       }
       const [tenant] = await db.insert('tenants', [{ status: 'active' }]);

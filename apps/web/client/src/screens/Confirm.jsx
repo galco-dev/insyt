@@ -68,6 +68,26 @@ function Row({ door, def, money, chosen, onChoose }) {
   );
 }
 
+// The business already has an Insyt account (fix plan move 12): ask the owner.
+function AlreadyHere({ dup }) {
+  const [state, setState] = useState('idle');
+  const [msg, setMsg] = useState(null);
+  async function ask() {
+    setState('busy'); setMsg(null);
+    try { await api('/api/app/join-request', { method: 'POST' }); setState('sent'); }
+    catch (e) { setState('error'); setMsg(e.message); }
+  }
+  return (
+    <Card className="mt-3 p-4" accent="info">
+      <MonoLabel>Already on Insyt</MonoLabel>
+      <p className="mt-1 text-small">{dup.business} already has an Insyt account. Ask the owner to add you and you will see everything they see; approvals stay theirs.</p>
+      {state === 'sent'
+        ? <p className="mt-2 text-small text-success">Asked. One tap on their side and you are in.</p>
+        : <div className="mt-3 flex flex-wrap items-center gap-3"><Button variant="secondary" onClick={ask} disabled={state === 'busy'} className="!px-4 !py-2">Ask the owner to add me</Button>{msg && <span className="text-tiny text-critical">{msg}</span>}</div>}
+    </Card>
+  );
+}
+
 // "This login cannot see it": ask whoever holds the Google account, one email.
 function AskSomeone() {
   const [email, setEmail] = useState('');
@@ -158,6 +178,8 @@ export default function Confirm() {
           ))}
         </Card>
       )}
+
+      {data.duplicate_of && <AlreadyHere dup={data.duplicate_of} />}
 
       {(noAccess || doors.ads_account.state === 'cannot_see') && (
         <Card className="mt-3 p-4">

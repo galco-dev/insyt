@@ -344,6 +344,7 @@ export default function Approvals() {
   const locked = level === 'locked';
   const unlocked = level === 'unlocked';
   const active = level === 'active';
+  const viewer = !!(access && access.role === 'viewer');
   const value = access && access.pending_value_usd > 0 ? money(access.pending_value_usd) : null;
   const safe = safeFixes(pending);
   async function approveSafe() {
@@ -363,7 +364,7 @@ export default function Approvals() {
           {value && <Chip />}
         </p>
       )}
-      {active && pending.length > 0 && (
+      {active && pending.length > 0 && !viewer && (
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-small text-neutral-900">
             {pending.length} fix{pending.length === 1 ? '' : 'es'}{value ? `, about ${value} a month` : ''}{safe.length >= 2 ? `. ${safe.length} of them are in the safe categories.` : '.'}
@@ -413,7 +414,8 @@ export default function Approvals() {
                     onKeep={(item, on) => setKept((k) => { const s = new Set(k[p.id] || p.list); if (on) s.add(item); else s.delete(item); return { ...k, [p.id]: s }; })}
                   />
                 )}
-                <div className="mt-4 flex flex-wrap gap-3">
+                {viewer && <p className="mt-3 text-tiny text-neutral-900">View only. The owner decides.</p>}
+                <div className={`mt-4 flex flex-wrap gap-3 ${viewer ? 'hidden' : ''}`}>
                   <Button onClick={() => act('approve', p.id)} disabled={busy === p.id} className="!px-5 !py-2.5">
                     {p.list && kept[p.id] && kept[p.id].size < p.list.length ? `Approve ${kept[p.id].size} of ${p.list.length}` : 'Approve'}
                   </Button>

@@ -215,6 +215,24 @@ test('api (fix plan push 5): pause validates the date and pauses Stripe, undo is
   });
 });
 
+test('api (fix plan move 12): a viewer reads everything and changes nothing; access says the role', async () => {
+  const ds = dashStore();
+  ds.access = async () => ({ level: 'active' });
+  const viewerCookie = cookieFor(issueSession({ tenantId: 'tn1', secret: SECRET, now: Date.now(), role: 'viewer' })).split(';')[0];
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const acc = await (await fetch(`${base}/api/app/access`, { headers: { cookie: viewerCookie } })).json();
+    assert.strictEqual(acc.access.role, 'viewer');
+    const home = await fetch(`${base}/api/app/home`, { headers: { cookie: viewerCookie } });
+    assert.strictEqual(home.status, 200, 'reads are open');
+    const write = await fetch(`${base}/api/app/approve/ch1`, { method: 'POST', headers: { cookie: viewerCookie } });
+    assert.strictEqual(write.status, 403);
+    assert.strictEqual((await write.json()).view_only, true);
+    assert.deepStrictEqual(ds.actions, [], 'nothing approved');
+    const owner = await (await fetch(`${base}/api/app/access`, { headers: { cookie: authedCookie() } })).json();
+    assert.strictEqual(owner.access.role, 'owner');
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;

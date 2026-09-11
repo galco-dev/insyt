@@ -22,7 +22,14 @@ function authorized(req, opsToken) {
 }
 
 /** Returns true when the request was handled (an /ops route). */
-async function handleOps(req, res, u, { opsStore, queue, opsToken }) {
+async function readForm(req) {
+  let body = '';
+  req.on('data', (c) => { body += c; });
+  await new Promise((r) => req.on('end', r));
+  return Object.fromEntries(new URLSearchParams(body));
+}
+
+async function handleOps(req, res, u, { opsStore, queue, opsToken, rediscover = null }) {
   const path = u.pathname;
   if (!path.startsWith('/ops')) return false;
 
@@ -59,7 +66,7 @@ async function handleOps(req, res, u, { opsStore, queue, opsToken }) {
       return `<tr><td>${esc(t.business_name || t.website_url || t.id)}</td><td>${esc(t.status)}</td>
         <td>${s ? `${esc(s.tier)}/${esc(s.size_band)} $${esc(s.price_usd)}` : '—'}</td>
         <td>$${cost.toFixed(2)}${whale}</td>
-        <td><a href="/ops/ledger/${esc(t.id)}">ledger</a> ·
+        <td><a href="/ops/tenant/${esc(t.id)}">open</a> · <a href="/ops/ledger/${esc(t.id)}">ledger</a> ·
           <form method="post" action="/ops/run/${esc(t.id)}" style="display:inline"><button>run now</button></form></td></tr>`;
     }).join('');
     return html(200, page(`tenants — MRR $${mrr}`, `<table><tr><th>tenant</th><th>status</th><th>plan</th><th>COGS/mo</th><th></th></tr>${rows}</table>`)), true;
@@ -76,6 +83,64 @@ async function handleOps(req, res, u, { opsStore, queue, opsToken }) {
     const rows = (await opsStore.ledgerFor(path.split('/')[3]))
       .map((l) => `<tr><td>${esc(l.created_at)}</td><td>${esc(l.event)}</td><td>${esc(l.summary_text)}</td><td>${l.money_impact_usd ? '$' + esc(l.money_impact_usd) : ''}</td></tr>`).join('');
     return html(200, page('ledger', `<table><tr><th>at</th><th>event</th><th>summary</th><th>$</th></tr>${rows}</table>`)), true;
+  }
+
+  // ---- Four ops buttons (fix plan move 15): re-run discovery, link an asset,
+  // merge tenants, delete a tenant; plus the platform notice.
+  if (req.method === 'GET' && path.startsWith('/ops/tenant/')) {
+    if (!opsStore.tenantDetail) return html(404, page('not found', '')), true;
+    const id = path.split('/')[3];
+    const d = await opsStore.tenantDetail(id);
+    if (!d.tenant) return html(404, page('not found', '<p>No such tenant.</p>')), true;
+    const t = d.tenant;
+    const assets = d.assets.map((a) => `<tr><td>${esc(a.kind)}</td><td>${esc(a.display_name || '')}</td><td>${esc(a.external_id)}</td><td>${a.linked ? 'linked' : ''} ${esc((a.metadata && a.metadata.matched_via) || '')}</td>
+      <td><form method="post" action="/ops/link/${esc(id)}/${esc(a.id)}" style="display:inline"><input type="hidden" name="linked" value="${a.linked ? '0' : '1'}"><button>${a.linked ? 'unlink' : 'link'}</button></form></td></tr>`).join('');
+    const users = d.users.map((x) => `<li>${esc(x.email)} · ${esc(x.role)}</li>`).join('');
+    const body = `<p>${esc(t.business_name || '')} · ${esc(t.website_url || '')} · ${esc(t.status)} · band ${esc(t.size_band || '')} · <a href="/ops/ledger/${esc(id)}">ledger</a></p>
+      <ul>${users}</ul>
+      <p><form method="post" action="/ops/rediscover/${esc(id)}" style="display:inline"><button>re-run discovery</button></form>
+         <form method="post" action="/ops/run/${esc(id)}" style="display:inline"><button>run now</button></form></p>
+      <table><tr><th>kind</th><th>name</th><th>id</th><th>state</th><th></th></tr>${assets}</table>
+      <h3>Merge into another tenant</h3>
+      <form method="post" action="/ops/merge">People and their Google connection move to: <input name="to" placeholder="target tenant id" size="40"><input type="hidden" name="from" value="${esc(id)}"><button>merge</button></form>
+      <h3>Delete this tenant</h3>
+      <form method="post" action="/ops/delete/${esc(id)}" onsubmit="return confirm('Delete every row for this tenant? This cannot be undone.')">Type the tenant id to confirm: <input name="confirm" size="40"><button>delete</button></form>
+      <h3>Platform notice (everyone's Home)</h3>
+      <form method="post" action="/ops/notice"><input name="text" size="60" value="${esc(d.notice ? d.notice.text : '')}" placeholder="Empty clears it"><button>set</button></form>`;
+    return html(200, page(`tenant ${id.slice(0, 8)}`, body)), true;
+  }
+  if (req.method === 'POST' && path.startsWith('/ops/rediscover/')) {
+    const id = path.split('/')[3];
+    if (rediscover) { try { await rediscover(id); } catch (e) { return html(500, page('rediscover failed', `<p>${esc(e.message)}</p>`)), true; } }
+    res.writeHead(302, { location: `/ops/tenant/${id}` });
+    return res.end(), true;
+  }
+  if (req.method === 'POST' && path.startsWith('/ops/link/')) {
+    const [, , , tenantId, assetId] = path.split('/');
+    const form = await readForm(req);
+    if (opsStore.linkAsset) await opsStore.linkAsset(tenantId, assetId, form.linked !== '0');
+    res.writeHead(302, { location: `/ops/tenant/${tenantId}` });
+    return res.end(), true;
+  }
+  if (req.method === 'POST' && path === '/ops/merge') {
+    const form = await readForm(req);
+    if (opsStore.mergeTenants && form.from && form.to) await opsStore.mergeTenants(form.from, form.to);
+    res.writeHead(302, { location: `/ops/tenant/${form.to || form.from}` });
+    return res.end(), true;
+  }
+  if (req.method === 'POST' && path.startsWith('/ops/delete/')) {
+    const id = path.split('/')[3];
+    const form = await readForm(req);
+    if (form.confirm !== id) return html(400, page('not deleted', '<p>The confirmation did not match the tenant id.</p>')), true;
+    if (opsStore.deleteTenant) await opsStore.deleteTenant(id);
+    res.writeHead(302, { location: '/ops' });
+    return res.end(), true;
+  }
+  if (req.method === 'POST' && path === '/ops/notice') {
+    const form = await readForm(req);
+    if (opsStore.setNotice) await opsStore.setNotice(form.text || '');
+    res.writeHead(302, { location: '/ops' });
+    return res.end(), true;
   }
 
   if (req.method === 'POST' && path.startsWith('/ops/run/')) {
