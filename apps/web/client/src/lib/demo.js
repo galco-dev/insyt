@@ -105,6 +105,21 @@ const DEMO = {
     unmatched: [
       { id: 'a4', kind: 'ga4_property', external_id: '2207114', display_name: 'Old site (2023)', linked: false },
     ],
+    doors: {
+      ads_account: { state: 'choose', matched: [], suggested: 'a1', candidates: [
+        { id: 'a1', kind: 'ads_account', external_id: '642-459-1230', display_name: 'Glow Studio - Ads', spend_30d_usd: 1240, test_account: false },
+        { id: 'a5', kind: 'ads_account', external_id: '901-220-4471', display_name: 'Glow Studio (old)', spend_30d_usd: 0, test_account: false },
+      ] },
+      ga4_property: { state: 'matched', matched: [{ id: 'a2', kind: 'ga4_property', external_id: '3418867', display_name: 'Glow Studio - Analytics' }], candidates: [], suggested: null },
+      gtm_container: { state: 'matched', matched: [{ id: 'a3', kind: 'gtm_container', external_id: 'GTM-K2P9QX', display_name: 'glowstudio.ae' }], candidates: [], suggested: null },
+    },
+    campaigns: [
+      { id: '11', name: 'Brand - Dubai', status: 'enabled', spend_30d_usd: 310 },
+      { id: '12', name: 'Gel nails - Dubai', status: 'enabled', spend_30d_usd: 720 },
+      { id: '13', name: 'Bridal packages', status: 'paused', spend_30d_usd: 0 },
+    ],
+    site: 'glowstudio.ae',
+    no_access: false,
   },
   'GET /api/app/plan': {
     plan: {
@@ -424,6 +439,8 @@ function customerDemo(path, method, body) {
   }
   if (/^\/api\/app\/alerts\/[^/]+\/ack$/.test(p)) { if (!s.ackedAlerts) s.ackedAlerts = new Set(); s.ackedAlerts.add(p.split('/')[4]); return { ok: true }; }
   if (p === '/api/app/emails') { s.emails = { reports: !!(body && body.reports) }; return { ok: true, reports: s.emails.reports }; }
+  if (p === '/api/app/confirm') return { ok: true, run_id: 'demo-run' };
+  if (p === '/api/app/access-request') return { ok: true };
   if (p === '/api/app/autopilot') {
     const cats = (body && (body.categories || body)) || {};
     for (const k of ['negatives', 'budgets', 'counting']) s.autopilot[k] = !!cats[k];

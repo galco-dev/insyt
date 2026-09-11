@@ -285,7 +285,7 @@ function buildStages({ google, crawler, model, store }) {
             findings: ctx.findings,
             ctx: { ads: ctx.ads, adsDeep: ctx.adsDeep || (ctx.ads && ctx.ads.deep) || null, ga4: ctx.ga4, gtm: ctx.gtm, witness: ctx.witness },
             state: state.bounds, autopilot: state.autopilot,
-            exceptions: state.exceptions, inflight: state.inflight, recent: state.recent,
+            exceptions: state.exceptions, fences: state.fences || new Set(), inflight: state.inflight, recent: state.recent,
           });
           drafted = await store.saveDrafts(ctx.run.id, ctx.run.tenant_id, drafts, skipped);
         }

@@ -165,6 +165,20 @@ test('api: POST /api/app/alerts/:id/ack is free at every level and tenant-scoped
   });
 });
 
+test('api: POST /api/app/confirm passes the chosen accounts and fences to the store', async () => {
+  const ds = dashStore();
+  const seen = [];
+  ds.confirmAssets = async (t, choices) => { seen.push([t, choices]); };
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const r = await fetch(`${base}/api/app/confirm`, { method: 'POST', headers: { cookie: authedCookie(), 'content-type': 'application/json' }, body: JSON.stringify({ link: ['ad1'], exceptions: [{ target: 'campaign:7', summary_text: 'Leave Brand alone' }] }) });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(seen, [['tn1', { link: ['ad1'], exceptions: [{ target: 'campaign:7', summary_text: 'Leave Brand alone' }] }]]);
+    const bare = await fetch(`${base}/api/app/confirm`, { method: 'POST', headers: { cookie: authedCookie() } });
+    assert.strictEqual(bare.status, 200, 'no body still confirms, as the old client did');
+    assert.deepStrictEqual(seen[1][1], { link: [], exceptions: [] });
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;

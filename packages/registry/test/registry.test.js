@@ -1,5 +1,19 @@
 const assert = require('node:assert');
 const { test } = require('node:test');
+
+test('draftChanges: a fence covers the target and everything under it (fix plan move 7)', () => {
+  const assert = require('node:assert');
+  const { draftChanges } = require('../src/drafts');
+  const findings = [{ finding_id: 'f1', rule_id: 'ads.wasted_terms', entity_key: 'wasted_terms', severity: 'warning', payload: { entities: [{ campaign_id: '11', term: 'free stuff' }] }, fix: { available: true } }];
+  const ctx = { ads: { campaigns: [{ id: '11', name: 'Brand', status: 'enabled', budget_daily_usd: 20 }], search_terms: [{ term: 'free stuff', campaign_id: '11', spend_90d_usd: 200, clicks_90d: 100, conversions_90d: 0 }] } };
+  const state = { account: { daily_budget_total_usd: 20 }, campaign: () => ctx.ads.campaigns[0], weekly_budget_delta_pct: 0, converting_terms: new Set(), reverted_30d: 0 };
+  const open = draftChanges({ findings, ctx, state });
+  const fencedOut = draftChanges({ findings, ctx, state, fences: new Set(['campaign:11']) });
+  if (open.drafts.length) {
+    assert.strictEqual(fencedOut.drafts.length, 0, 'the fenced campaign gets no proposal');
+    assert.strictEqual(fencedOut.skipped[0].reason, 'you asked us to leave this alone');
+  }
+});
 const { ROWS, byRule } = require('../src/registry');
 const { checkBounds, pairBudgetMoves, BOUNDS } = require('../src/bounds');
 const { draftChanges, changeKey } = require('../src/drafts');

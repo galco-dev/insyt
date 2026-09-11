@@ -40,9 +40,9 @@ function readState(state, secret, now) {
 }
 
 /** Store discovered assets and mark crawl-matched ones linked. */
-async function storeDiscoveredAssets({ db, tenantId, assets, tagsFound }) {
-  const { matched, unmatched, confidence } = tagsFound
-    ? matchAssets(tagsFound, assets)
+async function storeDiscoveredAssets({ db, tenantId, assets, tagsFound, domain = null }) {
+  const { matched, unmatched, confidence } = (tagsFound || domain)
+    ? matchAssets(tagsFound || {}, assets, { domain })
     : { matched: [], unmatched: assets.map((a) => ({ ...a, matched: false })), confidence: 0 };
   const rows = [...matched, ...unmatched].map((a) => ({
     tenant_id: tenantId,
@@ -72,11 +72,11 @@ async function fetchUserinfo(accessToken, fetchImpl = fetch) {
 
 async function latestCrawlTags(db, tenantId) {
   const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=website_url`, { single: true });
-  if (!t || !t.website_url) return null;
+  if (!t || !t.website_url) return { tags: null, domain: null };
   let domain;
-  try { domain = new URL(t.website_url.startsWith('http') ? t.website_url : `https://${t.website_url}`).hostname; } catch { return null; }
+  try { domain = new URL(t.website_url.startsWith('http') ? t.website_url : `https://${t.website_url}`).hostname; } catch { return { tags: null, domain: null }; }
   const c = await db.select('crawls', `url=ilike.*${q(domain)}*&select=tags_found&order=created_at.desc&limit=1`, { single: true });
-  return (c && c.tags_found) || null;
+  return { tags: (c && c.tags_found) || null, domain };
 }
 
 /**
@@ -105,7 +105,8 @@ async function handleGoogleAuth(req, res, u, session, deps) {
     const next = step === 'write' ? String(u.searchParams.get('next') || '').replace(/[|\s]/g, '').slice(0, 200) : '';
     const site = next && /^\/app(\/[A-Za-z0-9._~\-/]*)?$/.test(next) ? next : (u.searchParams.get('site') || '').replace(/[|\s]/g, '').slice(0, 200);
     const state = issueState({ tenantId: session ? session.tenantId : '', step, secret: sessionSecret, now: now(), site });
-    return redirect(buildAuthUrl({ clientId: config.clientId, redirectUri: config.redirectUri, step, state }));
+    // switch=1: the person picked the wrong Google account; force the chooser (fix plan move 12).
+    return redirect(buildAuthUrl({ clientId: config.clientId, redirectUri: config.redirectUri, step, state, forceChooser: u.searchParams.get('switch') === '1' }));
   }
 
   if (req.method === 'GET' && path === '/auth/google/callback') {
@@ -180,8 +181,8 @@ async function handleGoogleAuth(req, res, u, session, deps) {
         loginCustomerId: config.loginCustomerId,
       });
       const { assets, errors } = await (deps.discoverAssets || discoverAssets)(clients);
-      const tagsFound = await latestCrawlTags(db, st.tenantId);
-      const result = await storeDiscoveredAssets({ db, tenantId: st.tenantId, assets, tagsFound });
+      const { tags: tagsFound, domain } = await latestCrawlTags(db, st.tenantId);
+      const result = await storeDiscoveredAssets({ db, tenantId: st.tenantId, assets, tagsFound, domain });
       if (errors.length) {
         await db.insert('audit_log', [{
           tenant_id: st.tenantId, event: 'discovery_partial', detail: { errors },

@@ -318,6 +318,37 @@ test('dashStore.access carries fix_access; pendingApprovals flags analytics and 
   assert.deepStrictEqual(rows.map((r) => [r.id, r.needs_fix_access]), [['c1', false], ['c2', true], ['c3', false]]);
 });
 
+test('dashStore.discovery: three doors with honest states; confirmAssets links the choice and writes fences', async () => {
+  const { dashStore } = require('../src/stores');
+  const assets = [
+    { id: 'g1', kind: 'gtm_container', external_id: 'GTM-1', display_name: null, linked: false, metadata: { matched_via: 'container_on_site' } },
+    { id: 'p1', kind: 'ga4_property', external_id: '55', display_name: 'Site', linked: false, metadata: { matched_via: 'stream_match' } },
+    { id: 'ad1', kind: 'ads_account', external_id: '111', display_name: 'Main', linked: false, metadata: { spend_30d_usd: 900, campaigns: [{ id: '7', name: 'Brand', status: 'enabled', spend_30d_usd: 300 }] } },
+    { id: 'ad2', kind: 'ads_account', external_id: '222', display_name: 'Old', linked: false, metadata: { spend_30d_usd: 0, campaigns: [] } },
+  ];
+  const f = routedFetch({ assets: (url) => (/id=eq\.ad1/.test(url) ? [assets[2]] : assets), tenants: [{ website_url: 'jobpeak.net' }], crawls: [{ tags_found: { gtm_containers: ['GTM-1'], ga4_ids: ['G-1'], aw_conversion_ids: [] } }], standing_exceptions: [] });
+  const s = dashStore(mkDb(f));
+  const d = await s.discovery('t1');
+  assert.deepStrictEqual([d.doors.gtm_container.state, d.doors.ga4_property.state, d.doors.ads_account.state], ['matched', 'matched', 'choose']);
+  assert.strictEqual(d.doors.ads_account.suggested, 'ad1', 'the account with spend is pre-ticked');
+  assert.deepStrictEqual(d.campaigns, [{ id: '7', name: 'Brand', status: 'enabled', spend_30d_usd: 300 }]);
+  assert.strictEqual(d.no_access, false);
+
+  const r = await s.confirmAssets('t1', { link: ['ad1'], exceptions: [{ target: 'campaign:7', summary_text: 'Leave "Brand" alone' }, { target: 'drop table', summary_text: 'x' }] });
+  assert.deepStrictEqual(r, { linked: 1, fenced: 1 });
+  const linkPatch = f.calls.find((c) => c.method === 'PATCH' && /assets\?id=eq\.ad1/.test(c.url));
+  assert.strictEqual(linkPatch.body.linked, true);
+  assert.strictEqual(linkPatch.body.metadata.matched_via, 'owner_choice');
+  const fence = f.calls.find((c) => c.method === 'POST' && /standing_exceptions/.test(c.url)).body[0];
+  assert.deepStrictEqual([fence.change_key, fence.target, fence.created_from], ['fence:campaign:7', 'campaign:7', 'ui']);
+
+  const none = dashStore(mkDb(routedFetch({ assets: [], tenants: [{ website_url: 'x.com' }], crawls: [] })));
+  const e = await none.discovery('t1');
+  assert.strictEqual(e.no_access, true);
+  assert.strictEqual(e.doors.ads_account.state, 'cannot_see');
+  assert.strictEqual(e.doors.gtm_container.state, 'unused');
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

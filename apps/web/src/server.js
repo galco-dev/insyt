@@ -56,8 +56,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
   // Confirming assets is the moment the first audit starts (§8 signup queue,
   // immediate priority). Idempotent per tenant: a second confirm never queues
   // a second first-audit.
-  async function confirmAndStart(tenantId) {
-    await dashStore.confirmAssets(tenantId);
+  async function confirmAndStart(tenantId, choices = {}) {
+    await dashStore.confirmAssets(tenantId, choices);
     if (!opsStore || !queue) return null;
     try {
       const run = await opsStore.enqueueRun({ tenant_id: tenantId, type: 'signup_audit', status: 'queued', idempotency_key: `signup:${tenantId}` });
@@ -361,7 +361,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -375,6 +375,16 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                   if (!text) return json(res, 400, { error: 'Say what you would like to know or change.' });
                   const r = await dashStore.chat(t, text, parsed.conversation_id || null);
                   return json(res, 200, r);
+                }
+                // Confirm (fix plan move 1): the chosen accounts and the fences ride along.
+                if (sub === '/confirm') {
+                  const run = await confirmAndStart(t, { link: Array.isArray(parsed.link) ? parsed.link : [], exceptions: Array.isArray(parsed.exceptions) ? parsed.exceptions : [] });
+                  return json(res, 200, { ok: true, run_id: run ? run.id : null });
+                }
+                if (sub === '/access-request') {
+                  if (!dashStore.accessRequest) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.accessRequest(t, parsed.email, process.env.APP_BASE_URL || 'https://app.tryinsyt.com');
+                  return json(res, r.ok ? 200 : 400, r);
                 }
                 // Settings writes (richer-platform spec §6): free at every level,
                 // they touch nothing in Google.
@@ -460,7 +470,6 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             const ok = dashStore.clearException ? await dashStore.clearException(t, sub.split('/')[2]) : false;
             return json(res, ok ? 200 : 404, { ok });
           }
-          if (sub === '/confirm') { const run = await confirmAndStart(t); return json(res, 200, { ok: true, run_id: run ? run.id : null }); }
           if (sub === '/recheck') {
             // "Check again now": a triggered run, at most one per tenant per hour.
             if (!opsStore || !queue) return json(res, 503, { error: 'Checks are paused right now - try again shortly.' });

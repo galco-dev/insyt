@@ -9,7 +9,7 @@
  * @returns {{ matched: [], unmatched: [], confidence: number }}
  *   confidence 0–1 for "the signed-in Google account owns this site".
  */
-function matchAssets(tagsFound, assets) {
+function matchAssets(tagsFound, assets, { domain = null } = {}) {
   const onSite = {
     gtm: new Set(tagsFound.gtm_containers || []),
     ga4: new Set(tagsFound.ga4_ids || []),
@@ -40,12 +40,30 @@ function matchAssets(tagsFound, assets) {
     }
   }
 
+  // Ads accounts the modern way (fix plan move 2): the account a matched
+  // GA4 property is linked to, or one whose ads point at this site. The
+  // AW tag on the page still counts; most accounts no longer carry one.
+  const linkedIds = new Set(matched.filter((a) => a.kind === 'ga4_property').flatMap((a) => (a.metadata && a.metadata.ads_links) || []).map((id) => String(id).replace(/-/g, '')));
+  const site = domain ? String(domain).replace(/^www\./, '').toLowerCase() : null;
+  for (let i = unmatched.length - 1; i >= 0; i--) {
+    const a = unmatched[i];
+    if (a.kind !== 'ads_account') continue;
+    const id = String(a.external_id).replace(/-/g, '');
+    const domains = ((a.metadata && a.metadata.domains) || []).map((d) => String(d).replace(/^www\./, '').toLowerCase());
+    let via = null;
+    if (linkedIds.has(id)) via = 'ga4_link';
+    else if (site && domains.some((d) => d === site || d.endsWith(`.${site}`) || site.endsWith(`.${d}`))) via = 'final_url_domain';
+    if (via) { unmatched.splice(i, 1); matched.push({ ...a, matched: true, matched_via: via }); }
+  }
+
   // Confidence: strongest single signal wins; independent signals compound.
   const signals = new Set(matched.map((m) => m.matched_via));
   let confidence = 0;
   if (signals.has('container_on_site')) confidence = Math.max(confidence, 0.9);
   if (signals.has('g_id_on_site')) confidence = Math.max(confidence, 0.85);
   if (signals.has('aw_tag_on_site')) confidence = Math.max(confidence, 0.7);
+  if (signals.has('ga4_link')) confidence = Math.max(confidence, 0.85);
+  if (signals.has('final_url_domain')) confidence = Math.max(confidence, 0.75);
   if (signals.size >= 2) confidence = Math.min(1, confidence + 0.1);
 
   return { matched, unmatched, confidence };

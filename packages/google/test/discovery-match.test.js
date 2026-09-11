@@ -43,6 +43,25 @@ test('discoverAssets: per-source failure captured, discovery continues (§7 insu
   assert.ok(assets.some((a) => a.kind === 'gtm_container'), 'other sources still enumerated');
 });
 
+test('matchAssets (fix plan move 2): an Ads account matches through the GA4 link, or through its ads pointing at the site', () => {
+  const tags = { gtm_containers: [], ga4_ids: ['G-ABC'], aw_conversion_ids: [] };
+  const assets = [
+    { kind: 'ga4_stream', external_id: 'G-ABC', metadata: { property_id: 'p1' } },
+    { kind: 'ga4_property', external_id: 'p1', metadata: { ads_links: ['6424596144'] } },
+    { kind: 'ads_account', external_id: '642-459-6144', metadata: { domains: [] } },
+    { kind: 'ads_account', external_id: '7307442495', metadata: { domains: ['www.jobpeak.net'] } },
+    { kind: 'ads_account', external_id: '1112223333', metadata: { domains: ['other.example'] } },
+  ];
+  const { matched, unmatched, confidence } = matchAssets(tags, assets, { domain: 'jobpeak.net' });
+  const via = Object.fromEntries(matched.map((m) => [m.external_id, m.matched_via]));
+  assert.strictEqual(via['642-459-6144'], 'ga4_link');
+  assert.strictEqual(via['7307442495'], 'final_url_domain');
+  assert.deepStrictEqual(unmatched.map((u) => u.external_id), ['1112223333'], 'a sibling business stays unmatched');
+  assert.ok(confidence >= 0.85);
+  const noSite = matchAssets({ gtm_containers: [], ga4_ids: [], aw_conversion_ids: [] }, assets.slice(2));
+  assert.strictEqual(noSite.matched.length, 0, 'no signal, no link, never a guess');
+});
+
 test('matchAssets: container + G-ID on site match, property matches through stream', async () => {
   const { assets } = await discoverAssets(STUB_CLIENTS);
   const crawlTags = { gtm_containers: ['GTM-TEST123'], ga4_ids: ['G-FIXTURE001'], legacy_ua: [], aw_conversion_ids: [] };

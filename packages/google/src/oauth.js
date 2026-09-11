@@ -16,7 +16,7 @@ const TOKENINFO_ENDPOINT = 'https://oauth2.googleapis.com/tokeninfo';
  * carry over); access_type=offline + prompt=consent guarantees a refresh
  * token on the step-2 grant.
  */
-function buildAuthUrl({ clientId, redirectUri, step, state, loginHint }) {
+function buildAuthUrl({ clientId, redirectUri, step, state, loginHint, forceChooser = false }) {
   const scopes = LADDER[step];
   if (!scopes) throw new Error(`unknown ladder step: ${step}`);
   if (step === 'create') throw new Error('create step adds no scopes; do not send users to consent for it');
@@ -27,7 +27,7 @@ function buildAuthUrl({ clientId, redirectUri, step, state, loginHint }) {
     scope: scopes.join(' '),
     access_type: 'offline',
     include_granted_scopes: 'true',
-    prompt: step === 'discovery' ? 'consent' : 'select_account consent',
+    prompt: forceChooser || step !== 'discovery' ? 'select_account consent' : 'consent',
     state,
   });
   if (loginHint) params.set('login_hint', loginHint);

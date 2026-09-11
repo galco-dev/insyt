@@ -23,7 +23,7 @@ function changeKey(toolId, target, params) {
   return `${toolId}:${target}:${h}`;
 }
 
-function draftChanges({ findings, ctx, state, autopilot = {}, exceptions = new Set(), inflight = new Set(), recent = new Set() }) {
+function draftChanges({ findings, ctx, state, autopilot = {}, exceptions = new Set(), fences = new Set(), inflight = new Set(), recent = new Set() }) {
   const drafts = [];
   const skipped = [];
   const seenTargets = new Set();
@@ -42,6 +42,9 @@ function draftChanges({ findings, ctx, state, autopilot = {}, exceptions = new S
       const toolId = s.tool_id || row.tool_id;
       const key = changeKey(toolId, s.target, s.params);
       if (exceptions.has(key)) { skipped.push({ rule_id: f.rule_id, entity_key: f.entity_key, reason: 'standing exception' }); continue; }
+      // A fence covers a whole target and everything under it (fix plan move 7):
+      // "leave Brand - Dubai alone" fences campaign:11 and campaign:11:budget alike.
+      if ([...fences].some((fence) => s.target === fence || String(s.target).startsWith(`${fence}:`))) { skipped.push({ rule_id: f.rule_id, entity_key: f.entity_key, reason: 'you asked us to leave this alone' }); continue; }
       if (recent.has(key)) { skipped.push({ rule_id: f.rule_id, entity_key: f.entity_key, reason: 'identical change applied recently' }); continue; }
       if (inflight.has(s.target) || seenTargets.has(s.target)) { skipped.push({ rule_id: f.rule_id, entity_key: f.entity_key, reason: 'a change is already in flight for this resource' }); continue; }
       seenTargets.add(s.target);

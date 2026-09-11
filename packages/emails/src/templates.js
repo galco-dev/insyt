@@ -38,6 +38,14 @@ const TEMPLATES = [
     ],
     (v) => ({ label: 'See your report', url: v.report_url })),
 
+  T('access_request', 'transactional',
+    (v) => `Could you connect Google Ads for ${v.site || 'your website'}?`,
+    (v) => [
+      `${v.from_name || 'The owner'} is setting up Insyt to check the ads and tracking for ${v.site || 'their website'}, and your Google account is the one that can see them.`,
+      'It takes one tap. Insyt only reads at first: nothing changes in any account without an approval.',
+    ],
+    (v) => ({ label: 'Connect with Google', url: v.start_url || 'https://app.tryinsyt.com/app/start' })),
+
   T('unlock_receipt', 'transactional',
     () => 'Your full report is unlocked',
     (v) => [

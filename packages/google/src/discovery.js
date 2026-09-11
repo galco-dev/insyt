@@ -28,7 +28,7 @@ async function discoverAssets(clients) {
         external_id: String(a.customerId),
         display_name: a.descriptiveName || null,
         currency: a.currencyCode || null,
-        metadata: { test_account: !!a.testAccount },
+        metadata: { test_account: !!a.testAccount, spend_30d_usd: a.spend30dUsd ?? null, domains: a.domains || [], campaigns: (a.campaigns || []).map((c) => ({ id: String(c.id), name: c.name, status: c.status || null, spend_30d_usd: c.spend_30d_usd ?? null })) },
       });
     }
   });
@@ -41,7 +41,7 @@ async function discoverAssets(clients) {
           external_id: String(p.propertyId),
           display_name: p.displayName || null,
           currency: p.currencyCode || null,
-          metadata: { account: acct.account },
+          metadata: { account: acct.account, ads_links: p.adsLinks || [] },
         });
         for (const s of p.dataStreams || []) {
           out.assets.push({

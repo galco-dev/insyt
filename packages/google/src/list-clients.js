@@ -51,15 +51,50 @@ function createListClients({ accessToken, developerToken, loginCustomerId, fetch
             body: JSON.stringify({ query: 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager, customer.test_account FROM customer' }),
           });
           const c = r.results && r.results[0] && r.results[0].customer;
-          out.push({
+          const row = {
             customerId: cid,
             descriptiveName: (c && c.descriptiveName) || null,
             currencyCode: (c && c.currencyCode) || null,
             manager: !!(c && c.manager),
             testAccount: !!(c && c.testAccount),
-          });
+            spend30dUsd: null, domains: [], campaigns: [],
+          };
+          // Signals for matching and choosing (fix plan move 2): what the
+          // account spent in the last 30 days, where its ads point, and its
+          // campaign names for the "leave alone" list. Best effort.
+          if (!row.manager) {
+            try {
+              const camps = await api(`https://googleads.googleapis.com/${ADS_VERSION}/customers/${cid}/googleAds:search`, {
+                method: 'POST', headers,
+                body: JSON.stringify({ query: 'SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros FROM campaign WHERE segments.date DURING LAST_30_DAYS AND campaign.status != \'REMOVED\' LIMIT 200' }),
+              });
+              const byId = new Map();
+              for (const x of camps.results || []) {
+                const id = String(x.campaign && x.campaign.id);
+                const prev = byId.get(id) || { id, name: (x.campaign && x.campaign.name) || id, status: String((x.campaign && x.campaign.status) || '').toLowerCase(), spend_30d_usd: 0 };
+                prev.spend_30d_usd += Number((x.metrics && x.metrics.costMicros) || 0) / 1e6;
+                byId.set(id, prev);
+              }
+              row.campaigns = [...byId.values()].map((k) => ({ ...k, spend_30d_usd: Math.round(k.spend_30d_usd * 100) / 100 })).sort((a, b) => b.spend_30d_usd - a.spend_30d_usd).slice(0, 60);
+              row.spend30dUsd = Math.round(row.campaigns.reduce((s, k) => s + k.spend_30d_usd, 0) * 100) / 100;
+            } catch { /* no spend signal; the account is still listed */ }
+            try {
+              const ads = await api(`https://googleads.googleapis.com/${ADS_VERSION}/customers/${cid}/googleAds:search`, {
+                method: 'POST', headers,
+                body: JSON.stringify({ query: 'SELECT ad_group_ad.ad.final_urls FROM ad_group_ad WHERE ad_group_ad.status != \'REMOVED\' LIMIT 100' }),
+              });
+              const domains = new Set();
+              for (const x of ads.results || []) {
+                for (const u of (x.adGroupAd && x.adGroupAd.ad && x.adGroupAd.ad.finalUrls) || []) {
+                  try { domains.add(new URL(u).hostname.replace(/^www\./, '').toLowerCase()); } catch { /* skip */ }
+                }
+              }
+              row.domains = [...domains].slice(0, 20);
+            } catch { /* no url signal */ }
+          }
+          out.push(row);
         } catch {
-          out.push({ customerId: cid, descriptiveName: null, currencyCode: null, manager: false, testAccount: false });
+          out.push({ customerId: cid, descriptiveName: null, currencyCode: null, manager: false, testAccount: false, spend30dUsd: null, domains: [], campaigns: [] });
         }
       }
       return out;
@@ -87,7 +122,14 @@ function createListClients({ accessToken, developerToken, loginCustomerId, fetch
                   displayName: d.displayName || null,
                 }));
             } catch { /* property visible but streams not — keep the property */ }
-            properties.push({ propertyId, displayName: p.displayName || null, currencyCode: null, dataStreams });
+            // The Ads accounts this property is linked to (fix plan move 2):
+            // the modern way an Ads account belongs to a site.
+            let adsLinks = [];
+            try {
+              const l = await api(`${ADMIN}/properties/${propertyId}/googleAdsLinks`);
+              adsLinks = (l.googleAdsLinks || []).map((x) => String(x.customerId || '').replace(/-/g, '')).filter(Boolean);
+            } catch { /* not linked, or not visible */ }
+            properties.push({ propertyId, displayName: p.displayName || null, currencyCode: null, dataStreams, adsLinks });
           }
           tree.push({ account: acct.displayName || (acct.account || '').split('/')[1], properties });
         }

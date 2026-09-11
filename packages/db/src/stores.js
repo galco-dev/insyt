@@ -164,7 +164,7 @@ function workerStore(db) {
       const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
       const [auto, exc, open, recent, reverted, budgetMoves, camps, sub] = await Promise.all([
         db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }).catch(() => null),
-        db.select('standing_exceptions', `tenant_id=eq.${q(tenantId)}&cleared_at=is.null&select=change_key`).catch(() => []),
+        db.select('standing_exceptions', `tenant_id=eq.${q(tenantId)}&cleared_at=is.null&select=change_key,target`).catch(() => []),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(proposed,approved)&select=target`).catch(() => []),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.applied&applied_at=gte.${q(since30)}&select=change_key`).catch(() => []),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.reverted&applied_at=gte.${q(since30)}&select=id`).catch(() => []),
@@ -181,6 +181,7 @@ function workerStore(db) {
       const campMap = new Map((camps || []).map((c) => [String(c.google_campaign_id), { budget_daily_usd: Number(c.budget_daily_usd || 0) }]));
       return {
         autopilot: { negatives: cats.negatives === true || cats.negatives === 'auto', budgets: cats.budgets === true || cats.budgets === 'auto', counting: cats.counting === true || cats.counting === 'auto' },
+        fences: new Set((exc || []).filter((e) => e.change_key && e.change_key.startsWith('fence:') && e.target).map((e) => e.target)),
         exceptions: new Set((exc || []).map((e) => e.change_key)),
         inflight: new Set((open || []).map((c) => c.target).filter(Boolean)),
         recent: new Set((recent || []).map((c) => c.change_key).filter(Boolean)),
@@ -809,17 +810,83 @@ function dashStore(db, deps = {}) {
       await db.update('tenants', `id=eq.${q(tenantId)}`, { email_reports: !!on });
       return { ok: true, reports: !!on };
     },
+    // What this Google login can see, with an honest state per door (fix plan
+    // move 1): matched, choose (candidates with spend), unused (the site does
+    // not carry it), cannot_see (the site carries it, this login cannot see it).
     discovery: async (tenantId) => {
-      const assets = await db.select('assets', `tenant_id=eq.${q(tenantId)}&select=id,kind,external_id,display_name,linked`);
-      return { matched: assets.filter((a) => a.linked), unmatched: assets.filter((a) => !a.linked) };
+      const [assets, tenant] = await Promise.all([
+        db.select('assets', `tenant_id=eq.${q(tenantId)}&select=id,kind,external_id,display_name,currency,linked,metadata`),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=website_url`, { single: true }).catch(() => null),
+      ]);
+      let tags = null; let domain = null;
+      if (tenant && tenant.website_url) {
+        try { domain = new URL(tenant.website_url.startsWith('http') ? tenant.website_url : `https://${tenant.website_url}`).hostname; } catch { domain = null; }
+        if (domain) {
+          const c = await db.select('crawls', `url=ilike.*${q(domain)}*&select=tags_found&order=created_at.desc&limit=1`, { single: true }).catch(() => null);
+          tags = (c && c.tags_found) || null;
+        }
+      }
+      const isMatched = (x) => x.linked || !!(x.metadata && x.metadata.matched_via);
+      const plain = (x) => ({ id: x.id, kind: x.kind, external_id: x.external_id, display_name: x.display_name, currency: x.currency, linked: x.linked, matched_via: (x.metadata && x.metadata.matched_via) || null, spend_30d_usd: x.metadata && x.metadata.spend_30d_usd != null ? Number(x.metadata.spend_30d_usd) : null, test_account: !!(x.metadata && x.metadata.test_account) });
+      const onSite = { gtm_container: !!(tags && (tags.gtm_containers || []).length), ga4_property: !!(tags && (tags.ga4_ids || []).length), ads_account: !!(tags && (tags.aw_conversion_ids || []).length) };
+      const doors = {};
+      for (const kind of ['ads_account', 'ga4_property', 'gtm_container']) {
+        const ofKind = assets.filter((x) => x.kind === kind);
+        const matched = ofKind.filter(isMatched).map(plain);
+        const candidates = ofKind.filter((x) => !isMatched(x)).map(plain).sort((x, y) => (y.spend_30d_usd || 0) - (x.spend_30d_usd || 0));
+        let state;
+        if (matched.length) state = 'matched';
+        else if (candidates.length) state = 'choose';
+        else if (kind === 'ads_account' || onSite[kind]) state = 'cannot_see';
+        else state = 'unused';
+        doors[kind] = { state, matched, candidates, suggested: state === 'choose' ? candidates[0].id : null };
+      }
+      // The "leave alone" list: campaigns of the matched (or suggested) ads account.
+      const adsRow = assets.find((x) => x.kind === 'ads_account' && isMatched(x)) || assets.find((x) => x.kind === 'ads_account' && doors.ads_account.suggested === x.id) || null;
+      const campaigns = ((adsRow && adsRow.metadata && adsRow.metadata.campaigns) || []).map((c) => ({ id: String(c.id), name: c.name, status: c.status || null, spend_30d_usd: c.spend_30d_usd != null ? Number(c.spend_30d_usd) : null }));
+      // The ga4_stream rows ride under the analytics door for the old screen shape.
+      const matched = assets.filter(isMatched).map(plain);
+      const unmatched = assets.filter((x) => !isMatched(x)).map(plain);
+      return { matched, unmatched, doors, campaigns, site: domain, no_access: assets.length === 0 };
     },
     // Link only what the confirm page presented as "your setup": assets matched
-    // to the site's tags (matched_via set by discovery) or chosen by the owner.
-    // The "other items we can see but didn't match your site" stay unlinked -
-    // one Google login often spans several businesses, and auditing (or
-    // proposing changes for) a sibling business's Ads account is never OK.
-    confirmAssets: async (tenantId) => {
+    // to the site (matched_via set by discovery) or chosen by the owner on the
+    // confirm screen. Anything else stays unlinked: one Google login often
+    // spans several businesses, and auditing (or proposing changes for) a
+    // sibling business's Ads account is never OK. Fences (fix plan move 7)
+    // are standing exceptions on a whole target, written before the first
+    // proposal exists.
+    confirmAssets: async (tenantId, { link = [], exceptions = [] } = {}) => {
       await db.update('assets', `tenant_id=eq.${q(tenantId)}&metadata->>matched_via=not.is.null`, { linked: true });
+      const chosen = [...new Set((Array.isArray(link) ? link : []).map(String))].slice(0, 10);
+      for (const id of chosen) {
+        const row = await db.select('assets', `id=eq.${q(id)}&tenant_id=eq.${q(tenantId)}&select=id,metadata`, { single: true }).catch(() => null);
+        if (!row) continue;
+        await db.update('assets', `id=eq.${q(id)}&tenant_id=eq.${q(tenantId)}`, { linked: true, metadata: { ...(row.metadata || {}), matched_via: 'owner_choice' } }).catch(() => {});
+      }
+      const fences = (Array.isArray(exceptions) ? exceptions : []).filter((e) => e && typeof e.target === 'string' && /^[a-z_]+:[A-Za-z0-9_~-]+$/.test(e.target)).slice(0, 50);
+      if (fences.length) {
+        await db.insert('standing_exceptions', fences.map((e) => ({
+          tenant_id: tenantId, change_key: `fence:${e.target}`, target: e.target,
+          summary_text: String(e.summary_text || `Leave ${e.target} alone`).slice(0, 200), created_from: 'ui',
+        })), { returning: false }).catch(() => {});
+      }
+      return { linked: chosen.length, fenced: fences.length };
+    },
+    // "Type the email of whoever does" (fix plan move 1): ask the person who
+    // holds the Google login to connect it. One email, no account created.
+    accessRequest: async (tenantId, email, baseUrl = 'https://app.tryinsyt.com') => {
+      const to = String(email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { ok: false, error: 'That does not look like an email address.' };
+      const [owner, tenant] = await Promise.all([
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=email,name&limit=1`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=website_url`, { single: true }).catch(() => null),
+      ]);
+      await db.insert('emails', [{
+        tenant_id: tenantId, template_id: 'access_request', to_email: to, stream: 'transactional', status: 'queued',
+        payload: { site: (tenant && tenant.website_url) || 'their website', from_name: (owner && (owner.name || owner.email)) || 'The owner', start_url: `${baseUrl}/app/start${tenant && tenant.website_url ? `?url=${encodeURIComponent(tenant.website_url)}` : ''}` },
+      }], { returning: false });
+      return { ok: true };
     },
     planOptions: async (tenantId) => {
       const [pricing, tenant] = await Promise.all([
