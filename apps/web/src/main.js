@@ -170,6 +170,8 @@ if (process.env.STRIPE_SECRET_KEY) {
     return u && u.email;
   };
   checkout = {
+    pause: (subscriptionId, until) => stripe.pauseSubscription(subscriptionId, until),
+    resume: (subscriptionId) => stripe.resumeSubscription(subscriptionId),
     // The $20 unlock returns to the report the customer was reading.
     audit: async ({ tenantId, kind, next }) => stripe.auditCheckout({
       tenantId, kind, customerEmail: await ownerEmail(tenantId),
@@ -206,7 +208,17 @@ if (process.env.STRIPE_SECRET_KEY) {
   };
 }
 
+// Look again for accounts (fix plan move 10): on demand from Settings and
+// after a website change, over the tenant's own connection.
+let rediscover = null;
+if (googleAuth) {
+  const { rediscoverTenant } = require('../../../packages/google/src/discovery-store');
+  const rdAuth = createGoogleAuth({ db, clientId: googleClientId, clientSecret: googleClientSecret });
+  rediscover = (tenantId) => rediscoverTenant({ db, auth: rdAuth, developerToken: googleAuth.config.developerToken, loginCustomerId: googleAuth.config.loginCustomerId, tenantId });
+}
+
 const app = createApp({
+  rediscover,
   store,
   crawler: { discoveryCrawl },
   opsStore: opsStore(db),

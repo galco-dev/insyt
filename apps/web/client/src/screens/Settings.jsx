@@ -169,6 +169,66 @@ function Business({ business, money, onSaved }) {
   );
 }
 
+// Look again for accounts (fix plan move 10): a new ads account or a rebuilt
+// analytics setup shows up here, then on Confirm to choose.
+function LookAgain() {
+  const [state, setState] = useState('idle'); // idle | busy | done | error
+  const [msg, setMsg] = useState(null);
+  async function go() {
+    setState('busy'); setMsg(null);
+    try {
+      const r = await api('/api/app/rediscover', { method: 'POST' });
+      const fresh = r.fresh_unmatched || [];
+      setMsg(r.inserted === 0 ? 'Nothing new. Everything your Google account can see is already here.' : fresh.length ? `Found ${r.inserted} new. ${fresh.length} did not match your site; choose on the confirm page.` : `Found ${r.inserted} new and matched to your site.`);
+      setState('done');
+    } catch (e) { setMsg(e.message); setState('error'); }
+  }
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3">
+      <Button variant="secondary" onClick={go} disabled={state === 'busy'} className="!px-4 !py-2">{state === 'busy' ? 'Looking…' : 'Look again for accounts'}</Button>
+      {msg && <span className="text-tiny text-neutral-900">{msg}{state === 'done' && /choose/.test(msg) ? <> <Link to="/app/confirm" className="underline underline-offset-2">Choose now</Link></> : null}</span>}
+    </div>
+  );
+}
+
+// Pause everything until a date (fix plan move 13).
+function Pause({ access, onChange }) {
+  const [until, setUntil] = useState(() => new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10));
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  const paused = access && access.paused_until;
+  async function pause() {
+    setBusy(true); setNote(null);
+    try { const r = await api('/api/app/pause', { method: 'POST', body: { until: `${until}T00:00:00Z` } }); onChange(r.paused_until); }
+    catch (e) { setNote(e.message); }
+    setBusy(false);
+  }
+  async function resume() {
+    setBusy(true); setNote(null);
+    try { await api('/api/app/resume', { method: 'POST' }); onChange(null); } catch (e) { setNote(e.message); }
+    setBusy(false);
+  }
+  return (
+    <div className="mt-3 border-t border-neutral-200 pt-3">
+      {paused ? (
+        <div className="flex flex-wrap items-center gap-3 text-small">
+          <span>Paused until {new Date(paused).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}. Nothing runs and nothing is billed until then; alerts about breakage still reach you.</span>
+          <Button variant="secondary" onClick={resume} disabled={busy} className="!px-4 !py-2">Resume now</Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3 text-small">
+          <span>Going quiet for a while?</span>
+          <label className="flex items-center gap-2 text-tiny text-neutral-900">Pause until
+            <input type="date" value={until} min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)} max={new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10)} onChange={(e) => setUntil(e.target.value)} className="rounded border border-neutral-500 bg-(--ui-well) px-2 py-1 text-small outline-none focus:border-(--ui-focus)" />
+          </label>
+          <Button variant="secondary" onClick={pause} disabled={busy} className="!px-4 !py-2">Pause</Button>
+        </div>
+      )}
+      {note && <p className="mt-2 text-tiny text-critical">{note}</p>}
+    </div>
+  );
+}
+
 // §4.5 standing exceptions: what the owner has told us never to touch.
 function Exceptions() {
   const [items, setItems] = useState(null);
@@ -246,7 +306,7 @@ export default function Settings() {
   const [error, setError] = useState(null);
   const [note, setNote] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
-  const { access, level, gate, openSheet, goUnlock, money } = useAccess();
+  const { access, level, gate, openSheet, goUnlock, money, setAccess } = useAccess();
   useEffect(() => {
     api('/api/app/settings').then((d) => {
       setSettings(d.settings);
@@ -324,9 +384,10 @@ export default function Settings() {
         </div>
         <p className="mt-3 text-tiny text-neutral-900">
           {level === 'active' || !access
-            ? 'Cancelling? The card page handles it - your subscription runs to the end of the period you paid for, and your accounts stay exactly as they are.'
+            ? 'Cancelling? The card page handles it - your subscription runs to the end of the period you paid for, Undo stays free for 30 days after, and your accounts stay exactly as they are.'
             : 'A plan applies the fixes you approve, checks again every week, and keeps a one-tap undo on everything. Cancel any time; your accounts stay exactly as they are.'}
         </p>
+        <Pause access={access} onChange={(until) => { setAccess({ ...access, paused_until: until }); }} />
       </Card>
 
       <WeeklyCheck weekly={settings.weekly} />
@@ -337,6 +398,7 @@ export default function Settings() {
           <div className="flex-1">
             <MonoLabel>Google connection</MonoLabel>
             <div className="mt-0.5 text-body">{settings.connection_status}</div>
+            <LookAgain />
             <div className="mt-3">
               <Link to="/app/connected"><Button variant="secondary" className="!px-4 !py-2">See what Insyt reads</Button></Link>
               <span className="ml-3 text-tiny text-neutral-900">Every account, campaign, report and tag we can see through your Google permissions, live.</span>

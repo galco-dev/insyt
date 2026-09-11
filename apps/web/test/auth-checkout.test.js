@@ -226,6 +226,24 @@ test('auditCheckout finds price by metadata key and stamps tenant', async () => 
 });
 
 // ---------------------------------------------------------------- webhook tenant fallback
+test('webhook (fix plan move 13): a refunded audit fee relocks; cancelling stamps canceled_at', async () => {
+  const calls = [];
+  const store = {
+    tenantIdByCustomer: async () => 't1', recordPayment: async () => {}, upsertSubscription: async () => {},
+    markSubscription: async (id, patch) => calls.push(['sub', id, patch]),
+    markRefunded: async (pi) => { calls.push(['refund', pi]); return { tenant_id: 't1' }; },
+    ledger: async (e) => calls.push(['ledger', e.summary_text]), audit: async (e) => calls.push(['audit', e.event]),
+  };
+  const refund = await handleWebhook({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_1', amount_refunded: 2000 } } }, store);
+  assert.deepStrictEqual(refund, { handled: true });
+  assert.deepStrictEqual(calls[0], ['refund', 'pi_1']);
+  await handleWebhook({ type: 'customer.subscription.deleted', data: { object: { id: 'sub_1', customer: 'cus_1', metadata: {} } } }, store);
+  const sub = calls.find((c) => c[0] === 'sub');
+  assert.strictEqual(sub[2].status, 'canceled');
+  assert.ok(sub[2].canceled_at, 'canceled_at stamped');
+  assert.ok(calls.some((c) => c[0] === 'ledger' && /Undo stays free for 30 days/.test(c[1])));
+});
+
 test('webhook prefers metadata.tenant_id over customer lookup', async () => {
   const seen = [];
   const store = {

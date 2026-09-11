@@ -14,3 +14,4 @@ deploy request: Fix plan push 1 (report email with one-tap links; fix access ask
 deploy request: Fix plan push 2 (Ads matched through the GA4 link and final URLs; Confirm with honest doors, a chooser, fences and the access request) - 2026-09-11T20:18:02Z
 deploy request: Fix plan push 3 (say what we saw on the strip and Home; dated empty states on Home and the report; no charge for an empty report) - 2026-09-11T20:23:47Z
 deploy request: Fix plan push 4 (yes, later, no; partial yes; leave this alone from the card, Confirm and Settings; failure receipts, budget drift check, undo with eyes open; migration 30) - 2026-09-11T20:33:23Z
+deploy request: Fix plan push 5 (look again by itself, the band sets itself, ROAS tile, pause with a date, the $20 tail, undo free after cancel, refunds relock; migration 31) - 2026-09-11T20:40:48Z

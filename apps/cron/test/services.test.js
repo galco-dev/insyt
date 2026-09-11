@@ -47,6 +47,26 @@ test('cron: deep audits respect anniversaries; token sweep validates due connect
   assert.deepStrictEqual(swept, ['g1']);
 });
 
+test('cron (fix plan push 5): the $20 tail skips a due weekly, pauses end by themselves, the sweep looks again after a good validation', async () => {
+  const resumed = [];
+  const base = cronStore({ tenants: [{ id: 'tn1' }, { id: 'tn2' }], conns: [{ id: 'g1', user_id: 'u1', status: 'valid', last_validated_at: '2026-08-01T00:00:00Z' }, { id: 'g2', user_id: 'u2', status: 'valid', last_validated_at: '2026-08-01T00:00:00Z' }] });
+  const store = {
+    ...base,
+    resumeDue: async () => { resumed.push('tn9'); return ['tn9']; },
+    weeklyCadence: async (id) => (id === 'tn2' ? { cadence: 'monthly', due: false } : { cadence: 'weekly', due: true }),
+  };
+  const looked = [];
+  const r = await cron.tick({
+    store, queue: { enqueue: async () => {} },
+    sweep: { validate: async (c) => c.id === 'g1', rediscover: async (c) => looked.push(c.id) },
+    now: SUNDAY_LATE,
+  });
+  assert.strictEqual(r.weekly, 1, 'tn2 is on the monthly tail and not due');
+  assert.strictEqual(r.resumed, 1);
+  assert.deepStrictEqual(resumed, ['tn9']);
+  assert.deepStrictEqual(looked, ['g1'], 'only a connection that validated is re-discovered');
+});
+
 test('poller: dispatches by kind, patches status, one broken watch never blocks the rest', async () => {
   const patched = [];
   const store = {

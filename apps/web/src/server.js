@@ -52,7 +52,7 @@ function html(res, code, body) {
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
-function createApp({ store, crawler, now = Date.now, dashStore = null, agencyStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null, clientDir = null, connected = null }) {
+function createApp({ store, crawler, now = Date.now, dashStore = null, agencyStore = null, opsStore = null, queue = null, opsToken = null, sessionSecret = 'dev-secret', billing = null, authBridge = null, googleAuth = null, checkout = null, clientDir = null, connected = null, rediscover = null }) {
   // Confirming assets is the moment the first audit starts (§8 signup queue,
   // immediate priority). Idempotent per tenant: a second confirm never queues
   // a second first-audit.
@@ -318,7 +318,12 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           }
           // Home overview (richer-platform spec §2/§8): money strip, the week's
           // story, the three accounts, alerts and the 28-day series in one trip.
-          if (sub === '/overview') return json(res, 200, { overview: dashStore.overview ? await dashStore.overview(t, new Date(now())) : null, access: await accessFor(dashStore, t) });
+          if (sub === '/overview') {
+            const overview = dashStore.overview ? await dashStore.overview(t, new Date(now())) : null;
+            // The $20 tail (fix plan move 13): say when checks have gone monthly.
+            if (overview && opsStore && opsStore.weeklyCadence) { try { overview.cadence = (await opsStore.weeklyCadence(t, now())).cadence; } catch { overview.cadence = 'weekly'; } }
+            return json(res, 200, { overview, access: await accessFor(dashStore, t) });
+          }
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
           if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_change : {}, access: await accessFor(dashStore, t) });
           if (sub === '/reports') return json(res, 200, { reports: await dashStore.reports(t) });
@@ -363,7 +368,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub === '/pause' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -408,7 +413,23 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                 if (sub === '/business') {
                   if (!dashStore.setBusiness) return json(res, 501, { error: 'Not available yet.' });
                   const r = await dashStore.setBusiness(t, { name: parsed.name, website: parsed.website, timezone: parsed.timezone });
+                  // A new website (fix plan move 10): look again for accounts and check it tomorrow morning.
+                  if (r.ok && r.website_url) {
+                    if (rediscover) rediscover(t).catch((e) => console.error(`rediscover after website change failed for ${t}: ${e.message}`));
+                    if (opsStore && queue) {
+                      const day = new Date(now()).toISOString().slice(0, 10);
+                      try { const run = await opsStore.enqueueRun({ tenant_id: t, type: 'triggered', status: 'queued', idempotency_key: `site:${t}:${day}` }); if (run) await queue.enqueue('runs-triggered', run); } catch { /* already queued today */ }
+                    }
+                  }
                   return json(res, r.ok ? 200 : 400, r.ok ? r : { error: 'Nothing to save.' });
+                }
+                // Pause until a date (fix plan move 13); Stripe stops the bill and resumes it itself.
+                if (sub === '/pause') {
+                  if (!dashStore.pauseTenant) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.pauseTenant(t, parsed.until);
+                  if (!r.ok) return json(res, 400, r);
+                  if (r.stripe_subscription_id && checkout && checkout.pause) { try { await checkout.pause(r.stripe_subscription_id, r.paused_until); } catch (e) { console.error(`stripe pause failed for ${t}: ${e.message}`); } }
+                  return json(res, 200, { ok: true, paused_until: r.paused_until });
                 }
                 if (sub === '/emails') {
                   if (!dashStore.setEmailReports) return json(res, 501, { error: 'Not available yet.' });
@@ -475,13 +496,30 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             return json(res, 200, { ok: true });
           }
           if (sub.startsWith('/revert/')) {
-            if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
+            // Undo stays free for 30 days after cancelling (fix plan move 13).
+            const a = await accessFor(dashStore, t);
+            const undoFree = !a || a.level === 'active' || (a.undo_until && Date.parse(a.undo_until) > now());
+            if (!undoFree) return json(res, 402, PLAN_REQUIRED);
             const r = await dashStore.requestRevert(t, sub.split('/')[2]);
             return json(res, 200, r && r.ok === false ? { ok: false, reason: r.reason } : { ok: true });
           }
           if (/^\/alerts\/[^/]+\/ack$/.test(sub)) {
             if (!dashStore.ackAlert) return json(res, 501, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.ackAlert(t, sub.split('/')[2]));
+          }
+          if (sub === '/resume') {
+            if (!dashStore.resumeTenant) return json(res, 501, { error: 'Not available yet.' });
+            const r = await dashStore.resumeTenant(t);
+            if (r.stripe_subscription_id && checkout && checkout.resume) { try { await checkout.resume(r.stripe_subscription_id); } catch (e) { console.error(`stripe resume failed for ${t}: ${e.message}`); } }
+            return json(res, 200, { ok: true });
+          }
+          // Look again for accounts (fix plan move 10), on demand.
+          if (sub === '/rediscover') {
+            if (!rediscover) return json(res, 501, { error: 'Not available yet.' });
+            try {
+              const r = await rediscover(t);
+              return json(res, 200, { ok: true, inserted: r.inserted, matched: r.matched, fresh_unmatched: r.fresh_unmatched || [] });
+            } catch (e) { return json(res, 502, { error: 'Google did not answer. Try again in a minute, or reconnect from this page.' }); }
           }
           if (sub.startsWith('/retry/')) {
             if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);

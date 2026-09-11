@@ -194,6 +194,8 @@ function demoAccess(s) {
     has_report: true,
     findings_count: 7,
     fix_access: 'ready',
+    undo_until: null,
+    paused_until: s.paused_until || null,
   };
 }
 const gatedPending = (s, level) => (level === 'locked' ? s.pending.map((p) => ({ id: p.id, title: p.title, money_line: p.money_line, finding_id: p.finding_id || null })) : s.pending);
@@ -239,6 +241,8 @@ function demoOverview(s, level) {
     waiting: { approved: 0, oldest_at: null, needs_fix_access: false },
     running: null,
     failed_last: false,
+    roas: null,
+    cadence: 'weekly',
     site: { consent_tool: 'Cookiebot', other_tools: ['Meta'], whatsapp: true, phone: true, server_side_gtm: false },
     waste_monthly_usd: 1240,
     recovered: active ? { fixes: s.cumulative.fixes, usd: s.cumulative.waste_removed_usd } : { fixes: 0, usd: 0 },
@@ -309,8 +313,10 @@ function customerDemo(path, method, body) {
       base.settings.autopilot = { ...s.autopilot };
       base.settings.assistant_enabled = true; // demo consoles first (§7.6)
       base.settings.plan_line = access.level === 'active' ? `${access.plan.label} · $${access.plan.price_usd}/mo (active)` : 'Free check, no plan yet';
-      const nextDays = (7 - new Date(Date.now() + 4 * 3600_000).getUTCDay()) % 7 || 7;
-      base.settings.weekly = { ...base.settings.weekly, next_run_at: new Date(Date.now() + nextDays * 86_400_000).toISOString().slice(0, 10), next_check_days: nextDays, last_runs: demoRuns() };
+      const gulf = new Date(Date.now() + 4 * 3600_000);
+      const nextDays = (7 - gulf.getUTCDay()) % 7 || 7;
+      gulf.setUTCDate(gulf.getUTCDate() + nextDays);
+      base.settings.weekly = { ...base.settings.weekly, next_run_at: gulf.toISOString().slice(0, 10), next_check_days: nextDays, last_runs: demoRuns() };
       if (s.emails) base.settings.emails = { ...base.settings.emails, ...s.emails };
       if (s.business) base.settings.business = { ...base.settings.business, ...s.business };
       base.access = access;
@@ -460,6 +466,9 @@ function customerDemo(path, method, body) {
     return { ok: true };
   }
   if (p.startsWith('/api/app/retry/')) return { ok: true };
+  if (p === '/api/app/pause') { s.paused_until = (body && body.until) || null; return { ok: true, paused_until: s.paused_until }; }
+  if (p === '/api/app/resume') { s.paused_until = null; return { ok: true }; }
+  if (p === '/api/app/rediscover') return { ok: true, inserted: 0, matched: 0, fresh_unmatched: [] };
   if (p === '/api/app/access-request') return { ok: true };
   if (p === '/api/app/autopilot') {
     const cats = (body && (body.categories || body)) || {};

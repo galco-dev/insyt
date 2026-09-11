@@ -252,7 +252,7 @@ function UnlockBar({ visible }) {
       <div className="mx-auto flex max-w-l2 flex-col items-start gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-body font-semibold">{audit.unlock.line}</div>
-          <div className="mt-0.5 text-small text-neutral-900">{note || audit.unlock.sub}</div>
+          <div className="mt-0.5 text-small text-neutral-900">{note || audit.unlock.sub} Changed your mind within 7 days? Email us and it is refunded.</div>
         </div>
         <button
           type="button"

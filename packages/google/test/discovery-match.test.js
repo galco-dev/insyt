@@ -62,6 +62,35 @@ test('matchAssets (fix plan move 2): an Ads account matches through the GA4 link
   assert.strictEqual(noSite.matched.length, 0, 'no signal, no link, never a guess');
 });
 
+test('rediscoverTenant (fix plan move 10): stores what is new over the tenant connection, never unlinks, and logs it', async () => {
+  const { rediscoverTenant } = require('../src/discovery-store');
+  const inserts = []; const updates = [];
+  const db = {
+    select: async (table, query, opts) => {
+      if (table === 'tenants') return { website_url: 'jobpeak.net' };
+      if (table === 'crawls') return { tags_found: { gtm_containers: ['GTM-1'], ga4_ids: [], aw_conversion_ids: [] } };
+      if (table === 'assets') return [{ kind: 'gtm_container', external_id: 'GTM-1', linked: true }];
+      return opts && opts.single ? null : [];
+    },
+    insert: async (table, rows) => { inserts.push({ table, rows }); return rows; },
+    update: async (table, query, patch) => { updates.push({ table, query, patch }); },
+  };
+  const r = await rediscoverTenant({
+    db, auth: { accessToken: async () => 'tok' }, developerToken: 'dev', loginCustomerId: '1', tenantId: 't1',
+    listClients: () => ({}),
+    discover: async () => ({ assets: [
+      { kind: 'gtm_container', external_id: 'GTM-1', display_name: 'Main', currency: null, metadata: {} },
+      { kind: 'ads_account', external_id: '999', display_name: 'New ads', currency: 'USD', metadata: { domains: ['other.example'] } },
+    ], errors: [] }),
+  });
+  assert.strictEqual(r.inserted, 1);
+  assert.deepStrictEqual(r.fresh_unmatched, [{ kind: 'ads_account', external_id: '999', display_name: 'New ads' }]);
+  const assetInsert = inserts.find((i) => i.table === 'assets');
+  assert.strictEqual(assetInsert.rows[0].linked, false, 'a new account with no signal waits for a tap');
+  assert.ok(inserts.find((i) => i.table === 'audit_log' && i.rows[0].event === 'rediscovered'));
+  assert.ok(!updates.some((u) => u.patch && u.patch.linked === false), 'never unlinks');
+});
+
 test('matchAssets: container + G-ID on site match, property matches through stream', async () => {
   const { assets } = await discoverAssets(STUB_CLIENTS);
   const crawlTags = { gtm_containers: ['GTM-TEST123'], ga4_ids: ['G-FIXTURE001'], legacy_ua: [], aw_conversion_ids: [] };

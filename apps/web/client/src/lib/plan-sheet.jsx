@@ -38,9 +38,10 @@ function headline(access, money) {
     if (access.currency !== 'USD' || access.waste_monthly_usd >= access.price_usd) {
       return <>Your report found <span className="text-critical">{waste} a month</span> of waste. Core is {price}.</>;
     }
-    return <>Core is {price}. Every fix you approve is applied, then checked again every week.</>;
+    // The waste is smaller than the plan: lead with what the plan protects (fix plan move 11).
+    return <>Core keeps your tracking honest and tells you the day something breaks. Every fix you approve is applied. {price}.</>;
   }
-  return <>Core is {price}. Fixes are applied the moment you approve them.</>;
+  return <>Core keeps your tracking honest and tells you the day something breaks. {price}.</>;
 }
 
 export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = null }) {

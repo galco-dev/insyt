@@ -77,9 +77,18 @@ async function handleWebhook(event, store) {
       // Events that belong to no tenant (dashboard test triggers, objects
       // created outside the app) are acknowledged, not retried forever.
       if (!tenantId) return { handled: false, reason: 'no tenant' };
-      await store.markSubscription(obj.id, { status: 'canceled' });
-      await store.ledger({ tenant_id: tenantId, event: 'subscription_changed', actor: 'system', summary_text: 'Plan cancelled' });
+      await store.markSubscription(obj.id, { status: 'canceled', canceled_at: new Date().toISOString() });
+      await store.ledger({ tenant_id: tenantId, event: 'subscription_changed', actor: 'system', summary_text: 'Plan cancelled. Undo stays free for 30 days; your accounts stay exactly as they are.' });
       return { handled: true };
+    }
+    case 'charge.refunded': {
+      // A refunded audit fee relocks the report (fix plan move 13).
+      if (obj.payment_intent && store.markRefunded) {
+        const r = await store.markRefunded(obj.payment_intent);
+        if (r && r.tenant_id) await store.audit({ tenant_id: r.tenant_id, event: 'refunded', detail: { payment_intent: obj.payment_intent, amount_usd: (obj.amount_refunded || 0) / 100 } });
+        return { handled: !!(r && r.tenant_id) };
+      }
+      return { handled: false, reason: 'no payment intent' };
     }
     case 'invoice.paid': {
       const tenantId = await tenantFor(obj, store);

@@ -63,7 +63,9 @@ export function AccessProvider({ children }) {
    */
   const gate = useCallback(async (run, action) => {
     let lvl = level;
-    if (lvl === 'active' || !lvl) {
+    // Undo stays free for 30 days after cancelling (fix plan move 13).
+    const undoFree = action && action.kind === 'revert' && access && access.undo_until && Date.parse(access.undo_until) > Date.now();
+    if (lvl === 'active' || !lvl || undoFree) {
       try { await run(); return true; } catch (e) {
         if (!isPlanRequired(e)) throw e;
         // The server knows better than a stale client: fall through to the sheet.

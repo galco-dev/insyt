@@ -41,6 +41,15 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
     return json;
   }
 
+  // Pause and resume (fix plan move 13): Stripe stops the bill and resumes it
+  // on the date by itself; we keep the same date on the tenant.
+  async function pauseSubscription(subscriptionId, resumesAtIso) {
+    return call(`/subscriptions/${subscriptionId}`, { pause_collection: { behavior: 'void', resumes_at: Math.floor(Date.parse(resumesAtIso) / 1000) } });
+  }
+  async function resumeSubscription(subscriptionId) {
+    return call(`/subscriptions/${subscriptionId}`, { pause_collection: '' });
+  }
+
   async function priceIdByKey(key) {
     if (!priceCache) {
       priceCache = new Map();
@@ -72,6 +81,8 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
   }
 
   return {
+    pauseSubscription,
+    resumeSubscription,
     /** One-time payment (audit unlock / large audit / setup bundle). */
     auditCheckout: async ({ tenantId, kind = 'audit_unlock', customerEmail, successUrl, cancelUrl }) => {
       const priceKey = AUDIT_PRICE_KEYS[kind];

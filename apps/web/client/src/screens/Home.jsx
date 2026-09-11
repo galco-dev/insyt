@@ -68,7 +68,10 @@ function MoneyStrip({ overview, access, money }) {
       sub: spend.month_budget_usd ? `of ${money(spend.month_budget_usd)}${spend.pace_line ? ` · ${spend.pace_line}` : ''}` : spend.pace_line,
     });
   }
-  if (overview.waste_monthly_usd != null) {
+  if (overview.roas) {
+    // Online shops with order values (fix plan move 11): return on ad spend, waste against it.
+    tiles.push({ key: 'roas', label: 'Return on ad spend', value: `${overview.roas.ratio}x`, sub: `${money(overview.roas.value_28d_usd)} back on ${money(overview.roas.spend_28d_usd)}, last 28 days${overview.waste_monthly_usd > 0 ? `, about ${money(overview.waste_monthly_usd)} a month of it wasted` : ''}`, tone: overview.roas.ratio >= 1 ? 'success' : 'critical' });
+  } else if (overview.waste_monthly_usd != null) {
     tiles.push({ key: 'waste', label: 'Going to waste', value: money(overview.waste_monthly_usd), per: '/mo', sub: 'from your latest report', tone: overview.waste_monthly_usd > 0 ? 'critical' : null });
   }
   const active = access && access.level === 'active';
@@ -431,6 +434,12 @@ export default function Home() {
           {!latest && <p className="mt-1 text-small text-neutral-900">{firstCheckLine}</p>}
           {latest && overview && overview.spend === null && overview.this_week && overview.this_week.findings === 0 && (
             <p className="mt-1 text-small text-neutral-900">Nothing is running. Switch a campaign on and the first check runs the next morning.</p>
+          )}
+          {overview && overview.cadence === 'monthly' && access && access.level !== 'active' && (
+            <p className="mt-1 text-small text-neutral-900">Checks are monthly until you start a plan.{access.credit_applies ? ' Your $20 comes off the first month.' : ''}</p>
+          )}
+          {access && access.paused_until && (
+            <p className="mt-1 text-small text-neutral-900">Paused until {new Date(access.paused_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}. Alerts about breakage still reach you.</p>
           )}
           {latest && (
             <Link to={`/app/report/${latest.id}`} className="mt-1 inline-flex items-center gap-1 text-small underline underline-offset-2">

@@ -420,6 +420,39 @@ test('dashStore (fix plan push 4): fences from a card or Settings, retry, undo p
   assert.strictEqual(r.by_change.c9.state, 'failed');
 });
 
+test('fix plan push 5: refunded fee relocks, undo grace after cancel, pause with a date, the band sets itself, the $20 tail', async () => {
+  const { accessFrom } = require('../../billing/src/access');
+  const now = Date.parse('2026-09-12T12:00:00Z');
+  assert.strictEqual(accessFrom({ paid: { kind: 'audit_unlock', refunded_at: '2026-09-10T00:00:00Z' }, sub: null, tenant: null, pricing: null, report: null, pending: [], ads: null, now }).level, 'locked', 'a refunded fee does not unlock');
+  const canceled = accessFrom({ paid: { kind: 'audit_unlock' }, sub: { tier: 'core', status: 'canceled', canceled_at: '2026-09-01T00:00:00Z' }, tenant: { paused_until: '2026-10-01T00:00:00Z' }, pricing: null, report: null, pending: [], ads: null, now });
+  assert.strictEqual(canceled.level, 'unlocked');
+  assert.strictEqual(canceled.undo_until, '2026-10-01T00:00:00.000Z');
+  assert.strictEqual(canceled.paused_until, '2026-10-01T00:00:00Z');
+  assert.strictEqual(accessFrom({ paid: null, sub: { tier: 'core', status: 'canceled', canceled_at: '2026-07-01T00:00:00Z' }, tenant: null, pricing: null, report: null, pending: [], ads: null, now }).undo_until, null, 'grace is 30 days');
+
+  const { dashStore, workerStore, opsStore } = require('../src/stores');
+  const f = routedFetch({ tenants: [{ size_band: '4k' }], subscriptions: [{ stripe_subscription_id: 'sub_1' }], ledger: [], reports: [] });
+  const d = dashStore(mkDb(f));
+  assert.deepStrictEqual(await d.pauseTenant('t1', '2020-01-01T00:00:00Z'), { ok: false, error: 'Pick a date between tomorrow and 90 days from now.' });
+  const untilIso = new Date(Date.now() + 20 * 86_400_000).toISOString();
+  const p = await d.pauseTenant('t1', untilIso);
+  assert.strictEqual(p.ok, true);
+  assert.strictEqual(p.stripe_subscription_id, 'sub_1');
+  const patch = f.calls.find((c) => c.method === 'PATCH' && /tenants\?id=eq\.t1/.test(c.url));
+  assert.strictEqual(patch.body.status, 'paused');
+  assert.strictEqual((await d.resumeTenant('t1')).ok, true);
+
+  const w = workerStore(mkDb(f));
+  assert.strictEqual(await w.setSizeBand('t1', '10k'), true);
+  assert.strictEqual(await w.setSizeBand('t1', 'huge'), false);
+
+  const ops = opsStore(mkDb(routedFetch({ subscriptions: [], reports: [{ created_at: '2026-09-06T03:00:00Z' }, { created_at: '2026-08-30T03:00:00Z' }, { created_at: '2026-08-23T03:00:00Z' }, { created_at: '2026-08-16T03:00:00Z' }] })));
+  assert.deepStrictEqual(await ops.weeklyCadence('t1', Date.parse('2026-09-13T12:00:00Z')), { cadence: 'monthly', due: false });
+  assert.deepStrictEqual(await ops.weeklyCadence('t1', Date.parse('2026-10-11T12:00:00Z')), { cadence: 'monthly', due: true });
+  const fresh = opsStore(mkDb(routedFetch({ subscriptions: [], reports: [{ created_at: '2026-09-06T03:00:00Z' }] })));
+  assert.deepStrictEqual(await fresh.weeklyCadence('t1', Date.parse('2026-09-13T12:00:00Z')), { cadence: 'weekly', due: true });
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

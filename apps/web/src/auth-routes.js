@@ -17,7 +17,6 @@ const crypto = require('crypto');
 const { buildAuthUrl, exchangeCode } = require('../../../packages/google/src/oauth');
 const { discoverAssets } = require('../../../packages/google/src/discovery');
 const { createListClients } = require('../../../packages/google/src/list-clients');
-const { matchAssets } = require('../../../packages/google/src/match');
 const { scopeLevel } = require('../../../packages/google/src/scopes');
 
 const q = (s) => encodeURIComponent(s);
@@ -39,30 +38,7 @@ function readState(state, secret, now) {
   return { tenantId, step, site };
 }
 
-/** Store discovered assets and mark crawl-matched ones linked. */
-async function storeDiscoveredAssets({ db, tenantId, assets, tagsFound, domain = null }) {
-  const { matched, unmatched, confidence } = (tagsFound || domain)
-    ? matchAssets(tagsFound || {}, assets, { domain })
-    : { matched: [], unmatched: assets.map((a) => ({ ...a, matched: false })), confidence: 0 };
-  const rows = [...matched, ...unmatched].map((a) => ({
-    tenant_id: tenantId,
-    kind: a.kind,
-    external_id: a.external_id,
-    display_name: a.display_name,
-    currency: a.currency,
-    linked: !!a.matched,
-    metadata: { ...a.metadata, matched_via: a.matched_via || null },
-  }));
-  const existing = await db.select('assets', `tenant_id=eq.${q(tenantId)}&select=kind,external_id,linked`);
-  const have = new Set(existing.map((e) => `${e.kind}:${e.external_id}`));
-  const fresh = rows.filter((r) => !have.has(`${r.kind}:${r.external_id}`));
-  if (fresh.length) await db.insert('assets', fresh, { returning: false });
-  // Upgrade linked on rows that now match the site.
-  for (const r of rows.filter((x) => x.linked && have.has(`${x.kind}:${x.external_id}`))) {
-    await db.update('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.${r.kind}&external_id=eq.${q(r.external_id)}`, { linked: true }).catch(() => {});
-  }
-  return { inserted: fresh.length, matched: matched.length, confidence };
-}
+const { storeDiscoveredAssets, crawlTagsForTenant } = require('../../../packages/google/src/discovery-store');
 
 async function fetchUserinfo(accessToken, fetchImpl = fetch) {
   const res = await fetchImpl('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { authorization: `Bearer ${accessToken}` } });
@@ -70,14 +46,7 @@ async function fetchUserinfo(accessToken, fetchImpl = fetch) {
   return res.json().catch(() => null);
 }
 
-async function latestCrawlTags(db, tenantId) {
-  const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=website_url`, { single: true });
-  if (!t || !t.website_url) return { tags: null, domain: null };
-  let domain;
-  try { domain = new URL(t.website_url.startsWith('http') ? t.website_url : `https://${t.website_url}`).hostname; } catch { return { tags: null, domain: null }; }
-  const c = await db.select('crawls', `url=ilike.*${q(domain)}*&select=tags_found&order=created_at.desc&limit=1`, { single: true });
-  return { tags: (c && c.tags_found) || null, domain };
-}
+const latestCrawlTags = crawlTagsForTenant;
 
 /**
  * Mount-point handler. Returns true when the request was handled.

@@ -21,6 +21,8 @@ const q = (s) => encodeURIComponent(s);
 
 const store = {
   activeTenants: ops.activeTenants,
+  resumeDue: ops.resumeDue,
+  weeklyCadence: ops.weeklyCadence,
   connectionsForSweep: ops.connectionsForSweep,
   runExists: async (key) => !!(await db.select('runs', `idempotency_key=eq.${q(key)}&select=id`, { single: true })),
   // Active tenants with at least one linked asset and no completed or in-flight run.
@@ -52,9 +54,50 @@ const queue = {
   },
 };
 
-const sweep = {
-  validate: async (conn) => console.log(`token sweep: would validate connection ${conn.id} (Google OAuth client not configured yet)`),
+// The sweep, for real (fix plan move 10): refresh each due connection's
+// token (the client marks it expired or revoked and ledgers it on failure),
+// email a one-tap reconnect once per lapse, and look again for accounts.
+const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+let sweep = {
+  validate: async (conn) => { console.log(`token sweep: would validate connection ${conn.id} (Google OAuth client not configured yet)`); return false; },
 };
+if (googleClientId && googleClientSecret) {
+  const { createGoogleAuth } = require('../../../packages/google/src/client');
+  const { rediscoverTenant } = require('../../../packages/google/src/discovery-store');
+  const auth = createGoogleAuth({ db, clientId: googleClientId, clientSecret: googleClientSecret });
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || null;
+  const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '3315824995';
+  const tenantOf = async (conn) => {
+    const u = await db.select('users', `id=eq.${q(conn.user_id)}&select=tenant_id,email`, { single: true }).catch(() => null);
+    return u || null;
+  };
+  sweep = {
+    validate: async (conn) => {
+      const u = await tenantOf(conn);
+      if (!u) return false;
+      try {
+        await auth.accessToken(u.tenant_id);
+        return true;
+      } catch (e) {
+        // The client already moved the status and wrote the ledger line; one email per lapse.
+        const recent = await db.select('emails', `tenant_id=eq.${q(u.tenant_id)}&template_id=eq.reconnect_needed&created_at=gte.${q(new Date(Date.now() - 7 * 86_400_000).toISOString())}&select=id&limit=1`, { single: true }).catch(() => null);
+        if (!recent && u.email) {
+          await db.insert('emails', [{ tenant_id: u.tenant_id, template_id: 'reconnect_needed', to_email: u.email, stream: 'transactional', status: 'queued', payload: { reconnect_url: `${process.env.APP_BASE_URL || 'https://app.tryinsyt.com'}/auth/google/start?step=discovery` } }], { returning: false }).catch(() => {});
+        }
+        console.log(`token sweep: connection ${conn.id} lapsed (${e.message.slice(0, 80)})`);
+        return false;
+      }
+    },
+    rediscover: async (conn) => {
+      const u = await tenantOf(conn);
+      if (!u) return null;
+      const r = await rediscoverTenant({ db, auth, developerToken, loginCustomerId, tenantId: u.tenant_id });
+      if (r.inserted) console.log(`rediscover: ${r.inserted} new asset(s) for ${u.tenant_id}, ${r.matched} matched`);
+      return r;
+    },
+  };
+}
 
 start({ store, queue, sweep });
 

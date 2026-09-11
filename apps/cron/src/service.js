@@ -39,8 +39,20 @@ async function tick({ store, queue, sweep, now = Date.now() }) {
     }
   }
 
+  // Pauses end by themselves (fix plan move 13).
+  if (store.resumeDue) {
+    const resumed = await store.resumeDue(new Date(now).toISOString());
+    actions.resumed = resumed.length;
+  }
+
   // 1. Weekly runs — Sunday window, hash-staggered, one per tenant per ISO week.
+  //    The $20 tail (fix plan move 13): four weekly reports without a plan,
+  //    then monthly, so an unlock never costs a check a week forever.
   for (const t of tenantsDueForWeekly(tenants, now)) {
+    if (store.weeklyCadence) {
+      const c = await store.weeklyCadence(t.id, now);
+      if (c && !c.due) continue;
+    }
     const key = weeklyRunKey(t.id, now);
     if (await store.runExists(key)) continue;
     const run = await store.insertRun({ tenant_id: t.id, type: 'weekly', status: 'queued', idempotency_key: key });
@@ -61,11 +73,15 @@ async function tick({ store, queue, sweep, now = Date.now() }) {
     actions.deep += 1;
   }
 
-  // 3. Token validation sweep — weekly per connection, proactive (§6).
+  // 3. Token validation sweep — weekly per connection, proactive (§6), and
+  //    the weekly look-again (fix plan move 10) on every valid connection.
   const conns = await store.connectionsForSweep();
   for (const conn of dueForValidation(conns, now)) {
-    await sweep.validate(conn); // sweep handles transitions + reconnect emails
+    const ok = await sweep.validate(conn); // sweep handles transitions + reconnect emails
     actions.swept += 1;
+    if (ok !== false && sweep.rediscover) {
+      try { await sweep.rediscover(conn); actions.rediscovered = (actions.rediscovered || 0) + 1; } catch (e) { console.error(`rediscover failed for connection ${conn.id}: ${e.message}`); }
+    }
   }
 
   return actions;

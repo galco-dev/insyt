@@ -24,8 +24,8 @@ const planIsActive = (sub) => !!(sub && ACTIVE_STATUSES.has(String(sub.status ||
  *   pending  proposed changes (money_impact_usd, finding.money_impact_monthly_usd)
  *   ads      ads_account asset (currency) or null
  */
-function accessFrom({ paid, sub, tenant, pricing, report, pending, ads }) {
-  const isPaid = !!(paid && PAID_KINDS.has(paid.kind || 'audit_unlock'));
+function accessFrom({ paid, sub, tenant, pricing, report, pending, ads, now = Date.now() }) {
+  const isPaid = !!(paid && PAID_KINDS.has(paid.kind || 'audit_unlock') && !paid.refunded_at);
   const active = planIsActive(sub);
   const level = active ? 'active' : isPaid ? 'unlocked' : 'locked';
   const band = (tenant && tenant.size_band) || '4k';
@@ -56,6 +56,10 @@ function accessFrom({ paid, sub, tenant, pricing, report, pending, ads }) {
     pending_count: rows.length,
     pending_value_usd: pendingValue,
     has_report: !!report,
+    // Undo stays free for 30 days after cancelling (fix plan move 13).
+    undo_until: sub && String(sub.status || '').toLowerCase() === 'canceled' && sub.canceled_at && Date.parse(sub.canceled_at) + 30 * 86_400_000 > now
+      ? new Date(Date.parse(sub.canceled_at) + 30 * 86_400_000).toISOString() : null,
+    paused_until: tenant && tenant.paused_until && Date.parse(tenant.paused_until) > now ? tenant.paused_until : null,
     findings_count: report ? (summary && summary.counts ? Object.values(summary.counts).reduce((s, n) => s + Number(n || 0), 0) : (Array.isArray(report.findings_snapshot) ? report.findings_snapshot.length : 0)) : null,
   };
 }

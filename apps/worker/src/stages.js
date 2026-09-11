@@ -326,6 +326,13 @@ function buildStages({ google, crawler, model, store }) {
             });
           } catch (e) { console.error(`report links failed for ${ctx.run.tenant_id}: ${e.message}`); }
         }
+        // The band sets itself (fix plan move 11): terms and spend, never a guess.
+        if (store.setSizeBand && ctx.ads) {
+          const terms = Array.isArray(ctx.ads.search_terms) ? ctx.ads.search_terms.length : 0;
+          const spend = Number(ctx.ads.spend_30d_usd || 0);
+          const band = terms > 15_000 || spend > 15_000 ? '25k' : terms > 6_000 || spend > 6_000 ? '10k' : '4k';
+          await store.setSizeBand(ctx.run.tenant_id, band).catch(() => {});
+        }
         const savedId = await store.saveReport(ctx.run.id, {
           id: reportId,
           html_email: htmlEmail,

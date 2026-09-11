@@ -73,7 +73,7 @@ function workerStore(db) {
     },
     saveReport: async (runId, { id = null, html_email, html_web, findings_snapshot, tenant_id, type, summary = null }) => {
       // Once the audit fee is paid every later report is born unlocked.
-      const paid = await db.select('payments', `tenant_id=eq.${q(tenant_id)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=id&limit=1`, { single: true }).catch(() => null);
+      const paid = await db.select('payments', `tenant_id=eq.${q(tenant_id)}&kind=in.(audit_unlock,large_audit,setup_bundle)&refunded_at=is.null&select=id&limit=1`, { single: true }).catch(() => null);
       const rows = await db.insert('reports', [{
         ...(id ? { id } : {}),
         run_id: runId, tenant_id, type: type || 'weekly',
@@ -82,7 +82,15 @@ function workerStore(db) {
       }]);
       return (rows && rows[0] && rows[0].id) || id || null;
     },
-    tenantPaid: async (tenantId) => !!(await db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=id&limit=1`, { single: true }).catch(() => null)),
+    tenantPaid: async (tenantId) => !!(await db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&refunded_at=is.null&select=id&limit=1`, { single: true }).catch(() => null)),
+    // The band sets itself (fix plan move 11): from search-term count and spend.
+    setSizeBand: async (tenantId, band) => {
+      if (!['4k', '10k', '25k'].includes(band)) return false;
+      const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=size_band`, { single: true }).catch(() => null);
+      if (t && t.size_band === band) return false;
+      await db.update('tenants', `id=eq.${q(tenantId)}`, { size_band: band }).catch(() => {});
+      return true;
+    },
     // The one-tap links a report email carries (fix plan move 4): single-use,
     // signed-in on redemption, minted before the email is rendered so the
     // HTML can carry them. Report id is chosen up front for the same reason.
@@ -348,6 +356,10 @@ function billingStore(db) {
     audit: async (entry) => { await db.insert('audit_log', [entry], { returning: false }); },
     // Spec §6: the fix the customer tapped before subscribing is approved by
     // the webhook itself, so a closed tab never loses it. Proposed rows only.
+    markRefunded: async (paymentIntent) => {
+      const rows = await db.update('payments', `stripe_payment_intent=eq.${q(paymentIntent)}`, { refunded_at: new Date().toISOString() }).catch(() => []);
+      return rows && rows[0] ? { tenant_id: rows[0].tenant_id } : null;
+    },
     markCredited: async (tenantId) => {
       await db.update('payments', `tenant_id=eq.${q(tenantId)}&credited_to_subscription=eq.false`, { credited_to_subscription: true }).catch(() => {});
     },
@@ -382,6 +394,22 @@ function opsStore(db) {
     cogsByTenant: async () => db.select('token_metering', 'select=tenant_id,cost_usd.sum()'),
     enqueueRun: async (row) => { const [r] = await db.insert('runs', [row]); return r; },
     activeTenants: async () => db.select('tenants', "select=id&status=eq.active"),
+    // Pauses end by themselves (fix plan move 13).
+    resumeDue: async (nowIso) => {
+      const rows = await db.select('tenants', `status=eq.paused&paused_until=lt.${q(nowIso)}&select=id`).catch(() => []);
+      for (const t of rows || []) await db.update('tenants', `id=eq.${q(t.id)}`, { status: 'active', paused_until: null }).catch(() => {});
+      return (rows || []).map((t) => t.id);
+    },
+    // The $20 tail (fix plan move 13): four weekly reports without a plan,
+    // then monthly. Returns 'weekly' | 'monthly' and whether a run is due now.
+    weeklyCadence: async (tenantId, now = Date.now()) => {
+      const sub = await db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&status=in.(active,past_due,trialing)&select=id&limit=1`, { single: true }).catch(() => null);
+      if (sub) return { cadence: 'weekly', due: true };
+      const reports = await db.select('reports', `tenant_id=eq.${q(tenantId)}&type=eq.weekly&select=created_at&order=created_at.desc&limit=4`).catch(() => []);
+      if (!reports || reports.length < 4) return { cadence: 'weekly', due: true };
+      const last = Date.parse(reports[0].created_at);
+      return { cadence: 'monthly', due: now - last >= 27 * 86_400_000 };
+    },
     dueWatches: async (nowIso) => db.select('watches', `status=eq.active&select=*&or=(last_check_at.is.null,last_check_at.lt.${q(nowIso)})`),
     patchWatch: async (id, patch) => { await db.update('watches', `id=eq.${q(id)}`, patch); },
     connectionsForSweep: async () => db.select('google_connections', 'select=id,user_id,status,last_validated_at'),
@@ -468,7 +496,7 @@ function dashStore(db, deps = {}) {
       const ago7 = iso(nowMs - 7 * 86_400_000);
       const ago28 = iso(nowMs - 28 * 86_400_000);
       const [days, report, cum, applied, runs, assets, owner, alerts, fixes, spend, approvedWaiting] = await Promise.all([
-        db.select('spend_daily', `tenant_id=eq.${q(tenantId)}&date=gte.${q(day28)}&select=date,spend_usd,conversions&order=date.asc`).catch(() => []),
+        db.select('spend_daily', `tenant_id=eq.${q(tenantId)}&date=gte.${q(day28)}&select=date,spend_usd,conversions,conversion_value_usd&order=date.asc`).catch(() => []),
         db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id,created_at,summary,findings_snapshot&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
         db.select('ledger_cumulative', `tenant_id=eq.${q(tenantId)}`, { single: true }).catch(() => null),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.applied&applied_at=gte.${q(ago7)}&select=id,changeset_id,applied_at`).catch(() => []),
@@ -548,8 +576,13 @@ function dashStore(db, deps = {}) {
       const failedRun = !openRun && (openRuns || []).find((r) => r.status === 'failed') || null;
 
       const waitingRows = approvedWaiting || [];
+      // Return on ad spend (fix plan move 11): only when order values exist.
+      const spend28 = (days || []).reduce((s, d) => s + Number(d.spend_usd || 0), 0);
+      const value28 = (days || []).reduce((s, d) => s + Number(d.conversion_value_usd || 0), 0);
+      const roas = value28 > 0 && spend28 > 0 ? { spend_28d_usd: Math.round(spend28), value_28d_usd: Math.round(value28), ratio: Math.round((value28 / spend28) * 10) / 10 } : null;
       return {
         spend: spend || null,
+        roas,
         running: openRun ? { since: openRun.started_at || null, type: openRun.type } : null,
         failed_last: !!(failedRun && !lastRun) || !!(failedRun && lastRun && failedRun.started_at && lastRun.finished_at && failedRun.started_at > lastRun.finished_at),
         site: {
@@ -628,9 +661,9 @@ function dashStore(db, deps = {}) {
     // customer's own numbers, so every gated state speaks in their figures.
     access: async (tenantId) => {
       const [paid, sub, tenant, pricing, report, pending, ads, owner] = await Promise.all([
-        db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=id,kind&limit=1`, { single: true }).catch(() => null),
-        db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status,price_usd,stripe_customer_id&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
-        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band`, { single: true }).catch(() => null),
+        db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&refunded_at=is.null&select=id,kind,refunded_at&limit=1`, { single: true }).catch(() => null),
+        db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status,price_usd,stripe_customer_id,canceled_at&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band,paused_until`, { single: true }).catch(() => null),
         db.select('pricing_config', 'select=matrix&order=effective_from.desc&limit=1', { single: true }).catch(() => null),
         db.select('reports', `tenant_id=eq.${q(tenantId)}&select=summary,findings_snapshot&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=money_impact_usd,finding:findings(money_impact_monthly_usd)`).catch(() => []),
@@ -816,7 +849,8 @@ function dashStore(db, deps = {}) {
       const nowMs = now.getTime();
       const localDow = new Date(nowMs + 4 * 3600_000).getUTCDay();
       const nextDays = localDow === 0 ? 7 : 7 - localDow;
-      const nextRun = new Date(nowMs + nextDays * 86_400_000);
+      // The date in Gulf time, not UTC, so a Saturday night never reads as Saturday.
+      const nextRun = new Date(nowMs + 4 * 3600_000); nextRun.setUTCDate(nextRun.getUTCDate() + nextDays);
       return {
         plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check — no plan yet',
         autopilot: (auto && auto.categories) || {},
@@ -1035,6 +1069,24 @@ function dashStore(db, deps = {}) {
       }
       if (change_id) await store.dismissChange(tenantId, change_id, { reason: 'leave alone' }).catch(() => {});
       return { ok: true };
+    },
+    // Pause everything until a date (fix plan move 13): checks, proposals,
+    // emails and the bill stop; breakage alerts never do.
+    pauseTenant: async (tenantId, untilIso) => {
+      const until = Date.parse(untilIso);
+      const max = Date.now() + 90 * 86_400_000;
+      if (!until || until < Date.now() + 86_400_000 || until > max) return { ok: false, error: 'Pick a date between tomorrow and 90 days from now.' };
+      const iso = new Date(until).toISOString();
+      await db.update('tenants', `id=eq.${q(tenantId)}`, { status: 'paused', paused_until: iso });
+      await db.insert('ledger', [{ tenant_id: tenantId, event: 'subscription_changed', actor: 'user', summary_text: `Paused until ${iso.slice(0, 10)}. Checks, proposals and the bill stop until then; alerts about breakage still reach you.` }], { returning: false }).catch(() => {});
+      const sub = await db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&status=in.(active,past_due,trialing)&select=stripe_subscription_id&order=created_at.desc&limit=1`, { single: true }).catch(() => null);
+      return { ok: true, paused_until: iso, stripe_subscription_id: sub ? sub.stripe_subscription_id : null };
+    },
+    resumeTenant: async (tenantId) => {
+      await db.update('tenants', `id=eq.${q(tenantId)}&status=eq.paused`, { status: 'active', paused_until: null });
+      await db.insert('ledger', [{ tenant_id: tenantId, event: 'subscription_changed', actor: 'user', summary_text: 'Back on. Checks run again from the next Sunday.' }], { returning: false }).catch(() => {});
+      const sub = await db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&status=in.(active,past_due,trialing)&select=stripe_subscription_id&order=created_at.desc&limit=1`, { single: true }).catch(() => null);
+      return { ok: true, stripe_subscription_id: sub ? sub.stripe_subscription_id : null };
     },
     // What can be fenced from Settings: the campaigns we last saw.
     fenceOptions: async (tenantId) => {

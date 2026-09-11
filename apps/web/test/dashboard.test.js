@@ -196,6 +196,25 @@ test('api (fix plan push 4): later is free, partial yes and retry need a plan, a
   });
 });
 
+test('api (fix plan push 5): pause validates the date and pauses Stripe, undo is free inside the grace, look again needs the dep', async () => {
+  const ds = dashStore();
+  const calls = [];
+  ds.access = async () => ({ level: 'unlocked', undo_until: new Date(Date.now() + 86_400_000).toISOString() });
+  ds.pauseTenant = async (t, until) => (until ? { ok: true, paused_until: until, stripe_subscription_id: 'sub_1' } : { ok: false, error: 'Pick a date.' });
+  const checkout = { pause: async (id, until) => calls.push(['pause', id, until]), resume: async (id) => calls.push(['resume', id]) };
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET, checkout }, async (base) => {
+    const h = { cookie: authedCookie(), 'content-type': 'application/json' };
+    assert.strictEqual((await fetch(`${base}/api/app/pause`, { method: 'POST', headers: h, body: '{}' })).status, 400);
+    const ok = await fetch(`${base}/api/app/pause`, { method: 'POST', headers: h, body: JSON.stringify({ until: '2026-10-12T00:00:00Z' }) });
+    assert.strictEqual(ok.status, 200);
+    assert.deepStrictEqual(calls, [['pause', 'sub_1', '2026-10-12T00:00:00Z']]);
+    const undo = await fetch(`${base}/api/app/revert/c1`, { method: 'POST', headers: h });
+    assert.strictEqual(undo.status, 200, 'undo is free inside the 30-day grace');
+    assert.deepStrictEqual(ds.actions, [['revert', 'c1']]);
+    assert.strictEqual((await fetch(`${base}/api/app/rediscover`, { method: 'POST', headers: h })).status, 501);
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;
