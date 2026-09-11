@@ -5,7 +5,7 @@
 // adapters exist to satisfy them against the deployed §1 schema.
 
 const q = (s) => encodeURIComponent(s);
-const { accessFrom, autopilotAllowed } = require('../../billing/src/access');
+const { accessFrom, autopilotAllowed, planIsActive } = require('../../billing/src/access');
 const createTelemetryBeat = (db, stream) => require('../../shared/src/telemetry').createTelemetry({ db }).beat(stream);
 
 // ---------------------------------------------------------------- worker
@@ -584,9 +584,22 @@ function dashStore(db, deps = {}) {
     },
     // ---- §7 assistant. The composer is the bot's entry point (§7.4.8): when
     // the assistant is wired, a composer request becomes a chat turn.
+    // On for every tenant with an active plan (richer-platform spec §4);
+    // tenants.assistant_enabled overrides either way when set.
     assistantEnabled: async (tenantId) => {
-      const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=assistant_enabled`, { single: true }).catch(() => null);
-      return !!(t && t.assistant_enabled) && !!deps.assistant;
+      if (!deps.assistant) return false;
+      const [t, sub] = await Promise.all([
+        db.select('tenants', `id=eq.${q(tenantId)}&select=assistant_enabled`, { single: true }).catch(() => null),
+        db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=status&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+      ]);
+      if (t && t.assistant_enabled === false) return false;
+      if (t && t.assistant_enabled === true) return true;
+      return planIsActive(sub);
+    },
+    // Alerts on Home (spec §2.7): acknowledging is a tap.
+    ackAlert: async (tenantId, alertId) => {
+      await db.update('alerts', `id=eq.${q(alertId)}&tenant_id=eq.${q(tenantId)}`, { acked_at: new Date().toISOString() });
+      return { ok: true };
     },
     chat: async (tenantId, text, conversationId) => (deps.assistant ? deps.assistant.turn({ tenantId, text, conversationId }) : null),
     chatTranscript: async (tenantId, conversationId) => (deps.assistant ? deps.assistant.transcript(tenantId, conversationId) : null),
@@ -699,7 +712,7 @@ function dashStore(db, deps = {}) {
         plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check — no plan yet',
         autopilot: (auto && auto.categories) || {},
         connection_status: (conn && CONNECTION_LINE[conn.status]) || 'Google connection pending.',
-        assistant_enabled: !!deps.assistant && !!(tenant && tenant.assistant_enabled),
+        assistant_enabled: await store.assistantEnabled(tenantId),
         weekly: {
           timezone: (tenant && tenant.timezone) || null,
           next_run_at: nextRun.toISOString().slice(0, 10),

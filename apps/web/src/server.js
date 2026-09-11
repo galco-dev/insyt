@@ -452,6 +452,10 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             const r = await dashStore.requestRevert(t, sub.split('/')[2]);
             return json(res, 200, r && r.ok === false ? { ok: false, reason: r.reason } : { ok: true });
           }
+          if (/^\/alerts\/[^/]+\/ack$/.test(sub)) {
+            if (!dashStore.ackAlert) return json(res, 501, { error: 'Not available yet.' });
+            return json(res, 200, await dashStore.ackAlert(t, sub.split('/')[2]));
+          }
           if (/^\/exceptions\/[^/]+\/clear$/.test(sub)) {
             const ok = dashStore.clearException ? await dashStore.clearException(t, sub.split('/')[2]) : false;
             return json(res, ok ? 200 : 404, { ok });

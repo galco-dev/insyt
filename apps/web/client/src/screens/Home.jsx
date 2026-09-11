@@ -1,7 +1,7 @@
 // Dashboard home - §11 screen 2. Health, waiting approvals, cumulative value,
 // latest report. Every element leads somewhere; empty states sell next steps.
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Zap, Lock01 as Lock } from '@untitledui/icons';
+import { ArrowRight, Zap, Lock01 as Lock, AlertTriangle, Check } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { useAccess } from '../lib/access.jsx';
@@ -178,6 +178,41 @@ function Performance({ performance, money }) {
         ) : (
           <p className="text-small text-neutral-900">Your daily numbers start building after the first check. The chart appears once a week of them is in.</p>
         )}
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- alerts
+// Only when present (spec §2.7): one line each from the last 7 days,
+// severity chip and time; acknowledging is a tap. Absent when there are none.
+const ALERT_TONE = { critical: 'text-critical', warning: 'text-warning', info: 'text-info' };
+function Alerts({ alerts, onAck }) {
+  const [busy, setBusy] = useState(null);
+  if (!alerts || !alerts.length) return null;
+  async function ack(id) {
+    setBusy(id);
+    try { await api(`/api/app/alerts/${id}/ack`, { method: 'POST' }); onAck(id); } catch { /* stays listed */ }
+    setBusy(null);
+  }
+  return (
+    <div className="mt-8">
+      <h2 className="text-h4">Alerts</h2>
+      <Card className="mt-3 divide-y divide-neutral-200">
+        {alerts.map((a) => (
+          <div key={a.id} className={`flex items-center gap-3 p-4 ${a.acked ? 'opacity-60' : ''}`}>
+            <AlertTriangle size={16} className={`shrink-0 ${ALERT_TONE[a.severity] || 'text-neutral-900'}`} aria-hidden />
+            <div className="min-w-0 flex-1">
+              <div className="text-small">{a.title}</div>
+              <div className="mt-0.5 font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">
+                <span className={ALERT_TONE[a.severity] || ''}>{a.severity}</span> · {ago(a.at)}
+              </div>
+            </div>
+            {a.acked
+              ? <span className="inline-flex items-center gap-1 text-tiny text-neutral-900"><Check size={13} aria-hidden /> Seen</span>
+              : <Button variant="secondary" onClick={() => ack(a.id)} disabled={busy === a.id} className="!px-3 !py-1.5 text-tiny">Got it</Button>}
+          </div>
+        ))}
       </Card>
     </div>
   );
@@ -399,6 +434,7 @@ export default function Home() {
 
       {overview && <Performance performance={overview.performance} money={accessMoney} />}
       {overview && <Accounts accounts={overview.accounts} />}
+      {overview && <Alerts alerts={overview.alerts} onAck={(id) => setOverview((o) => (o ? { ...o, alerts: o.alerts.map((a) => (a.id === id ? { ...a, acked: true } : a)) } : o))} />}
     </div>
   );
 }

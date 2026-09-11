@@ -153,6 +153,18 @@ test('api: settings writes (business, emails), the runs list, and the unsubscrib
   });
 });
 
+test('api: POST /api/app/alerts/:id/ack is free at every level and tenant-scoped through the store', async () => {
+  const ds = dashStore();
+  ds.access = async () => ({ level: 'locked' });
+  const acks = [];
+  ds.ackAlert = async (t, id) => { acks.push([t, id]); return { ok: true }; };
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const r = await fetch(`${base}/api/app/alerts/al1/ack`, { method: 'POST', headers: { cookie: authedCookie() } });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(acks, [['tn1', 'al1']]);
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;

@@ -265,6 +265,22 @@ test('dashStore.settings: weekly, emails and business cards ride on tenants + us
   assert.deepStrictEqual(await s.setEmailReports('t1', 0), { ok: true, reports: false });
 });
 
+test('dashStore.assistantEnabled: on with an active plan, off without one, tenants.assistant_enabled overrides either way', async () => {
+  const { dashStore } = require('../src/stores');
+  const mk = (tenant, sub) => dashStore(mkDb(routedFetch({ tenants: tenant ? [tenant] : [], subscriptions: sub ? [sub] : [] })), { assistant: {} });
+  assert.strictEqual(await mk({ assistant_enabled: null }, { status: 'active' }).assistantEnabled('t1'), true);
+  assert.strictEqual(await mk({ assistant_enabled: null }, { status: 'past_due' }).assistantEnabled('t1'), true, 'grace ladder degrades, never cuts');
+  assert.strictEqual(await mk({ assistant_enabled: null }, null).assistantEnabled('t1'), false);
+  assert.strictEqual(await mk({ assistant_enabled: false }, { status: 'active' }).assistantEnabled('t1'), false, 'explicit off wins');
+  assert.strictEqual(await mk({ assistant_enabled: true }, null).assistantEnabled('t1'), true, 'explicit on wins');
+  const noBot = dashStore(mkDb(routedFetch({ tenants: [{ assistant_enabled: true }], subscriptions: [{ status: 'active' }] })));
+  assert.strictEqual(await noBot.assistantEnabled('t1'), false, 'no assistant wired: never on');
+  const f = routedFetch({ alerts: [] });
+  await dashStore(mkDb(f)).ackAlert('t1', 'al1');
+  assert.match(f.calls[0].url, /alerts\?id=eq\.al1&tenant_id=eq\.t1/);
+  assert.ok(f.calls[0].body.acked_at);
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

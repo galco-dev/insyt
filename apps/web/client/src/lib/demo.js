@@ -229,7 +229,7 @@ function demoOverview(s, level) {
       { kind: 'gtm_container', label: 'Tag Manager', href: '/app/connected/tag-manager', name: 'glowstudio.ae', external_id: 'GTM-K2P9QX', status: 'ok', read_at: lastCheck },
     ],
     alerts: [
-      { id: 'al-1', severity: 'warning', kind: 'spend_spike', title: 'Yesterday cost 2.4x a normal day', at: new Date(now - 26 * 3600_000).toISOString(), acked: false },
+      { id: 'al-1', severity: 'warning', kind: 'spend_spike', title: 'Yesterday cost 2.4x a normal day', at: new Date(now - 26 * 3600_000).toISOString(), acked: !!(s.ackedAlerts && s.ackedAlerts.has('al-1')) },
     ],
     performance: {
       days,
@@ -420,6 +420,7 @@ function customerDemo(path, method, body) {
     if (body && body.website !== undefined) s.business.website = String(body.website).trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
     return { ok: true, business_name: s.business.name, website_url: s.business.website };
   }
+  if (/^\/api\/app\/alerts\/[^/]+\/ack$/.test(p)) { if (!s.ackedAlerts) s.ackedAlerts = new Set(); s.ackedAlerts.add(p.split('/')[4]); return { ok: true }; }
   if (p === '/api/app/emails') { s.emails = { reports: !!(body && body.reports) }; return { ok: true, reports: s.emails.reports }; }
   if (p === '/api/app/autopilot') {
     const cats = (body && (body.categories || body)) || {};
