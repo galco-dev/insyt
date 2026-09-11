@@ -257,7 +257,10 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
 
       // Report-stream List-Unsubscribe target (§17).
       if (req.method === 'GET' && path === '/m/unsubscribe') {
-        return html(res, 200, '<p style="font-family:sans-serif">You are unsubscribed from weekly report emails. Alerts about breakage still reach you — those protect your money. Manage everything in Settings.</p>');
+        // Writes the same flag as the Settings toggle (richer-platform spec §6).
+        const tid = u.searchParams.get('t');
+        if (tid && /^[0-9a-f-]{36}$/i.test(tid) && dashStore && dashStore.setEmailReports) await dashStore.setEmailReports(tid, false).catch(() => {});
+        return html(res, 200, '<p style="font-family:sans-serif">You are unsubscribed from weekly report emails. Alerts about breakage still reach you, those protect your money. Turn reports back on any time in Settings.</p>');
       }
 
       // Magic-link redemption: single-use, purpose-routed (§12).
@@ -319,7 +322,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessFor(dashStore, t) });
           if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_change : {}, access: await accessFor(dashStore, t) });
           if (sub === '/reports') return json(res, 200, { reports: await dashStore.reports(t) });
-          if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t), access: await accessFor(dashStore, t) });
+          if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t, new Date(now())), access: await accessFor(dashStore, t) });
+          if (sub === '/runs') return json(res, 200, { runs: dashStore.runs ? await dashStore.runs(t) : [] });
           if (sub === '/discovery') return json(res, 200, await dashStore.discovery(t));
           if (sub === '/plan') return json(res, 200, { plan: await dashStore.planOptions(t) });
           if (sub === '/first-fix') return json(res, 200, { fix: await dashStore.firstFix(t) });
@@ -357,7 +361,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -371,6 +375,17 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                   if (!text) return json(res, 400, { error: 'Say what you would like to know or change.' });
                   const r = await dashStore.chat(t, text, parsed.conversation_id || null);
                   return json(res, 200, r);
+                }
+                // Settings writes (richer-platform spec §6): free at every level,
+                // they touch nothing in Google.
+                if (sub === '/business') {
+                  if (!dashStore.setBusiness) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.setBusiness(t, { name: parsed.name, website: parsed.website, timezone: parsed.timezone });
+                  return json(res, r.ok ? 200 : 400, r.ok ? r : { error: 'Nothing to save.' });
+                }
+                if (sub === '/emails') {
+                  if (!dashStore.setEmailReports) return json(res, 501, { error: 'Not available yet.' });
+                  return json(res, 200, await dashStore.setEmailReports(t, !!parsed.reports));
                 }
                 // Batch yes (richer-platform spec §2.4): same gate as approve.
                 if (sub === '/approve-batch') {

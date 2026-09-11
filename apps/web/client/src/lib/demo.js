@@ -91,6 +91,9 @@ const DEMO = {
       plan_line: 'Core · $129/mo (active)',
       autopilot: { negatives: false, budgets: false, counting: false },
       connection_status: 'Google connection healthy.',
+      weekly: { timezone: 'Asia/Dubai', next_run_at: null, next_check_days: null, last_runs: [] },
+      emails: { reports: true, address: 'hello@glowstudio.ae' },
+      business: { name: 'Glow Studio', website: 'glowstudio.ae', currency: 'USD', band: '4k' },
     },
   },
   'GET /api/app/discovery': {
@@ -236,6 +239,15 @@ function demoOverview(s, level) {
   };
 }
 
+function demoRuns() {
+  const sunday = (weeksAgo) => { const d = new Date(); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 7 * weeksAgo) || 7)); d.setUTCHours(3, 10, 0, 0); return d.toISOString(); };
+  return [
+    { id: 'run-3', type: 'weekly', status: 'complete', started_at: sunday(0), finished_at: sunday(0) },
+    { id: 'run-2', type: 'weekly', status: 'degraded', started_at: sunday(1), finished_at: sunday(1) },
+    { id: 'run-1', type: 'signup_audit', status: 'complete', started_at: sunday(2), finished_at: sunday(2) },
+  ];
+}
+
 function customerDemo(path, method, body) {
   const s = cstate();
   const p = path.split('?')[0];
@@ -266,6 +278,7 @@ function customerDemo(path, method, body) {
       };
     }
     if (p === '/api/app/overview') return { overview: demoOverview(s, access.level), access };
+    if (p === '/api/app/runs') return { runs: demoRuns() };
     if (p === '/api/app/approvals') return { pending: gatedPending(s, access.level), access };
     if (p === '/api/app/ledger') return { entries: access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event)), pending: gatedPending(s, access.level), receipts: access.level === 'active' ? structuredClone(RECEIPTS) : {}, access };
     if (p === '/api/app/settings') {
@@ -273,6 +286,10 @@ function customerDemo(path, method, body) {
       base.settings.autopilot = { ...s.autopilot };
       base.settings.assistant_enabled = true; // demo consoles first (§7.6)
       base.settings.plan_line = access.level === 'active' ? `${access.plan.label} · $${access.plan.price_usd}/mo (active)` : 'Free check, no plan yet';
+      const nextDays = (7 - new Date(Date.now() + 4 * 3600_000).getUTCDay()) % 7 || 7;
+      base.settings.weekly = { ...base.settings.weekly, next_run_at: new Date(Date.now() + nextDays * 86_400_000).toISOString().slice(0, 10), next_check_days: nextDays, last_runs: demoRuns() };
+      if (s.emails) base.settings.emails = { ...base.settings.emails, ...s.emails };
+      if (s.business) base.settings.business = { ...base.settings.business, ...s.business };
       base.access = access;
       return base;
     }
@@ -397,6 +414,13 @@ function customerDemo(path, method, body) {
     return { ok: true };
   }
   if (p === '/api/app/recheck') return { ok: true, run_id: 'demo-run', note: 'On its way - in the sample, nothing changes.' };
+  if (p === '/api/app/business') {
+    s.business = { ...(s.business || {}) };
+    if (body && body.name !== undefined) s.business.name = String(body.name).trim();
+    if (body && body.website !== undefined) s.business.website = String(body.website).trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+    return { ok: true, business_name: s.business.name, website_url: s.business.website };
+  }
+  if (p === '/api/app/emails') { s.emails = { reports: !!(body && body.reports) }; return { ok: true, reports: s.emails.reports }; }
   if (p === '/api/app/autopilot') {
     const cats = (body && (body.categories || body)) || {};
     for (const k of ['negatives', 'budgets', 'counting']) s.autopilot[k] = !!cats[k];

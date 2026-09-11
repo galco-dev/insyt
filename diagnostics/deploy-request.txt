@@ -8,3 +8,4 @@ deploy request: Richer platform step 1 (overview endpoint, Home money strip, Thi
 deploy request: Richer platform step 2 (projection chip everywhere, approve-batch on Home, Approvals and the report bar) - 2026-09-11T10:41:04Z
 deploy request: Richer platform step 3 (receipts in History and on the report, month line, score and waste on the reports list) - 2026-09-11T10:45:32Z
 deploy request: Richer platform step 4 (Performance, 28 days chart on Home) - 2026-09-11T10:49:21Z
+deploy request: Richer platform step 5 (Settings: weekly check, emails, business; migration 28) - 2026-09-11T10:53:30Z

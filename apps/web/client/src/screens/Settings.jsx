@@ -2,7 +2,7 @@
 // and the your-data actions the legal pages promise (export, delete,
 // disconnect). Autopilot toggles write through /api/app/autopilot.
 import React, { useEffect, useState } from 'react';
-import { CreditCard01 as CreditCard, Link01 as Link2, Zap, ShieldTick as ShieldCheck, Lock01 as Lock, LogOut01 as LogOut } from '@untitledui/icons';
+import { CreditCard01 as CreditCard, Link01 as Link2, Zap, ShieldTick as ShieldCheck, Lock01 as Lock, LogOut01 as LogOut, Calendar as CalendarIcon, Mail01 as MailIcon, Building02 as Building } from '@untitledui/icons';
 import clsx from 'clsx';
 import { api, isDemo } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
@@ -38,6 +38,134 @@ function Toggle({ on, busy, onClick, label }) {
         )}
       />
     </button>
+  );
+}
+
+const RUN_LABEL = { signup_audit: 'Your audit', weekly: 'Weekly check', deep: 'Deep review', triggered: 'Extra check', verification: 'Verification' };
+const RUN_STATUS = { complete: 'done', degraded: 'done, partly', failed: 'did not finish', running: 'running now', queued: 'queued' };
+const BAND_LINE = { '4k': 'around 4,000 search terms a month', '10k': 'around 10,000 search terms a month', '25k': 'around 25,000 search terms a month' };
+const longDate = (iso) => new Date(iso.length === 10 ? `${iso}T12:00:00Z` : iso).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+const shortDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+// Weekly check card (richer-platform spec §6): the schedule, the next run,
+// Check again now, and the last three runs with their status.
+function WeeklyCheck({ weekly }) {
+  const [recheck, setRecheck] = useState(null);
+  if (!weekly) return null;
+  const tz = weekly.timezone ? weekly.timezone.replace(/_/g, ' ') : null;
+  return (
+    <Card className="mt-3 p-5">
+      <div className="flex items-start gap-3">
+        <CalendarIcon size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
+        <div className="flex-1">
+          <MonoLabel>Weekly check</MonoLabel>
+          <div className="mt-0.5 text-body">
+            Every Sunday night{tz ? `, ${tz} time` : ''}. Next one {weekly.next_run_at ? longDate(weekly.next_run_at) : 'this Sunday'}.
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button variant="secondary" disabled={recheck === 'busy'} className="!px-4 !py-2" onClick={async () => {
+              setRecheck('busy');
+              try { const r = await api('/api/app/recheck', { method: 'POST' }); setRecheck(r.note || 'On its way - your report refreshes in about ten minutes.'); }
+              catch (e) { setRecheck(e.message); }
+            }}>Check again now</Button>
+            {recheck && recheck !== 'busy' && <span className="text-tiny text-neutral-900">{recheck}</span>}
+          </div>
+          {weekly.last_runs && weekly.last_runs.length > 0 && (
+            <ul className="mt-3 divide-y divide-neutral-200 rounded border border-neutral-300 bg-neutral-50">
+              {weekly.last_runs.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-small">
+                  <span>{RUN_LABEL[r.type] || r.type}<span className="text-neutral-900">, {RUN_STATUS[r.status] || r.status}</span></span>
+                  <span className="font-mono text-tiny text-neutral-900">{r.finished_at ? shortDate(r.finished_at) : r.started_at ? shortDate(r.started_at) : ''}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Emails card (spec §6): weekly report on or off, alerts always on, and the
+// address everything goes to.
+function Emails({ emails, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  if (!emails) return null;
+  async function flip() {
+    setBusy(true); setNote(null);
+    try { const r = await api('/api/app/emails', { method: 'POST', body: { reports: !emails.reports } }); onChange({ ...emails, reports: !!r.reports }); }
+    catch (e) { setNote(e.message); }
+    setBusy(false);
+  }
+  return (
+    <Card className="mt-3 p-5">
+      <div className="flex items-start gap-3">
+        <MailIcon size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
+        <div className="flex-1">
+          <MonoLabel>Emails</MonoLabel>
+          <p className="mt-0.5 text-small text-neutral-900">{emails.address ? `Everything goes to ${emails.address}.` : 'Sent to the address on your Google account.'}</p>
+          <div className="mt-3 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-3 text-small">
+              <span>Weekly report</span>
+              <div className="flex items-center gap-2.5">
+                <span className="whitespace-nowrap font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">{emails.reports ? 'On' : 'Off'}</span>
+                <Toggle on={!!emails.reports} busy={busy} onClick={flip} label="Weekly report emails" />
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-small">
+              <span>Alerts about breakage</span>
+              <span className="whitespace-nowrap font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">Always on</span>
+            </div>
+          </div>
+          <p className="mt-2 text-tiny text-neutral-900">Alerts protect your money, so they always reach you.</p>
+          {note && <p className="mt-2 text-tiny text-critical">{note}</p>}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Business card (spec §6): name and website feed the report header; the
+// currency and the size band explain the numbers you see.
+function Business({ business, money, onSaved }) {
+  const [name, setName] = useState((business && business.name) || '');
+  const [website, setWebsite] = useState((business && business.website) || '');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  if (!business) return null;
+  const dirty = name !== (business.name || '') || website !== (business.website || '');
+  async function save() {
+    setBusy(true); setNote(null);
+    try { const r = await api('/api/app/business', { method: 'POST', body: { name, website } }); onSaved({ ...business, name: r.business_name ?? name, website: r.website_url ?? website }); setNote('Saved.'); }
+    catch (e) { setNote(e.message); }
+    setBusy(false);
+  }
+  const field = 'w-full rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)';
+  return (
+    <Card className="mt-3 p-5">
+      <div className="flex items-start gap-3">
+        <Building size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
+        <div className="flex-1">
+          <MonoLabel>Your business</MonoLabel>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-tiny text-neutral-900">Name
+              <input value={name} onChange={(e) => setName(e.target.value)} className={`${field} mt-1`} placeholder="Your business name" maxLength={120} />
+            </label>
+            <label className="text-tiny text-neutral-900">Website
+              <input value={website} onChange={(e) => setWebsite(e.target.value)} className={`${field} mt-1`} placeholder="yourwebsite.com" inputMode="url" autoCapitalize="none" maxLength={200} />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button variant="secondary" onClick={save} disabled={busy || !dirty} className="!px-4 !py-2">{busy ? 'Saving…' : 'Save'}</Button>
+            {note && <span className="text-tiny text-neutral-900">{note}</span>}
+          </div>
+          <p className="mt-3 text-tiny text-neutral-900">
+            Money shows in {business.currency || 'USD'}{money ? `, like ${money(1250)}` : ''}. Your plan is sized for {BAND_LINE[business.band] || BAND_LINE['4k']}, which sets the price you see.
+          </p>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -80,9 +208,20 @@ export default function Settings() {
   const [error, setError] = useState(null);
   const [note, setNote] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
-  const [recheck, setRecheck] = useState(null);
-  const { access, level, gate, openSheet, goUnlock } = useAccess();
-  useEffect(() => { api('/api/app/settings').then((d) => setSettings(d.settings)).catch((e) => setError(e.message)); }, []);
+  const { access, level, gate, openSheet, goUnlock, money } = useAccess();
+  useEffect(() => {
+    api('/api/app/settings').then((d) => {
+      setSettings(d.settings);
+      // First visit: remember the browser's timezone so the weekly check card
+      // can speak in the customer's own time (spec §6).
+      const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; } })();
+      if (tz && d.settings && d.settings.weekly && !d.settings.weekly.timezone) {
+        api('/api/app/business', { method: 'POST', body: { timezone: tz } })
+          .then(() => setSettings((s) => (s && s.weekly ? { ...s, weekly: { ...s.weekly, timezone: tz } } : s)))
+          .catch(() => {});
+      }
+    }).catch((e) => setError(e.message));
+  }, []);
 
   if (error) return <div className="mx-auto max-w-m2 px-5 pt-14"><ErrorNote message={error} /></div>;
   if (!settings) return <Spinner label="Loading settings" />;
@@ -152,20 +291,14 @@ export default function Settings() {
         </p>
       </Card>
 
+      <WeeklyCheck weekly={settings.weekly} />
+
       <Card className="mt-3 p-5">
         <div className="flex items-start gap-3">
           <Link2 size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
           <div className="flex-1">
             <MonoLabel>Google connection</MonoLabel>
             <div className="mt-0.5 text-body">{settings.connection_status}</div>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Button variant="secondary" disabled={recheck === 'busy'} onClick={async () => {
-                setRecheck('busy');
-                try { const r = await api('/api/app/recheck', { method: 'POST' }); setRecheck(r.note || 'On its way - your report refreshes in about ten minutes.'); }
-                catch (e) { setRecheck(e.message); }
-              }}>Check again now</Button>
-              {recheck && recheck !== 'busy' && <span className="text-tiny text-neutral-900">{recheck}</span>}
-            </div>
             <div className="mt-3">
               <Link to="/app/connected"><Button variant="secondary" className="!px-4 !py-2">See what Insyt reads</Button></Link>
               <span className="ml-3 text-tiny text-neutral-900">Every account, campaign, report and tag we can see through your Google permissions, live.</span>
@@ -206,6 +339,9 @@ export default function Settings() {
 
       <Exceptions />
 
+      <Emails emails={settings.emails} onChange={(emails) => setSettings((s) => ({ ...s, emails }))} />
+      <Business business={settings.business} money={money} onSaved={(business) => setSettings((s) => ({ ...s, business }))} />
+
       <Card className="mt-3 p-5">
         <div className="flex items-start gap-3">
           <ShieldCheck size={17} className="mt-0.5 shrink-0 text-neutral-900" aria-hidden />
@@ -240,10 +376,6 @@ export default function Settings() {
       </Card>
 
       {note && <div className="mt-4"><ErrorNote message={note} /></div>}
-
-      <p className="mt-6 text-tiny text-neutral-900">
-        Weekly report emails can be paused from any report email - alerts about breakage always reach you, those protect your money.
-      </p>
     </div>
   );
 }

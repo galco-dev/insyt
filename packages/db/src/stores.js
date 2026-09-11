@@ -670,14 +670,17 @@ function dashStore(db, deps = {}) {
       return r;
     },
     ledger: async (tenantId) => db.select('ledger', `tenant_id=eq.${q(tenantId)}&select=*&order=created_at.desc&limit=100`),
-    settings: async (tenantId) => {
+    settings: async (tenantId, now = new Date()) => {
       // users → google_connections (one owner per tenant in v1). PostgREST has
       // no SQL subqueries; the old `user_id=in.(select …)` filter 400'd and every
       // tenant read "Google connection pending." whatever the real status.
-      const [sub, auto, owner] = await Promise.all([
+      const [sub, auto, owner, tenant, lastRuns, ads] = await Promise.all([
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,size_band,price_usd,status&limit=1`, { single: true }),
         db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }),
-        db.select('users', `tenant_id=eq.${q(tenantId)}&select=id&limit=1`, { single: true }).catch(() => null),
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=id,email&limit=1`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=business_name,website_url,size_band,timezone,email_reports,assistant_enabled`, { single: true }).catch(() => null),
+        store.runs(tenantId).catch(() => []),
+        db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null),
       ]);
       const conn = owner
         ? await db.select('google_connections', `user_id=eq.${q(owner.id)}&select=status&limit=1`, { single: true }).catch(() => null)
@@ -687,12 +690,52 @@ function dashStore(db, deps = {}) {
         expired: 'Google connection expired - sign in again to reconnect.',
         revoked: 'Google access was removed - sign in again to reconnect.',
       };
+      // Weekly checks run in the Sunday window (Gulf time, journeys/scheduling).
+      const nowMs = now.getTime();
+      const localDow = new Date(nowMs + 4 * 3600_000).getUTCDay();
+      const nextDays = localDow === 0 ? 7 : 7 - localDow;
+      const nextRun = new Date(nowMs + nextDays * 86_400_000);
       return {
         plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check — no plan yet',
         autopilot: (auto && auto.categories) || {},
         connection_status: (conn && CONNECTION_LINE[conn.status]) || 'Google connection pending.',
-        assistant_enabled: !!deps.assistant && !!(await db.select('tenants', `id=eq.${q(tenantId)}&select=assistant_enabled`, { single: true }).catch(() => null) || {}).assistant_enabled,
+        assistant_enabled: !!deps.assistant && !!(tenant && tenant.assistant_enabled),
+        weekly: {
+          timezone: (tenant && tenant.timezone) || null,
+          next_run_at: nextRun.toISOString().slice(0, 10),
+          next_check_days: nextDays,
+          last_runs: lastRuns || [],
+        },
+        emails: { reports: !(tenant && tenant.email_reports === false), address: (owner && owner.email) || null },
+        business: {
+          name: (tenant && tenant.business_name) || null,
+          website: (tenant && tenant.website_url) || null,
+          currency: (ads && ads.currency) || 'USD',
+          band: (tenant && tenant.size_band) || (sub && sub.size_band) || '4k',
+        },
       };
+    },
+    // The last three checks (richer-platform spec §6, Settings).
+    runs: async (tenantId) => {
+      const rows = await db.select('runs', `tenant_id=eq.${q(tenantId)}&select=id,type,status,started_at,finished_at&order=started_at.desc.nullslast&limit=3`).catch(() => []);
+      return (rows || []).map((r) => ({ id: r.id, type: r.type, status: r.status, started_at: r.started_at, finished_at: r.finished_at }));
+    },
+    // Business card (spec §6): name and website feed the report header; the
+    // timezone is what the browser reported at first sign-in.
+    setBusiness: async (tenantId, { name, website, timezone } = {}) => {
+      const patch = {};
+      if (name !== undefined) patch.business_name = String(name || '').trim().slice(0, 120) || null;
+      if (website !== undefined) patch.website_url = String(website || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').slice(0, 200) || null;
+      if (timezone !== undefined && /^[A-Za-z_]+(\/[A-Za-z_+-]+){0,2}$/.test(String(timezone || ''))) patch.timezone = String(timezone).slice(0, 64);
+      if (!Object.keys(patch).length) return { ok: false };
+      await db.update('tenants', `id=eq.${q(tenantId)}`, patch);
+      return { ok: true, ...patch };
+    },
+    // Weekly report emails on or off. The List-Unsubscribe link writes the
+    // same flag; alerts about breakage are never gated by it.
+    setEmailReports: async (tenantId, on) => {
+      await db.update('tenants', `id=eq.${q(tenantId)}`, { email_reports: !!on });
+      return { ok: true, reports: !!on };
     },
     discovery: async (tenantId) => {
       const assets = await db.select('assets', `tenant_id=eq.${q(tenantId)}&select=id,kind,external_id,display_name,linked`);

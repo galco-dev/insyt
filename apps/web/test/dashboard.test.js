@@ -127,6 +127,32 @@ test('api: ledger and report carry receipts when the store has them', async () =
   });
 });
 
+test('api: settings writes (business, emails), the runs list, and the unsubscribe link flip the same flag', async () => {
+  const ds = dashStore();
+  const writes = [];
+  ds.setBusiness = async (t, b) => { writes.push(['business', t, b]); return { ok: true, business_name: b.name }; };
+  ds.setEmailReports = async (t, on) => { writes.push(['emails', t, on]); return { ok: true, reports: on }; };
+  ds.runs = async () => [{ id: 'r1', type: 'weekly', status: 'complete' }];
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const h = { cookie: authedCookie(), 'content-type': 'application/json' };
+    const b = await fetch(`${base}/api/app/business`, { method: 'POST', headers: h, body: JSON.stringify({ name: 'JobPeak', timezone: 'Asia/Dubai' }) });
+    assert.strictEqual(b.status, 200);
+    const e = await fetch(`${base}/api/app/emails`, { method: 'POST', headers: h, body: JSON.stringify({ reports: false }) });
+    assert.deepStrictEqual(await e.json(), { ok: true, reports: false });
+    const runs = await (await fetch(`${base}/api/app/runs`, { headers: h })).json();
+    assert.strictEqual(runs.runs.length, 1);
+    const anon = await fetch(`${base}/api/app/business`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    assert.strictEqual(anon.status, 401);
+    const unsub = await fetch(`${base}/m/unsubscribe?t=6f1c1c2e-0000-4000-8000-000000000001`);
+    assert.strictEqual(unsub.status, 200);
+    assert.deepStrictEqual(writes, [
+      ['business', 'tn1', { name: 'JobPeak', website: undefined, timezone: 'Asia/Dubai' }],
+      ['emails', 'tn1', false],
+      ['emails', '6f1c1c2e-0000-4000-8000-000000000001', false],
+    ]);
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;

@@ -240,6 +240,31 @@ test('dashStore.receipts: verdict from the per-change watch, the 48h changeset w
   assert.deepStrictEqual(await empty.receipts('t1'), { by_change: {}, by_finding: {} });
 });
 
+test('dashStore.settings: weekly, emails and business cards ride on tenants + users + runs; business and email writes patch tenants', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({
+    subscriptions: [], autopilot_settings: [],
+    users: [{ id: 'u1', email: 'owner@jobpeak.net' }],
+    tenants: [{ business_name: 'JobPeak', website_url: 'jobpeak.net', size_band: '10k', timezone: 'Asia/Dubai', email_reports: false, assistant_enabled: false }],
+    runs: [{ id: 'r2', type: 'weekly', status: 'complete', started_at: '2026-09-06T03:00:00Z', finished_at: '2026-09-06T03:10:00Z' }],
+    assets: [{ currency: 'AED' }],
+    google_connections: [{ status: 'valid' }],
+  });
+  const s = dashStore(mkDb(f));
+  const st = await s.settings('t1', new Date('2026-09-10T12:00:00Z')); // Thursday
+  assert.deepStrictEqual(st.weekly, { timezone: 'Asia/Dubai', next_run_at: '2026-09-13', next_check_days: 3, last_runs: [{ id: 'r2', type: 'weekly', status: 'complete', started_at: '2026-09-06T03:00:00Z', finished_at: '2026-09-06T03:10:00Z' }] });
+  assert.deepStrictEqual(st.emails, { reports: false, address: 'owner@jobpeak.net' });
+  assert.deepStrictEqual(st.business, { name: 'JobPeak', website: 'jobpeak.net', currency: 'AED', band: '10k' });
+  assert.strictEqual(st.connection_status, 'Google connection healthy.');
+
+  const r = await s.setBusiness('t1', { name: '  Job Peak ', website: 'https://www.jobpeak.net/about', timezone: 'Europe/London' });
+  assert.deepStrictEqual(r, { ok: true, business_name: 'Job Peak', website_url: 'www.jobpeak.net', timezone: 'Europe/London' });
+  const patch = f.calls.find((c) => c.method === 'PATCH' && /tenants\?id=eq\.t1/.test(c.url));
+  assert.deepStrictEqual(patch.body, { business_name: 'Job Peak', website_url: 'www.jobpeak.net', timezone: 'Europe/London' });
+  assert.deepStrictEqual(await s.setBusiness('t1', { timezone: 'not a zone' }), { ok: false }, 'a bad timezone is ignored, not stored');
+  assert.deepStrictEqual(await s.setEmailReports('t1', 0), { ok: true, reports: false });
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

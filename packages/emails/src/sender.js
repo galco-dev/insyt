@@ -36,6 +36,15 @@ async function drainQueuedEmails({ db, apiKey, baseUrl, limit = 20, fetchImpl = 
   for (const email of queued) {
     try {
       if (!email.to_email) throw new Error('no recipient on row');
+      // Weekly reports respect tenants.email_reports (Settings toggle and the
+      // List-Unsubscribe link write the same flag). Alerts are never gated.
+      if (email.stream === 'report' && email.tenant_id) {
+        const t = await db.select('tenants', `id=eq.${q(email.tenant_id)}&select=email_reports`, { single: true }).catch(() => null);
+        if (t && t.email_reports === false) {
+          await db.update('emails', `id=eq.${q(email.id)}`, { status: 'suppressed' }).catch(() => {});
+          continue;
+        }
+      }
       let subject; let html;
       if (email.report_id) {
         const report = await db.select('reports', `id=eq.${q(email.report_id)}&select=html_email,type`, { single: true });
@@ -49,7 +58,7 @@ async function drainQueuedEmails({ db, apiKey, baseUrl, limit = 20, fetchImpl = 
         html = rendered.html;
       }
       const headers = email.stream === 'report'
-        ? { 'List-Unsubscribe': `<${baseUrl}/m/unsubscribe>` } : undefined;
+        ? { 'List-Unsubscribe': `<${baseUrl}/m/unsubscribe${email.tenant_id ? `?t=${encodeURIComponent(email.tenant_id)}` : ''}>` } : undefined;
       await sendViaResend({ apiKey, to: email.to_email, from: FROM[email.stream] || FROM.transactional, subject, html, headers }, fetchImpl);
       await db.update('emails', `id=eq.${q(email.id)}`, { status: 'sent', sent_at: new Date().toISOString() });
       sent += 1;
