@@ -45,10 +45,35 @@ async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }
       continue;
     }
 
+    // Drift (fix plan move 9): a budget the owner already moved since the
+    // draft becomes a fresh proposal instead of being moved again.
+    const ready = [];
+    for (const c of changes) {
+      const p = c.params || {};
+      if (c.tool_id === 'ads.adjust_budget' && Number(p.previous_daily_usd) > 0 && typeof ctx.campaign === 'function') {
+        const live = ctx.campaign(p.campaign_id);
+        const liveBudget = live && live.budget_daily_usd != null ? Number(live.budget_daily_usd) : null;
+        if (liveBudget != null && Math.abs(liveBudget - Number(p.previous_daily_usd)) > 0.01) {
+          await db.update('changes', `id=eq.${q(c.id)}`, {
+            status: 'proposed', changeset_id: null,
+            ask_reason: `You changed this to $${liveBudget} since we drafted it. Still want $${p.new_daily_usd}?`,
+            params: { ...p, previous_daily_usd: liveBudget },
+            before: { ...(c.before || {}), line: `Runs on $${liveBudget} a day today` },
+          }).catch(() => {});
+          continue;
+        }
+      }
+      ready.push(c);
+    }
+    if (!ready.length) {
+      await db.update('changesets', `id=eq.${q(changeset.id)}`, { status: 'open', revert_reason: 'every change had moved since its draft' }).catch(() => {});
+      continue;
+    }
+
     // Ledger actors are never blurred (§7.3): user-approved / autopilot /
     // user_via_chat / system. One changeset per actor group keeps that true.
     const { results } = await applyChangeset({
-      changes: changes.map((c) => ({ id: c.id, tool_id: c.tool_id, params: c.params, summary_text: c.summary_text || `Applied ${c.tool_id}`, money_impact_usd: c.money_impact_usd ?? null })),
+      changes: ready.map((c) => ({ id: c.id, tool_id: c.tool_id, params: c.params, summary_text: c.summary_text || `Applied ${c.tool_id}`, money_impact_usd: c.money_impact_usd ?? null })),
       ctx, api,
       store: executorStore(db, { tenantId }),
       tenantId, runId: changes[0].run_id, changesetId: changeset.id,
@@ -74,6 +99,12 @@ async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }
       } else if (r.status === 'failed') {
         totals.failed += 1;
         await db.update('changes', `id=eq.${q(r.id)}`, { status: 'failed' }).catch(() => {});
+        // A receipt for the failure too (fix plan move 9), in plain words, with a retry.
+        const ch = changes.find((c) => c.id === r.id);
+        await db.insert('ledger', [{
+          tenant_id: tenantId, event: 'fix_failed', actor: 'system', change_id: r.id,
+          summary_text: `Not applied: "${(ch && ch.summary_text) || (ch && ch.tool_id) || 'a fix'}". ${plainReason(r.reason)}.`,
+        }], { returning: false }).catch(() => {});
       } else if (r.status === 'skipped') {
         // Idempotent replay: this exact write already landed under an earlier
         // change row. Mark it applied so the loop stops re-queuing it every tick.
@@ -93,4 +124,16 @@ async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }
   return totals;
 }
 
-module.exports = { scanAndApply };
+// Google's and our own refusals, in the customer register.
+function plainReason(reason) {
+  const r = String(reason || '').replace(/\s+/g, ' ').trim();
+  if (/^guardrail:/i.test(r)) return `We held back: ${r.replace(/^guardrail:\s*/i, '')}`;
+  if (/PERMISSION_DENIED|403|permission|not authorized|USER_PERMISSION/i.test(r)) return 'Google says this account does not allow the change from our side';
+  if (/policy/i.test(r)) return 'Google says this is under policy review';
+  if (/quota|RESOURCE_EXHAUSTED|429|rate/i.test(r)) return 'Google is limiting requests right now; we will try again';
+  if (/unknown tool/i.test(r)) return 'This kind of fix is not available yet';
+  if (/unknown campaign|NOT_FOUND|404/i.test(r)) return 'Google could not find this in your account any more';
+  return r ? `Google said: ${r.slice(0, 140)}` : 'Google did not say why';
+}
+
+module.exports = { scanAndApply, plainReason };

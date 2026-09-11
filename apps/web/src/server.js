@@ -330,6 +330,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/journey') return json(res, 200, { journey: await dashStore.journey(t) });
           // §4.5 "what have I told you never to touch?"
           if (sub === '/exceptions') return json(res, 200, { exceptions: dashStore.exceptions ? await dashStore.exceptions(t) : [] });
+          if (sub === '/fence-options') return json(res, 200, { options: dashStore.fenceOptions ? await dashStore.fenceOptions(t) : [] });
+          if (sub.startsWith('/revert-preview/')) { const p = dashStore.revertPreview ? await dashStore.revertPreview(t, sub.split('/')[2]) : null; return json(res, p ? 200 : 404, p || { error: 'Not found.' }); }
           // §5 consumer door + §5.1 setup checklist
           if (sub === '/drafts') return json(res, 200, { drafts: dashStore.drafts ? await dashStore.drafts(t) : [] });
           // §7 assistant (per-tenant flag)
@@ -361,7 +363,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -375,6 +377,21 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                   if (!text) return json(res, 400, { error: 'Say what you would like to know or change.' });
                   const r = await dashStore.chat(t, text, parsed.conversation_id || null);
                   return json(res, 200, r);
+                }
+                // Later, partial yes, leave alone (fix plan moves 6 and 7).
+                if (sub.startsWith('/snooze/')) {
+                  if (!dashStore.snoozeChange) return json(res, 501, { error: 'Not available yet.' });
+                  return json(res, 200, await dashStore.snoozeChange(t, sub.split('/')[2], parsed.days || 7));
+                }
+                if (sub.startsWith('/approve-part/')) {
+                  if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
+                  await dashStore.approveChange(t, sub.split('/')[2], { keep: Array.isArray(parsed.keep) ? parsed.keep.map(String).slice(0, 200) : null });
+                  return json(res, 200, { ok: true });
+                }
+                if (sub === '/exceptions') {
+                  if (!dashStore.addFence) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.addFence(t, { target: parsed.target, summary_text: parsed.summary_text, change_id: parsed.change_id || null });
+                  return json(res, r.ok ? 200 : 400, r);
                 }
                 // Confirm (fix plan move 1): the chosen accounts and the fences ride along.
                 if (sub === '/confirm') {
@@ -465,6 +482,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (/^\/alerts\/[^/]+\/ack$/.test(sub)) {
             if (!dashStore.ackAlert) return json(res, 501, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.ackAlert(t, sub.split('/')[2]));
+          }
+          if (sub.startsWith('/retry/')) {
+            if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
+            if (!dashStore.retryChange) return json(res, 501, { error: 'Not available yet.' });
+            return json(res, 200, await dashStore.retryChange(t, sub.split('/')[2]));
           }
           if (/^\/exceptions\/[^/]+\/clear$/.test(sub)) {
             const ok = dashStore.clearException ? await dashStore.clearException(t, sub.split('/')[2]) : false;

@@ -211,12 +211,12 @@ test('dashStore.approveBatch: one yes per id via approveChange, de-duplicated, a
 test('dashStore.receipts: verdict from the per-change watch, the 48h changeset watch as fallback, reverts say why', async () => {
   const { dashStore } = require('../src/stores');
   const f = routedFetch({
-    changes: [
+    changes: (url) => (/status=eq\.failed/.test(url) ? [] : [
       { id: 'c1', finding_id: 'f1', applied_at: '2026-09-03T10:00:00Z', changeset_id: 'cs1', status: 'applied' },
       { id: 'c2', finding_id: 'f2', applied_at: '2026-09-03T10:00:00Z', changeset_id: 'cs1', status: 'applied' },
       { id: 'c3', finding_id: 'f3', applied_at: '2026-09-08T10:00:00Z', changeset_id: 'cs2', status: 'reverted' },
       { id: 'c4', finding_id: null, applied_at: '2026-09-09T10:00:00Z', changeset_id: 'cs3', status: 'applied' },
-    ],
+    ]),
     watches: [
       { target_id: 'c1', kind: 'change_verify', status: 'resolved', outcome: 'verified', closed_at: '2026-09-05T10:00:00Z', schedule: {} },
       { target_id: 'cs1', kind: 'changeset_verify', status: 'resolved', outcome: null, closed_at: null, schedule: { until: '2026-09-05T10:00:00Z' } },
@@ -367,6 +367,57 @@ test('dashStore.overview (fix plan moves 3 and 8): unused vs unmatched doors, si
   const { accessFrom } = require('../../billing/src/access');
   assert.strictEqual(accessFrom({ paid: null, sub: null, tenant: null, pricing: null, report: { summary: { counts: { critical: 0, warning: 0, info: 0 } } }, pending: [], ads: null }).findings_count, 0);
   assert.strictEqual(accessFrom({ paid: null, sub: null, tenant: null, pricing: null, report: null, pending: [], ads: null }).findings_count, null);
+});
+
+test('dashStore (fix plan push 4): snoozed cards stay out, list-shaped cards carry their items and a fence, partial yes trims the terms', async () => {
+  const { dashStore } = require('../src/stores');
+  const terms = [{ text: 'free stuff', match_type: 'exact' }, { text: 'jobs', match_type: 'phrase' }, { text: 'diy kit', match_type: 'exact' }];
+  const f = routedFetch({
+    assets: [],
+    campaigns: [{ google_campaign_id: '11', name: 'Brand - Dubai' }],
+    changes: (url, init) => (init.method === 'GET' ? [{ id: 'c1', tool_id: 'ads.add_negative_keywords', params: { campaign_id: '11', terms }, target: 'campaign:11:negatives', summary_text: 'Excluded 3 searches', status: 'proposed', finding: null }] : []),
+  });
+  const s = dashStore(mkDb(f));
+  const rows = await s.pendingApprovals('t1');
+  assert.ok(f.calls.some((c) => /changes/.test(c.url) && /snoozed_until/.test(decodeURIComponent(c.url))), 'snoozed cards are filtered on the server');
+  assert.deepStrictEqual(rows[0].list, ['free stuff', 'jobs', 'diy kit']);
+  assert.deepStrictEqual(rows[0].fence, { target: 'campaign:11', label: 'Brand - Dubai', summary_text: 'Leave "Brand - Dubai" alone' });
+
+  await s.approveChange('t1', 'c1', { keep: ['free stuff', 'diy kit'] });
+  const trim = f.calls.find((c) => c.method === 'PATCH' && /changes\?id=eq\.c1/.test(c.url) && c.body.params);
+  assert.deepStrictEqual(trim.body.params.terms.map((t) => t.text), ['free stuff', 'diy kit']);
+  assert.strictEqual(trim.body.summary_text, 'Exclude 2 searches from your ads');
+  const approve = f.calls.find((c) => c.method === 'PATCH' && /status=eq\.proposed/.test(c.url) && c.body.status === 'approved');
+  assert.ok(approve, 'then approved');
+
+  const sn = await s.snoozeChange('t1', 'c1', 7);
+  assert.strictEqual(sn.ok, true);
+  const snooze = f.calls.find((c) => c.method === 'PATCH' && c.body.snoozed_until);
+  assert.ok(snooze && /status=eq\.proposed/.test(snooze.url));
+});
+
+test('dashStore (fix plan push 4): fences from a card or Settings, retry, undo preview, failed receipts', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({
+    standing_exceptions: [], ledger: [], changes: (url) => (/status=eq\.failed/.test(url) ? [{ id: 'c9', finding_id: 'f9', created_at: '2026-09-10T10:00:00Z', changeset_id: 'cs9', status: 'failed' }] : /id=eq\.c5/.test(url) ? [{ tool_id: 'ads.adjust_budget', params: { campaign_id: '11', new_daily_usd: 18, previous_daily_usd: 25 }, before: { line: 'Runs on $25 a day' }, after: { line: 'Runs on $18 a day' }, summary_text: 'Lowered the budget', status: 'applied' }] : []),
+    campaigns: [{ google_campaign_id: '11', name: 'Brand - Dubai', status: 'enabled', budget_daily_usd: '30' }],
+    findings: [], dismissals: [], events: [], telemetry_heartbeat: [], watches: [],
+  });
+  const s = dashStore(mkDb(f));
+  assert.deepStrictEqual(await s.addFence('t1', { target: 'campaign:11', summary_text: 'Leave "Brand - Dubai" alone' }), { ok: true });
+  const ins = f.calls.find((c) => c.method === 'POST' && /standing_exceptions/.test(c.url)).body[0];
+  assert.deepStrictEqual([ins.change_key, ins.target, ins.created_from], ['fence:campaign:11', 'campaign:11', 'ui']);
+  assert.deepStrictEqual(await s.addFence('t1', { target: 'drop table', summary_text: 'x' }), { ok: false, error: 'Nothing to fence.' });
+  const opts = await s.fenceOptions('t1');
+  assert.deepStrictEqual(opts, [{ target: 'campaign:11', name: 'Brand - Dubai', status: 'enabled', budget_daily_usd: 30, fenced: false }]);
+  await s.retryChange('t1', 'c9');
+  const retry = f.calls.find((c) => c.method === 'PATCH' && /changes\?id=eq\.c9/.test(c.url));
+  assert.match(retry.url, /status=eq\.failed/);
+  assert.strictEqual(retry.body.status, 'approved');
+  const p = await s.revertPreview('t1', 'c5');
+  assert.deepStrictEqual(p, { summary_text: 'Lowered the budget', then_line: 'Puts it back to: Runs on $25 a day', now_line: 'It runs on $30 a day today, which is not what we set.', can_undo: true });
+  const r = await s.receipts('t1', new Date('2026-09-12T12:00:00Z'));
+  assert.strictEqual(r.by_change.c9.state, 'failed');
 });
 
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {

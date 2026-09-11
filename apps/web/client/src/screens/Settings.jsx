@@ -173,11 +173,29 @@ function Business({ business, money, onSaved }) {
 function Exceptions() {
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(null);
-  useEffect(() => { api('/api/app/exceptions').then((d) => setItems(d.exceptions || [])).catch(() => setItems([])); }, []);
-  if (!items || !items.length) return null;
+  const [adding, setAdding] = useState(false);
+  const [options, setOptions] = useState(null);
+  const [note, setNote] = useState(null);
+  const load = () => api('/api/app/exceptions').then((d) => setItems(d.exceptions || [])).catch(() => setItems([]));
+  useEffect(() => { load(); }, []);
+  if (!items) return null;
   async function clear(id) {
     setBusy(id);
     try { await api(`/api/app/exceptions/${id}/clear`, { method: 'POST' }); setItems((xs) => xs.filter((x) => x.id !== id)); } catch { /* stays listed */ }
+    setBusy(null);
+  }
+  // Add (fix plan move 7): the campaigns we last saw, one tap each.
+  async function openAdd() {
+    setAdding(true); setNote(null);
+    try { const d = await api('/api/app/fence-options'); setOptions(d.options || []); } catch (e) { setNote(e.message); setOptions([]); }
+  }
+  async function fence(o) {
+    setBusy(o.target);
+    try {
+      await api('/api/app/exceptions', { method: 'POST', body: { target: o.target, summary_text: `Leave "${o.name}" alone` } });
+      setOptions((xs) => xs.map((x) => (x.target === o.target ? { ...x, fenced: true } : x)));
+      await load();
+    } catch (e) { setNote(e.message); }
     setBusy(null);
   }
   return (
@@ -187,16 +205,36 @@ function Exceptions() {
         <div className="flex-1">
           <MonoLabel>Never touch</MonoLabel>
           <p className="mt-0.5 text-small text-neutral-900">
-            Changes you undid. Autopilot will not re-apply these on its own; if the numbers change we may ask you again, and say why.
+            {items.length ? 'What you told us to leave alone. Autopilot never touches these; if the numbers change we may ask you again, and say why.' : 'Nothing fenced off. Anything here is never touched, not even on Autopilot.'}
           </p>
-          <ul className="mt-3 flex flex-col gap-2">
-            {items.map((x) => (
-              <li key={x.id} className="flex items-center justify-between gap-3 text-small">
-                <span>{x.summary_text}</span>
-                <Button variant="secondary" onClick={() => clear(x.id)} disabled={busy === x.id} className="!px-3 !py-1.5">Allow again</Button>
-              </li>
-            ))}
-          </ul>
+          {items.length > 0 && (
+            <ul className="mt-3 flex flex-col gap-2">
+              {items.map((x) => (
+                <li key={x.id} className="flex items-center justify-between gap-3 text-small">
+                  <span>{x.summary_text}</span>
+                  <Button variant="secondary" onClick={() => clear(x.id)} disabled={busy === x.id} className="!px-3 !py-1.5">Allow again</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3">
+            {!adding && <Button variant="secondary" onClick={openAdd} className="!px-4 !py-2">Add a campaign to leave alone</Button>}
+            {adding && options === null && <span className="text-tiny text-neutral-900">Looking up your campaigns…</span>}
+            {adding && options && options.length === 0 && <span className="text-tiny text-neutral-900">We have not read your campaigns yet. They appear here after the first check.</span>}
+            {adding && options && options.length > 0 && (
+              <ul className="divide-y divide-neutral-200 rounded border border-neutral-300 bg-neutral-50">
+                {options.map((o) => (
+                  <li key={o.target} className="flex items-center justify-between gap-3 px-3 py-2 text-small">
+                    <span className="min-w-0 truncate">{o.name}{o.status && o.status !== 'enabled' ? <span className="ml-2 text-tiny text-neutral-900">{o.status}</span> : null}</span>
+                    {o.fenced
+                      ? <span className="font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">left alone</span>
+                      : <Button variant="secondary" onClick={() => fence(o)} disabled={busy === o.target} className="!px-3 !py-1.5">Leave alone</Button>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {note && <p className="mt-2 text-tiny text-critical">{note}</p>}
+          </div>
         </div>
       </div>
     </Card>

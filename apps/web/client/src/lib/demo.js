@@ -9,6 +9,8 @@ const pending = [
   {
     id: 'chg-1',
     category: 'negatives',
+    list: ['nail courses dubai', 'nail technician jobs', 'gel nails at home', 'nail salon for sale', 'free nail art'],
+    fence: { target: 'campaign:11', label: 'Brand - Dubai', summary_text: 'Leave "Brand - Dubai" alone' },
     title: '$430 a month goes to searches that never book',
     money_line: 'stopped the same day you approve',
     explanation: 'Over 90 days, 11 recurring search themes - nail courses, salon jobs, DIY kits - spent money and produced zero bookings.',
@@ -329,6 +331,11 @@ function customerDemo(path, method, body) {
       return { drafts: s.drafts };
     }
     if (p === '/api/app/setup') return { steps: [{ key: 'ga4', label: 'Visit tracking', done: true }, { key: 'gtm', label: 'Tracking code on your site', done: true }, { key: 'goal', label: 'Counting customer actions', done: true }, { key: 'billing', label: 'Ad money connected to Google', done: true }], journey: 'A' };
+    if (p === '/api/app/fence-options') {
+      const fenced = new Set((s.exceptions || []).map((e) => e.target));
+      return { options: [{ target: 'campaign:11', name: 'Brand - Dubai', status: 'enabled', budget_daily_usd: 25 }, { target: 'campaign:12', name: 'Gel nails - Dubai', status: 'enabled', budget_daily_usd: 40 }, { target: 'campaign:13', name: 'Bridal packages', status: 'paused', budget_daily_usd: 15 }].map((o) => ({ ...o, fenced: fenced.has(o.target) })) };
+    }
+    if (p.startsWith('/api/app/revert-preview/')) return { summary_text: 'Excluded 14 searches from your ads', then_line: 'Puts it back to: your ads show for those 14 searches again', now_line: null, can_undo: true };
     if (p === '/api/app/exceptions') {
       if (!s.exceptions) {
         s.exceptions = [{ id: 'ex1', summary_text: 'Excluded 3 wasted searches from "Brand - Dubai"', target: 'campaign:11:negatives', created_from: 'revert', created_at: '2026-08-20T09:12:00Z' }];
@@ -444,6 +451,15 @@ function customerDemo(path, method, body) {
   if (/^\/api\/app\/alerts\/[^/]+\/ack$/.test(p)) { if (!s.ackedAlerts) s.ackedAlerts = new Set(); s.ackedAlerts.add(p.split('/')[4]); return { ok: true }; }
   if (p === '/api/app/emails') { s.emails = { reports: !!(body && body.reports) }; return { ok: true, reports: s.emails.reports }; }
   if (p === '/api/app/confirm') return { ok: true, run_id: 'demo-run' };
+  if (p.startsWith('/api/app/snooze/')) { const id = p.split('/').pop(); const i = s.pending.findIndex((x) => x.id === id); if (i !== -1) s.pending.splice(i, 1); return { ok: true, until: new Date(Date.now() + 7 * 86_400_000).toISOString() }; }
+  if (p.startsWith('/api/app/approve-part/')) { const id = p.split('/').pop(); const i = s.pending.findIndex((x) => x.id === id); if (i !== -1) { const item = s.pending.splice(i, 1)[0]; s.cumulative.fixes += 1; s.ledger.unshift({ id: `l-${Date.now()}`, event: 'fix_applied', actor: 'user', change_id: id, summary_text: `Excluded ${(body && body.keep ? body.keep.length : 0)} searches from your ads. Reversible with one tap.`, created_at: cnow() }); } return { ok: true }; }
+  if (p === '/api/app/exceptions') {
+    if (!s.exceptions) s.exceptions = [];
+    s.exceptions.unshift({ id: `ex-${Date.now()}`, summary_text: (body && body.summary_text) || 'Leave it alone', target: body && body.target, created_from: 'ui', created_at: cnow() });
+    if (body && body.change_id) { const i = s.pending.findIndex((x) => x.id === body.change_id); if (i !== -1) s.pending.splice(i, 1); }
+    return { ok: true };
+  }
+  if (p.startsWith('/api/app/retry/')) return { ok: true };
   if (p === '/api/app/access-request') return { ok: true };
   if (p === '/api/app/autopilot') {
     const cats = (body && (body.categories || body)) || {};

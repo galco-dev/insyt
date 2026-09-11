@@ -179,6 +179,23 @@ test('api: POST /api/app/confirm passes the chosen accounts and fences to the st
   });
 });
 
+test('api (fix plan push 4): later is free, partial yes and retry need a plan, a fence writes through the store', async () => {
+  const ds = dashStore();
+  const seen = [];
+  ds.access = async () => ({ level: 'unlocked' });
+  ds.snoozeChange = async (t, id, days) => { seen.push(['snooze', id, days]); return { ok: true, until: 'x' }; };
+  ds.addFence = async (t, b) => { seen.push(['fence', b]); return { ok: true }; };
+  ds.retryChange = async (t, id) => { seen.push(['retry', id]); return { ok: true }; };
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const h = { cookie: authedCookie(), 'content-type': 'application/json' };
+    assert.strictEqual((await fetch(`${base}/api/app/snooze/c1`, { method: 'POST', headers: h, body: JSON.stringify({ days: 7 }) })).status, 200);
+    assert.strictEqual((await fetch(`${base}/api/app/approve-part/c1`, { method: 'POST', headers: h, body: JSON.stringify({ keep: ['a'] }) })).status, 402);
+    assert.strictEqual((await fetch(`${base}/api/app/retry/c1`, { method: 'POST', headers: h })).status, 402);
+    assert.strictEqual((await fetch(`${base}/api/app/exceptions`, { method: 'POST', headers: h, body: JSON.stringify({ target: 'campaign:11', summary_text: 'Leave "Brand" alone', change_id: 'c1' }) })).status, 200);
+    assert.deepStrictEqual(seen, [['snooze', 'c1', 7], ['fence', { target: 'campaign:11', summary_text: 'Leave "Brand" alone', change_id: 'c1' }]]);
+  });
+});
+
 test('dashboard: forged session cookie is rejected', async () => {
   await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
     const forged = `insyt_s=tn1.${Date.now() + 9e6}.deadbeef`;

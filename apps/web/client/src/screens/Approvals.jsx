@@ -10,11 +10,24 @@ import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote } from '.
 import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
 import { needsWriteStep, goWriteStep, FIX_ACCESS_LINE } from '../lib/fix-access.js';
 
-function Detail({ p }) {
-  if (!p.explanation && !p.before_line && !p.after_line) return null;
+function Detail({ p, kept, onKeep }) {
+  if (!p.explanation && !p.before_line && !p.after_line && !p.list) return null;
   return (
     <div className="mt-3 rounded border border-neutral-300 bg-neutral-50 p-4 text-small">
       {p.explanation && <p>{p.explanation}</p>}
+      {p.list && p.list.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-1.5" aria-label="What gets excluded">
+          {p.list.map((item) => (
+            <li key={item}>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input type="checkbox" className="h-4 w-4" checked={!kept || kept.has(item)} onChange={(e) => onKeep && onKeep(item, e.target.checked)} />
+                <span className={!kept || kept.has(item) ? '' : 'text-neutral-900 line-through'}>{item}</span>
+              </label>
+            </li>
+          ))}
+          <li className="mt-1 text-tiny text-neutral-900">Untick anything you want to keep. Approve applies the ticked ones.</li>
+        </ul>
+      )}
       {p.before_line && (
         <p className={clsx(p.explanation && 'mt-2')}>
           <span className="font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">Now </span>
@@ -280,6 +293,8 @@ export default function Approvals() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [open, setOpen] = useState({});
+  const [kept, setKept] = useState({}); // change id → Set of kept list items (partial yes)
+  const [note, setNote] = useState(null);
   const [assistant, setAssistant] = useState(false);
   const { access, level, gate, goUnlock, money, version } = useAccess();
   const batch = useBatchApprove();
@@ -289,13 +304,26 @@ export default function Approvals() {
   useEffect(() => { load(); api('/api/app/settings').then((d) => setAssistant(!!(d.settings && d.settings.assistant_enabled))).catch(() => {}); }, [version]);
 
   async function act(kind, id) {
-    setBusy(id);
+    setBusy(id); setNote(null);
     const p = (pending || []).find((x) => x.id === id);
+    const keep = p && p.list && kept[id] ? [...kept[id]] : null;
+    const partial = keep && keep.length < p.list.length;
     const run = async () => {
       // Dismissals carry whether the detail was opened first (§11.2 label:
       // "the finding is wrong" vs "the explanation failed").
-      const body = kind === 'dismiss' ? { expanded_first: !!open[id] } : undefined;
-      await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
+      if (kind === 'approve' && partial) {
+        if (!keep.length) throw new Error('Nothing is ticked. Tick at least one, or choose Not this one.');
+        await api(`/api/app/approve-part/${id}`, { method: 'POST', body: { keep } });
+      } else if (kind === 'later') {
+        const r = await api(`/api/app/snooze/${id}`, { method: 'POST', body: { days: 7 } });
+        setNote(`Fine. We will bring it back${r && r.until ? ` on ${new Date(r.until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ' in a week'}.`);
+      } else if (kind === 'fence') {
+        await api('/api/app/exceptions', { method: 'POST', body: { target: p.fence.target, summary_text: p.fence.summary_text, change_id: id } });
+        setNote(`Done. ${p.fence.summary_text}. Change your mind any time in Settings.`);
+      } else {
+        const body = kind === 'dismiss' ? { expanded_first: !!open[id] } : undefined;
+        await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
+      }
       setPending((prev) => (prev || []).filter((x) => x.id !== id));
     };
     try {
@@ -348,9 +376,10 @@ export default function Approvals() {
         </div>
       )}
 
+      {note && <p className="mt-3 text-small text-success">{note}</p>}
       {pending.length === 0 ? (
         <div className="mt-6">
-          <EmptyState title="All clear" body="Every suggested fix has been handled. The next weekly check may bring more." />
+          <EmptyState title="All clear" body="Every suggested fix has been handled. Anything you said Later to comes back on its day; the next weekly check may bring more." />
         </div>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
@@ -377,15 +406,29 @@ export default function Approvals() {
                     <ChevronDown size={14} className={clsx('transition-transform duration-150', isOpen && 'rotate-180')} aria-hidden />
                   </button>
                 )}
-                {isOpen && <Detail p={p} />}
-                <div className="mt-4 flex gap-3">
+                {isOpen && (
+                  <Detail
+                    p={p}
+                    kept={p.list ? (kept[p.id] || new Set(p.list)) : null}
+                    onKeep={(item, on) => setKept((k) => { const s = new Set(k[p.id] || p.list); if (on) s.add(item); else s.delete(item); return { ...k, [p.id]: s }; })}
+                  />
+                )}
+                <div className="mt-4 flex flex-wrap gap-3">
                   <Button onClick={() => act('approve', p.id)} disabled={busy === p.id} className="!px-5 !py-2.5">
-                    Approve
+                    {p.list && kept[p.id] && kept[p.id].size < p.list.length ? `Approve ${kept[p.id].size} of ${p.list.length}` : 'Approve'}
                   </Button>
-                  <Button variant="secondary" onClick={() => act('dismiss', p.id)} disabled={busy === p.id} className="!px-5 !py-2.5">
+                  <Button variant="secondary" onClick={() => act('later', p.id)} disabled={busy === p.id} className="!px-4 !py-2.5">
+                    Later
+                  </Button>
+                  <Button variant="secondary" onClick={() => act('dismiss', p.id)} disabled={busy === p.id} className="!px-4 !py-2.5">
                     Not this one
                   </Button>
                 </div>
+                {p.fence && !locked && (
+                  <button type="button" onClick={() => act('fence', p.id)} disabled={busy === p.id} className="mt-2 text-tiny text-neutral-900 underline underline-offset-2">
+                    Leave "{p.fence.label}" alone from now on
+                  </button>
+                )}
                 {!locked && needsWriteStep([p], access) && <p className="mt-2 text-tiny text-neutral-900">{FIX_ACCESS_LINE}</p>}
               </Card>
             );

@@ -653,8 +653,20 @@ function dashStore(db, deps = {}) {
         return (a && a.currency) || 'USD';
       })();
       const sym = cur === 'USD' ? '$' : `${cur} `;
-      const rows = await db.select('changes',
-        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,finding_id,tool_id,before,after,summary_text,money_impact_usd,ask_reason,category,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
+      const nowIso = new Date().toISOString();
+      const [rows, camps] = await Promise.all([
+        db.select('changes',
+          `tenant_id=eq.${q(tenantId)}&status=eq.proposed&or=(snoozed_until.is.null,snoozed_until.lt.${q(nowIso)})&select=id,finding_id,tool_id,params,target,before,after,summary_text,money_impact_usd,ask_reason,category,snoozed_until,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`),
+        db.select('campaigns', `tenant_id=eq.${q(tenantId)}&select=google_campaign_id,name`).catch(() => []),
+      ]);
+      const campName = new Map((camps || []).map((c) => [String(c.google_campaign_id), c.name]));
+      // "Leave this alone" (fix plan move 7): the fence a card can offer, by campaign.
+      const fenceFor = (r) => {
+        const m = /^campaign:([^:]+)/.exec(String(r.target || '')) || (r.params && r.params.campaign_id ? [null, String(r.params.campaign_id)] : null);
+        if (!m) return null;
+        const name = campName.get(String(m[1])) || null;
+        return { target: `campaign:${m[1]}`, label: name || 'this campaign', summary_text: `Leave "${name || `campaign ${m[1]}`}" alone` };
+      };
       return rows.map((r) => ({
         id: r.id,
         finding_id: r.finding_id || null,
@@ -665,6 +677,9 @@ function dashStore(db, deps = {}) {
         ask_reason: r.ask_reason || null,
         // Analytics and tracking changes need the write grant; Ads and settings do not.
         needs_fix_access: !!(r.tool_id && !/^(ads|settings)\./.test(r.tool_id)),
+        // A list-shaped proposal (fix plan move 6): each item can be unticked.
+        list: r.tool_id === 'ads.add_negative_keywords' && r.params && Array.isArray(r.params.terms) ? r.params.terms.map((t) => t.text).filter(Boolean) : null,
+        fence: fenceFor(r),
         // The trust layer: what exactly changes, in plain words, on the card
         // itself. Falls back to the raw before/after when no prose exists.
         explanation: (r.finding && r.finding.explanation) || null,
@@ -733,15 +748,18 @@ function dashStore(db, deps = {}) {
     // covers changes without one. Keyed by change id and by finding id.
     receipts: async (tenantId, now = new Date()) => {
       const since = new Date(now.getTime() - 90 * 86_400_000).toISOString();
-      const changes = await db.select('changes',
-        `tenant_id=eq.${q(tenantId)}&status=in.(applied,reverted)&applied_at=gte.${q(since)}&select=id,finding_id,applied_at,changeset_id,status&order=applied_at.desc&limit=200`).catch(() => []);
-      if (!changes || !changes.length) return { by_change: {}, by_finding: {} };
+      const [appliedRows, failedRows] = await Promise.all([
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(applied,reverted)&applied_at=gte.${q(since)}&select=id,finding_id,applied_at,changeset_id,status&order=applied_at.desc&limit=200`).catch(() => []),
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.failed&created_at=gte.${q(since)}&select=id,finding_id,created_at,changeset_id,status&order=created_at.desc&limit=50`).catch(() => []),
+      ]);
+      const changes = [...(appliedRows || []), ...(failedRows || []).map((c) => ({ ...c, applied_at: null }))];
+      if (!changes.length) return { by_change: {}, by_finding: {} };
       const changeIds = changes.map((c) => c.id);
       const setIds = [...new Set(changes.map((c) => c.changeset_id).filter(Boolean))];
       const targets = [...changeIds, ...setIds].map(q).join(',');
       const [watches, lines] = await Promise.all([
         db.select('watches', `tenant_id=eq.${q(tenantId)}&kind=in.(change_verify,changeset_verify)&target_id=in.(${targets})&select=target_id,kind,status,outcome,closed_at,schedule`).catch(() => []),
-        db.select('ledger', `tenant_id=eq.${q(tenantId)}&event=in.(watch_verified,watch_inconclusive,watch_regressed,auto_reverted,fix_reverted)&change_id=in.(${changeIds.map(q).join(',')})&select=change_id,event,summary_text,created_at`).catch(() => []),
+        db.select('ledger', `tenant_id=eq.${q(tenantId)}&event=in.(watch_verified,watch_inconclusive,watch_regressed,auto_reverted,fix_reverted,fix_failed)&change_id=in.(${changeIds.map(q).join(',')})&select=change_id,event,summary_text,created_at`).catch(() => []),
       ]);
       const byTarget = new Map((watches || []).map((w) => [`${w.kind}:${w.target_id}`, w]));
       const lineFor = new Map();
@@ -753,7 +771,8 @@ function dashStore(db, deps = {}) {
         const l = lineFor.get(c.id) || null;
         const line = l ? l.summary_text.replace(/^.*?: /, '') : null;
         let state = 'watching'; let verified_at = null;
-        if (c.status === 'reverted' || (l && (l.event === 'auto_reverted' || l.event === 'fix_reverted'))) state = 'reverted';
+        if (c.status === 'failed') state = 'failed';
+        else if (c.status === 'reverted' || (l && (l.event === 'auto_reverted' || l.event === 'fix_reverted'))) state = 'reverted';
         else if (own && own.outcome === 'verified') { state = 'verified'; verified_at = own.closed_at; }
         else if (own && own.outcome === 'inconclusive') { state = 'inconclusive'; verified_at = own.closed_at; }
         else if (own && own.outcome === 'regressed') state = 'reverted';
@@ -952,8 +971,20 @@ function dashStore(db, deps = {}) {
           : !j.gates.billing ? 'Connect your ad money to Google — last step.' : 'All gates clear — launching.';
       return { ...j, instruction_line: next };
     },
-    approveChange: async (tenantId, changeId) => {
+    approveChange: async (tenantId, changeId, { keep = null } = {}) => {
       const ch = await db.select('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&select=tool_id,params,status`, { single: true }).catch(() => null);
+      // Partial yes (fix plan move 6): a list-shaped proposal keeps only the ticked items.
+      if (ch && ch.status === 'proposed' && Array.isArray(keep) && ch.tool_id === 'ads.add_negative_keywords' && ch.params && Array.isArray(ch.params.terms)) {
+        const keepSet = new Set(keep.map(String));
+        const terms = ch.params.terms.filter((t) => keepSet.has(String(t.text)));
+        if (!terms.length) return;
+        if (terms.length < ch.params.terms.length) {
+          await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&status=eq.proposed`, {
+            params: { ...ch.params, terms },
+            summary_text: `Exclude ${terms.length} search${terms.length === 1 ? '' : 'es'} from your ads`,
+          }).catch(() => {});
+        }
+      }
       if (ch && ch.tool_id === 'settings.autopilot_on') {
         // A settings card, not an Ads write: the tap IS the flip (§7.2 lane 2).
         const cur = await db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }).catch(() => null);
@@ -985,6 +1016,55 @@ function dashStore(db, deps = {}) {
         try { await store.approveChange(tenantId, id); approved += 1; } catch { /* one bad id never blocks the rest */ }
       }
       return { approved, requested: list.length };
+    },
+    // Later (fix plan move 6): the card comes back in `days` days, no reason asked.
+    snoozeChange: async (tenantId, changeId, days = 7) => {
+      const d = Math.min(Math.max(Number(days) || 7, 1), 30);
+      const until = new Date(Date.now() + d * 86_400_000).toISOString();
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&status=eq.proposed`, { snoozed_until: until });
+      return { ok: true, until };
+    },
+    // Leave this alone (fix plan move 7): a fence on a whole target, from a
+    // card, from Confirm, or from Settings. Optionally puts the card away.
+    addFence: async (tenantId, { target, summary_text, change_id = null } = {}) => {
+      if (typeof target !== 'string' || !/^[a-z_]+:[A-Za-z0-9_~-]+$/.test(target)) return { ok: false, error: 'Nothing to fence.' };
+      const existing = await db.select('standing_exceptions', `tenant_id=eq.${q(tenantId)}&change_key=eq.${q(`fence:${target}`)}&cleared_at=is.null&select=id`, { single: true }).catch(() => null);
+      if (!existing) {
+        await db.insert('standing_exceptions', [{ tenant_id: tenantId, change_key: `fence:${target}`, target, summary_text: String(summary_text || `Leave ${target} alone`).slice(0, 200), created_from: 'ui' }], { returning: false });
+        await db.insert('ledger', [{ tenant_id: tenantId, event: 'exception_added', actor: 'user', summary_text: `${String(summary_text || `Leave ${target} alone`).slice(0, 160)}. We will not touch it, not even on Autopilot.` }], { returning: false }).catch(() => {});
+      }
+      if (change_id) await store.dismissChange(tenantId, change_id, { reason: 'leave alone' }).catch(() => {});
+      return { ok: true };
+    },
+    // What can be fenced from Settings: the campaigns we last saw.
+    fenceOptions: async (tenantId) => {
+      const [camps, fences] = await Promise.all([
+        db.select('campaigns', `tenant_id=eq.${q(tenantId)}&select=google_campaign_id,name,status,budget_daily_usd&order=name.asc&limit=100`).catch(() => []),
+        db.select('standing_exceptions', `tenant_id=eq.${q(tenantId)}&cleared_at=is.null&change_key=like.fence:*&select=target`).catch(() => []),
+      ]);
+      const fenced = new Set((fences || []).map((f) => f.target));
+      return (camps || []).map((c) => ({ target: `campaign:${c.google_campaign_id}`, name: c.name, status: c.status || null, budget_daily_usd: c.budget_daily_usd != null ? Number(c.budget_daily_usd) : null, fenced: fenced.has(`campaign:${c.google_campaign_id}`) }));
+    },
+    // Retry a fix Google refused (fix plan move 9): back to approved, the loop picks it up.
+    retryChange: async (tenantId, changeId) => {
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&status=eq.failed`, { status: 'approved', changeset_id: null });
+      return { ok: true };
+    },
+    // Undo with eyes open (fix plan move 9): the then and the now.
+    revertPreview: async (tenantId, changeId) => {
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}&select=tool_id,params,before,after,summary_text,status`, { single: true }).catch(() => null);
+      if (!ch) return null;
+      let now_line = null;
+      if (ch.tool_id === 'ads.adjust_budget' && ch.params && ch.params.campaign_id) {
+        const c = await db.select('campaigns', `tenant_id=eq.${q(tenantId)}&google_campaign_id=eq.${q(String(ch.params.campaign_id))}&select=budget_daily_usd,name`, { single: true }).catch(() => null);
+        if (c && c.budget_daily_usd != null) now_line = `It runs on $${Number(c.budget_daily_usd)} a day today${Number(c.budget_daily_usd) !== Number(ch.params.new_daily_usd) ? ', which is not what we set' : ''}.`;
+      }
+      return {
+        summary_text: ch.summary_text || null,
+        then_line: ch.before && ch.before.line ? `Puts it back to: ${ch.before.line}` : 'Puts it back exactly as it was.',
+        now_line,
+        can_undo: ch.status === 'applied',
+      };
     },
     dismissChange: async (tenantId, changeId, { reason = null, expandedFirst = false } = {}) => {
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(tenantId)}`, { status: 'failed' });

@@ -2,7 +2,7 @@
 // and every report ever sent (Reports), as two lenses on one screen. Both
 // old routes (/app/ledger, /app/reports) deep-link into their lens.
 import React, { useEffect, useState } from 'react';
-import { CheckCircle as CheckCircle2, FlipBackward as Undo2, File02 as FileText, Link01 as Link2, Eye, AlertTriangle, ArrowRight } from '@untitledui/icons';
+import { CheckCircle as CheckCircle2, FlipBackward as Undo2, File02 as FileText, Link01 as Link2, Eye, AlertTriangle, ArrowRight, Lock01 as Lock } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { useAccess } from '../lib/access.jsx';
@@ -13,11 +13,12 @@ const EVENT_ICON = {
   change_reverted: Undo2, fix_reverted: Undo2, revert_requested: Undo2, fix_proposed: FileText,
   report_sent: FileText, connection_changed: Link2,
   watch_triggered: Eye, subscription_changed: FileText,
-  change_requested: FileText,
+  change_requested: FileText, fix_failed: AlertTriangle, exception_added: Lock,
 };
 
 const TYPE_LABEL = { weekly: 'Weekly report', audit: 'Your audit', signup: 'Your audit', deep: 'Deep review', monthly: 'Monthly pulse' };
 const APPLIED = new Set(['fix_applied', 'change_applied', 'autopilot_applied']);
+const FAILED = new Set(['fix_failed']);
 const UNDONE = new Set(['fix_reverted', 'change_reverted', 'auto_reverted']);
 const shortDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
@@ -28,6 +29,7 @@ function receiptLine(r) {
   if (r.state === 'verified') return `Verified${r.verified_at ? ` ${shortDate(r.verified_at)}` : ''}: ${r.line || 'the numbers held after the change'}`;
   if (r.state === 'inconclusive') return `Checked${r.verified_at ? ` ${shortDate(r.verified_at)}` : ''}: ${r.line || 'too early to tell, watching the next run'}`;
   if (r.state === 'reverted') return `Put back${r.line ? `: ${r.line}` : ''}`;
+  if (r.state === 'failed') return null; // the row itself says why
   return r.watch_until ? `Watching until ${shortDate(r.watch_until)}` : 'Watching';
 }
 
@@ -89,6 +91,7 @@ function Activity() {
   const [pending, setPending] = useState([]);
   const [receipts, setReceipts] = useState({});
   const [error, setError] = useState(null);
+  const [preview, setPreview] = useState(null); // { changeId, title, then_line, now_line }
   const { access, level, gate, money, version } = useAccess();
   useEffect(() => { api('/api/app/ledger').then((d) => { setEntries(d.entries); setPending(d.pending || []); setReceipts(d.receipts || {}); }).catch((e) => setError(e.message)); }, [version]);
 
@@ -100,6 +103,15 @@ function Activity() {
   // yes, an undo writes to Google Ads, so it needs a plan (a lapsed plan opens
   // the sheet instead of failing).
   async function requestRevert(changeId, title) {
+    // Eyes open (fix plan move 9): show the then and the now before undoing.
+    if (!preview || preview.changeId !== changeId) {
+      try {
+        const p = await api(`/api/app/revert-preview/${changeId}`);
+        setPreview({ changeId, title, then_line: p.then_line, now_line: p.now_line });
+        return;
+      } catch { /* no preview: undo straight away, as before */ }
+    }
+    setPreview(null);
     const run = async () => {
       await api(`/api/app/revert/${changeId}`, { method: 'POST' });
       const d = await api('/api/app/ledger');
@@ -107,6 +119,16 @@ function Activity() {
       setReceipts(d.receipts || {});
     };
     try { await gate(run, { kind: 'revert', id: changeId, title: title ? `Undo: ${title}` : 'Undo this change' }); } catch (err) { setError(err.message); }
+  }
+  // Retry a fix Google refused (needs a plan, like any write).
+  async function retry(changeId, title) {
+    const run = async () => {
+      await api(`/api/app/retry/${changeId}`, { method: 'POST' });
+      const d = await api('/api/app/ledger');
+      setEntries(d.entries);
+      setReceipts(d.receipts || {});
+    };
+    try { await gate(run, { kind: 'retry', id: changeId, title: title || 'Retry this fix' }); } catch (err) { setError(err.message); }
   }
 
   const applied = entries.some((e) => e.event === 'fix_applied' || e.event === 'change_applied');
@@ -116,24 +138,39 @@ function Activity() {
         {pending.length ? <FirstWeekPreview pending={pending} level={level} money={money} access={access} /> : (
           <EmptyState title="Nothing here yet" body="Once your first check runs, every action lands here - permanently." />
         )}
-        {entries.length > 0 && <ActivityList entries={entries} receipts={receipts} requestRevert={requestRevert} />}
+        {entries.length > 0 && <ActivityList entries={entries} receipts={receipts} requestRevert={requestRevert} retry={retry} preview={preview} cancelPreview={() => setPreview(null)} />}
       </div>
     );
   }
   return (
     <div>
       <MonthLine entries={entries} receipts={receipts} money={money} />
-      <ActivityList entries={entries} receipts={receipts} requestRevert={requestRevert} />
+      <ActivityList entries={entries} receipts={receipts} requestRevert={requestRevert} retry={retry} preview={preview} cancelPreview={() => setPreview(null)} />
     </div>
   );
 }
 
-function ActivityList({ entries, receipts = {}, requestRevert }) {
+function ActivityList({ entries, receipts = {}, requestRevert, retry = null, preview = null, cancelPreview = null }) {
   const reverted = new Set(entries.filter((e) => e.event === 'fix_reverted' && e.change_id).map((e) => e.change_id));
   return (
     <Card className="divide-y divide-neutral-200">
       {entries.map((e) => {
         const IconEl = EVENT_ICON[e.event] || AlertTriangle;
+        if (preview && preview.changeId === e.change_id && APPLIED.has(e.event)) {
+          return (
+            <div key={e.id} className="p-4">
+              <div className="text-small">{e.summary_text}</div>
+              <div className="mt-2 rounded border border-neutral-300 bg-neutral-50 p-3 text-small">
+                <div>{preview.then_line}</div>
+                {preview.now_line && <div className="mt-1 text-neutral-900">{preview.now_line}</div>}
+                <div className="mt-3 flex gap-2">
+                  <Button onClick={() => requestRevert(e.change_id, e.summary_text)} className="!px-4 !py-2">Undo it</Button>
+                  <Button variant="secondary" onClick={cancelPreview} className="!px-4 !py-2">Keep it</Button>
+                </div>
+              </div>
+            </div>
+          );
+        }
         const canRevert = e.event === 'fix_applied' && e.change_id && !reverted.has(e.change_id);
         const r = e.change_id && (APPLIED.has(e.event) || UNDONE.has(e.event)) ? receipts[e.change_id] : null;
         const receipt = r ? (UNDONE.has(e.event) ? (r.line ? `Why: ${r.line}` : null) : receiptLine(r)) : null;
@@ -149,9 +186,14 @@ function ActivityList({ entries, receipts = {}, requestRevert }) {
                 {e.actor === 'user' ? 'you' : 'Insyt'}
               </div>
             </div>
-            {canRevert && (
+            {canRevert && !(preview && preview.changeId === e.change_id) && (
               <Button variant="ghost" onClick={() => requestRevert(e.change_id, e.summary_text)} className="!px-2 !py-1 text-tiny">
                 Undo
+              </Button>
+            )}
+            {FAILED.has(e.event) && e.change_id && retry && (
+              <Button variant="ghost" onClick={() => retry(e.change_id, e.summary_text)} className="!px-2 !py-1 text-tiny">
+                Retry
               </Button>
             )}
           </div>
