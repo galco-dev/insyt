@@ -78,7 +78,9 @@ test('magic link: view_report redirects once, then the link is dead', async () =
   await withApp({ store, crawler: okCrawler }, async (base) => {
     const first = await fetch(`${base}/m/${token}`, { redirect: 'manual' });
     assert.strictEqual(first.status, 302);
-    assert.strictEqual(first.headers.get('location'), '/r/rep1');
+    // The one-tap link lands in the app, signed in (fix plan move 4); /r/ stays for old links.
+    assert.strictEqual(first.headers.get('location'), '/app/report/rep1');
+    assert.ok(/insyt_s=/.test(first.headers.get('set-cookie') || ''), 'redemption signs the tenant in');
     const report = await fetch(`${base}/r/rep1`);
     assert.ok((await report.text()).includes('report body'));
     const again = await fetch(`${base}/m/${token}`, { redirect: 'manual' });

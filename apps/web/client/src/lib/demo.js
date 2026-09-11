@@ -175,6 +175,7 @@ function demoAccess(s) {
     pending_count: s.pending.length,
     pending_value_usd: pendingValue,
     has_report: true,
+    fix_access: 'ready',
   };
 }
 const gatedPending = (s, level) => (level === 'locked' ? s.pending.map((p) => ({ id: p.id, title: p.title, money_line: p.money_line, finding_id: p.finding_id || null })) : s.pending);
@@ -217,6 +218,7 @@ function demoOverview(s, level) {
   const nextDays = (7 - new Date(now + 4 * 3600_000).getUTCDay()) % 7 || 0;
   return {
     spend: { month_usd: 1240, month_budget_usd: 1950, pace_line: 'On pace - 64% spent, 68% of the month gone' },
+    waiting: { approved: 0, oldest_at: null, needs_fix_access: false },
     waste_monthly_usd: 1240,
     recovered: active ? { fixes: s.cumulative.fixes, usd: s.cumulative.waste_removed_usd } : { fixes: 0, usd: 0 },
     this_week: {

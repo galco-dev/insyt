@@ -100,7 +100,10 @@ async function handleGoogleAuth(req, res, u, session, deps) {
     // account. Later steps need an existing session.
     if (!session && step !== 'discovery') return redirect('/');
     if (step === 'create') return redirect('/app'); // create adds no scopes (§6)
-    const site = (u.searchParams.get('site') || '').replace(/[|\s]/g, '').slice(0, 200);
+    // The write step (fix plan move 5) is asked at the first yes, in place:
+    // `next` is where the person was, and rides in the state's site slot.
+    const next = step === 'write' ? String(u.searchParams.get('next') || '').replace(/[|\s]/g, '').slice(0, 200) : '';
+    const site = next && /^\/app(\/[A-Za-z0-9._~\-/]*)?$/.test(next) ? next : (u.searchParams.get('site') || '').replace(/[|\s]/g, '').slice(0, 200);
     const state = issueState({ tenantId: session ? session.tenantId : '', step, secret: sessionSecret, now: now(), site });
     return redirect(buildAuthUrl({ clientId: config.clientId, redirectUri: config.redirectUri, step, state }));
   }
@@ -186,7 +189,7 @@ async function handleGoogleAuth(req, res, u, session, deps) {
       }
       return redirectWithSession(`/app/confirm?found=${assets.length}&matched=${result.matched}`);
     }
-    return redirectWithSession('/app');
+    return redirectWithSession(st.site && st.site.startsWith('/app') ? `${st.site}${st.site.includes('?') ? '&' : '?'}fix_access=1` : '/app');
   }
 
   return false;

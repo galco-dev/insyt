@@ -173,6 +173,33 @@ test('start: signed-out discovery goes to google (one-tap sign-in), signed-out w
   assert.match(res2.headers.location, /adwords/);
 });
 
+test('write step (fix plan move 5): asked in place, next rides in the state, the callback returns there', async () => {
+  const now = () => 5_000_000;
+  const deps = {
+    db: fakeDb({ users: [{ id: 'u1', google_sub: 'sub-owner' }], google_connections: [{ id: 'gc1', refresh_token: 'rt', granted_scopes: [] }] }),
+    config: { clientId: 'cid', clientSecret: 'cs', redirectUri: 'https://app/cb' }, sessionSecret: SECRET, now,
+    fetchUserinfo: async () => ({ sub: 'sub-owner', email: 'owner@example.com' }),
+    exchangeCode: async () => ({ tokens: { access_token: 'at' }, grantedScopes: [
+      'https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/analytics.readonly', 'https://www.googleapis.com/auth/tagmanager.readonly',
+      'https://www.googleapis.com/auth/analytics.edit', 'https://www.googleapis.com/auth/tagmanager.edit.containers', 'https://www.googleapis.com/auth/tagmanager.publish',
+    ] }),
+  };
+  const res0 = fakeRes();
+  await handleGoogleAuth({ method: 'GET' }, res0, new URL('http://x/auth/google/start?step=write&next=%2Fapp%2Fapprovals'), { tenantId: 't1' }, deps);
+  assert.match(res0.headers.location, /^https:\/\/accounts\.google\.com/);
+  const state = new URL(res0.headers.location).searchParams.get('state');
+  assert.deepEqual(readState(state, SECRET, now()), { tenantId: 't1', step: 'write', site: '/app/approvals' });
+  const resBad = fakeRes();
+  await handleGoogleAuth({ method: 'GET' }, resBad, new URL('http://x/auth/google/start?step=write&next=https%3A%2F%2Fevil.example'), { tenantId: 't1' }, deps);
+  assert.equal(readState(new URL(resBad.headers.location).searchParams.get('state'), SECRET, now()).site, '', 'only /app paths ride along');
+  const res1 = fakeRes();
+  await handleGoogleAuth({ method: 'GET' }, res1, new URL(`http://x/auth/google/callback?code=abc&state=${encodeURIComponent(state)}`), { tenantId: 't1' }, deps);
+  assert.equal(res1.code, 302);
+  assert.equal(res1.headers.location, '/app/approvals?fix_access=1');
+  const patch = deps.db.calls.updates.find((u) => u.table === 'google_connections');
+  assert.ok(['write', 'create'].includes(patch.patch.scope_level), 'the write ladder step is fully granted');
+});
+
 // ---------------------------------------------------------------- checkout client
 test('formEncode nests stripe-style', () => {
   assert.equal(

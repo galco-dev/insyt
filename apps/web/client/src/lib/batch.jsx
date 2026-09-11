@@ -4,17 +4,20 @@
 // plan the Plan sheet opens with the batch pending and finishes it after.
 import { api } from './api.js';
 import { useAccess } from './access.jsx';
+import { needsWriteStep, goWriteStep } from './fix-access.js';
 
 // Safe = the categories Autopilot is allowed to do on its own.
 export const SAFE_CATEGORIES = new Set(['negatives', 'counting']);
 export const safeFixes = (pending) => (pending || []).filter((p) => SAFE_CATEGORIES.has(p.category));
 
 export function useBatchApprove() {
-  const { gate, bump } = useAccess();
+  const { gate, bump, access, path } = useAccess();
   return async (items, title) => {
     const ids = (items || []).map((p) => p.id);
     if (!ids.length) return false;
     const run = async () => { await api('/api/app/approve-batch', { method: 'POST', body: { ids } }); bump(); };
-    return gate(run, { kind: 'approve-batch', id: ids.join(','), title, run });
+    const ran = await gate(run, { kind: 'approve-batch', id: ids.join(','), title, run });
+    if (ran && needsWriteStep(items, access)) goWriteStep(path || '/app');
+    return ran;
   };
 }

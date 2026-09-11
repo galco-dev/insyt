@@ -11,6 +11,7 @@ import { audit, deep } from './data.js';
 import { api, isDemo } from '../lib/api.js';
 import { useAccess } from '../lib/access.jsx';
 import { useBatchApprove } from '../lib/batch.jsx';
+import { needsWriteStep, goWriteStep, FIX_ACCESS_LINE } from '../lib/fix-access.js';
 import { Link } from '../lib/router.jsx';
 import {
   COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState, Button, Chip,
@@ -109,11 +110,13 @@ function FindingCard({ f, locked, index = 0, action = null, receipt = null }) {
 // on the spot. Unlocked: opens the Plan sheet with this fix pending.
 function FixAction({ change, gate, level }) {
   const [state, setState] = useState('idle'); // idle | busy | done
+  const { access } = useAccess();
   if (!change || level === 'locked') return null;
   async function fix() {
     setState('busy');
     try {
       const ran = await gate(async () => { await api(`/api/app/approve/${change.id}`, { method: 'POST' }); }, { kind: 'approve', id: change.id, title: change.title });
+      if (ran && needsWriteStep([change], access)) { goWriteStep(window.location.pathname); return; }
       setState(ran ? 'done' : 'idle');
     } catch { setState('idle'); }
   }
@@ -128,6 +131,7 @@ function FixAction({ change, gate, level }) {
   return (
     <div className="mt-3 flex flex-wrap items-center gap-3">
       <Button onClick={fix} disabled={state === 'busy'} className="!px-5 !py-2.5">Fix this</Button>
+      {needsWriteStep([change], access) && <span className="text-tiny text-neutral-900">{FIX_ACCESS_LINE}</span>}
       <span className="text-tiny text-neutral-900">{change.money_line ? `${change.money_line}. ` : ''}Applied after your yes, watched 48 hours, one-tap undo.</span>
     </div>
   );

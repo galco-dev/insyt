@@ -10,3 +10,4 @@ deploy request: Richer platform step 3 (receipts in History and on the report, m
 deploy request: Richer platform step 4 (Performance, 28 days chart on Home) - 2026-09-11T10:49:21Z
 deploy request: Richer platform step 5 (Settings: weekly check, emails, business; migration 28) - 2026-09-11T10:53:30Z
 deploy request: Richer platform step 6 (alerts on Home, assistant on for active plans; migration 29) - 2026-09-11T10:57:00Z
+deploy request: Fix plan push 1 (report email with one-tap links; fix access asked at the first yes) - 2026-09-11T20:11:02Z

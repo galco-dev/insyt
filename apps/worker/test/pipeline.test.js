@@ -99,7 +99,10 @@ test('stages: end-to-end §8 run over stub clients produces a stored report', as
       priorFindings: async () => [],
       ledgerCumulative: async () => null,
       saveFindings: async (runId, f) => { saved.findings = f; },
-      saveReport: async (runId, r) => { saved.report = r; },
+      saveReport: async (runId, r) => { saved.report = r; return r.id; },
+      tenantPaid: async () => false,
+      mintReportLinks: async (tenantId, reportId, opts) => { saved.links = { tenantId, reportId, opts }; return { view_url: `https://app/m/view-${reportId}`, approve_url: opts.pendingCount > 0 ? 'https://app/m/approve-1' : null, settings_url: 'https://app/app/settings' }; },
+      notifyReport: async (args) => { saved.notify = args; return { queued: true }; },
     },
   });
   const result = await runPipeline({
@@ -110,6 +113,14 @@ test('stages: end-to-end §8 run over stub clients produces a stored report', as
   assert.ok(saved.findings.length >= 2, 'legacy debris + wasted terms found');
   assert.ok(saved.report.html_email.includes('<!doctype html>'));
   assert.ok(!saved.report.html_email.includes('free stuff'), 'blur boundary holds in delivered email');
+  // Fix plan move 4: the report id is chosen up front, the one-tap links are
+  // minted for it and baked into the email, and the email is queued.
+  assert.match(saved.report.id, /^[0-9a-f-]{36}$/);
+  assert.strictEqual(saved.links.reportId, saved.report.id);
+  assert.ok(saved.report.html_email.includes(`https://app/m/view-${saved.report.id}`), 'view link in the email');
+  assert.strictEqual(saved.notify.type, 'signup');
+  assert.strictEqual(saved.notify.reportId, saved.report.id);
+  assert.strictEqual(saved.notify.links.view_url, `https://app/m/view-${saved.report.id}`);
 });
 
 test('stageDataPresent: layers only run when their stage data arrived', () => {

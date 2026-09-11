@@ -71,14 +71,58 @@ function workerStore(db) {
         first_seen_at: f.first_seen_at || null,
       })), { returning: false });
     },
-    saveReport: async (runId, { html_email, html_web, findings_snapshot, tenant_id, type, summary = null }) => {
+    saveReport: async (runId, { id = null, html_email, html_web, findings_snapshot, tenant_id, type, summary = null }) => {
       // Once the audit fee is paid every later report is born unlocked.
       const paid = await db.select('payments', `tenant_id=eq.${q(tenant_id)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=id&limit=1`, { single: true }).catch(() => null);
-      await db.insert('reports', [{
+      const rows = await db.insert('reports', [{
+        ...(id ? { id } : {}),
         run_id: runId, tenant_id, type: type || 'weekly',
         html_email, html_web, findings_snapshot: findings_snapshot || [], summary,
         ...(paid ? { unlocked: true, unlocked_at: new Date().toISOString() } : {}),
+      }]);
+      return (rows && rows[0] && rows[0].id) || id || null;
+    },
+    tenantPaid: async (tenantId) => !!(await db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=id&limit=1`, { single: true }).catch(() => null)),
+    // The one-tap links a report email carries (fix plan move 4): single-use,
+    // signed-in on redemption, minted before the email is rendered so the
+    // HTML can carry them. Report id is chosen up front for the same reason.
+    mintReportLinks: async (tenantId, reportId, { baseUrl, now = Date.now(), pendingCount = 0 } = {}) => {
+      const { mintLink } = require('../../emails/src/magic-links');
+      const inserts = [];
+      const linkStore = { insertLink: (row) => { inserts.push(db.insert('magic_links', [row], { returning: false })); } };
+      const view = mintLink({ tenantId, purpose: 'view_report', targetId: reportId, baseUrl, now }, linkStore);
+      const approve = pendingCount > 0 ? mintLink({ tenantId, purpose: 'approve_all', targetId: reportId, baseUrl, now }, linkStore) : null;
+      await Promise.all(inserts);
+      return { view_url: view.url, approve_url: approve ? approve.url : null, settings_url: `${baseUrl}/app/settings` };
+    },
+    // Queue the email for a finished report (fix plan move 4). The first audit
+    // sends audit_ready; every later report sends its own frozen HTML on the
+    // report stream, which the drain suppresses when reports are switched off.
+    notifyReport: async ({ tenantId, reportId, type, summary = null, issueCount = 0, pendingCount = 0, links = {}, currencySymbol = '$' }) => {
+      const [owner, tenant] = await Promise.all([
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=email&limit=1`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=website_url,email_reports`, { single: true }).catch(() => null),
+      ]);
+      if (!owner || !owner.email) return { queued: false, reason: 'no owner email' };
+      const s = summary || {};
+      const waste = s.waste_monthly_usd != null && Number(s.waste_monthly_usd) > 0 ? `${currencySymbol}${Math.round(Number(s.waste_monthly_usd)).toLocaleString('en-US')}` : null;
+      if (type === 'signup') {
+        await db.insert('emails', [{
+          tenant_id: tenantId, report_id: reportId, template_id: 'audit_ready', to_email: owner.email, stream: 'transactional', status: 'queued',
+          payload: {
+            issue_count: issueCount, site: (tenant && tenant.website_url) || 'your website',
+            health_score: s.health_score != null ? Math.round(Number(s.health_score)) : '',
+            waste_monthly: waste || '', report_url: links.view_url || '',
+          },
+        }], { returning: false });
+        return { queued: true, template: 'audit_ready' };
+      }
+      const headline = waste ? `about ${waste} a month going to waste` : issueCount > 0 ? `${issueCount} finding${issueCount === 1 ? '' : 's'}` : 'all clear';
+      await db.insert('emails', [{
+        tenant_id: tenantId, report_id: reportId, template_id: type === 'deep' ? 'report_deep' : 'report_weekly', to_email: owner.email, stream: 'report', status: 'queued',
+        payload: { subject: type === 'deep' ? 'Your deep review is ready' : `This week: ${headline}`, pending_count: pendingCount, report_url: links.view_url || '', approve_url: links.approve_url || '' },
       }], { returning: false });
+      return { queued: true, template: 'report' };
     },
     // Snapshot stage (§6.3/6.4/§11.3): campaigns + spend_daily + asset
     // labels, refreshed by every run so pacing, the spend card and the
@@ -422,7 +466,7 @@ function dashStore(db, deps = {}) {
       const day28 = iso(nowMs - 28 * 86_400_000).slice(0, 10);
       const ago7 = iso(nowMs - 7 * 86_400_000);
       const ago28 = iso(nowMs - 28 * 86_400_000);
-      const [days, report, cum, applied, runs, assets, owner, alerts, fixes, spend] = await Promise.all([
+      const [days, report, cum, applied, runs, assets, owner, alerts, fixes, spend, approvedWaiting] = await Promise.all([
         db.select('spend_daily', `tenant_id=eq.${q(tenantId)}&date=gte.${q(day28)}&select=date,spend_usd,conversions&order=date.asc`).catch(() => []),
         db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id,created_at,summary,findings_snapshot&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
         db.select('ledger_cumulative', `tenant_id=eq.${q(tenantId)}`, { single: true }).catch(() => null),
@@ -433,6 +477,8 @@ function dashStore(db, deps = {}) {
         db.select('alerts', `tenant_id=eq.${q(tenantId)}&created_at=gte.${q(ago7)}&select=id,severity,kind,title,created_at,acked_at&order=created_at.desc&limit=10`).catch(() => []),
         db.select('ledger', `tenant_id=eq.${q(tenantId)}&event=eq.fix_applied&created_at=gte.${q(ago28)}&select=summary_text,created_at&order=created_at.asc`).catch(() => []),
         store.spendPosition(tenantId, now).catch(() => null),
+        // Approved but not yet applied (fix plan move 5): Home says why when it drags.
+        db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.approved&select=id,tool_id,created_at&order=created_at.asc`).catch(() => []),
       ]);
       const changesetIds = [...new Set((applied || []).map((c) => c.changeset_id).filter(Boolean))];
       const [conn, watches] = await Promise.all([
@@ -479,8 +525,14 @@ function dashStore(db, deps = {}) {
         };
       });
 
+      const waitingRows = approvedWaiting || [];
       return {
         spend: spend || null,
+        waiting: {
+          approved: waitingRows.length,
+          oldest_at: waitingRows.length ? waitingRows[0].created_at : null,
+          needs_fix_access: waitingRows.some((c) => c.tool_id && !/^(ads|settings)\./.test(c.tool_id)),
+        },
         waste_monthly_usd: summary.waste_monthly_usd != null ? Math.round(Number(summary.waste_monthly_usd)) : null,
         recovered: { fixes: Number((cum && cum.fixes_applied) || 0), usd: Math.round(Number((cum && cum.waste_removed_usd) || 0)) },
         this_week: {
@@ -544,7 +596,7 @@ function dashStore(db, deps = {}) {
     // The gate (gated-platform spec §1): locked / unlocked / active plus the
     // customer's own numbers, so every gated state speaks in their figures.
     access: async (tenantId) => {
-      const [paid, sub, tenant, pricing, report, pending, ads] = await Promise.all([
+      const [paid, sub, tenant, pricing, report, pending, ads, owner] = await Promise.all([
         db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&select=id,kind&limit=1`, { single: true }).catch(() => null),
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status,price_usd,stripe_customer_id&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
         db.select('tenants', `id=eq.${q(tenantId)}&select=size_band`, { single: true }).catch(() => null),
@@ -552,8 +604,13 @@ function dashStore(db, deps = {}) {
         db.select('reports', `tenant_id=eq.${q(tenantId)}&select=summary,findings_snapshot&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=money_impact_usd,finding:findings(money_impact_monthly_usd)`).catch(() => []),
         db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null),
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=id&limit=1`, { single: true }).catch(() => null),
       ]);
-      return accessFrom({ paid, sub, tenant, pricing, report, pending, ads });
+      // Fix access (fix plan move 5): Ads writes ride on the read grant;
+      // analytics and tracking writes need the write step. ready | ask | reconnect.
+      const conn = owner ? await db.select('google_connections', `user_id=eq.${q(owner.id)}&select=status,scope_level&limit=1`, { single: true }).catch(() => null) : null;
+      const fix_access = !conn || conn.status !== 'valid' ? 'reconnect' : (conn.scope_level === 'write' || conn.scope_level === 'create' ? 'ready' : 'ask');
+      return { ...accessFrom({ paid, sub, tenant, pricing, report, pending, ads }), fix_access };
     },
     pendingApprovals: async (tenantId) => {
       // Change summaries are written for the ledger (past tense: "Excluded…").
@@ -566,7 +623,7 @@ function dashStore(db, deps = {}) {
       })();
       const sym = cur === 'USD' ? '$' : `${cur} `;
       const rows = await db.select('changes',
-        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,finding_id,before,after,summary_text,money_impact_usd,ask_reason,category,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
+        `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=id,finding_id,tool_id,before,after,summary_text,money_impact_usd,ask_reason,category,finding:findings(title,explanation,money_impact_monthly_usd)&order=created_at.desc`);
       return rows.map((r) => ({
         id: r.id,
         finding_id: r.finding_id || null,
@@ -575,6 +632,8 @@ function dashStore(db, deps = {}) {
           ? `about ${sym}${Math.round(r.money_impact_usd || r.finding.money_impact_monthly_usd)} a month` : null,
         category: r.category || null,
         ask_reason: r.ask_reason || null,
+        // Analytics and tracking changes need the write grant; Ads and settings do not.
+        needs_fix_access: !!(r.tool_id && !/^(ads|settings)\./.test(r.tool_id)),
         // The trust layer: what exactly changes, in plain words, on the card
         // itself. Falls back to the raw before/after when no prose exists.
         explanation: (r.finding && r.finding.explanation) || null,

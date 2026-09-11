@@ -7,6 +7,7 @@ import { Link } from '../lib/router.jsx';
 import { useAccess } from '../lib/access.jsx';
 import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
 import { PerformanceChart } from '../report/charts.jsx';
+import { writeStepHref } from '../lib/fix-access.js';
 import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote, Sparkline, useCountUp } from '../lib/ui.jsx';
 
 function MiniDial({ score }) {
@@ -249,6 +250,45 @@ function Accounts({ accounts }) {
   );
 }
 
+// ---------------------------------------------------------------- waiting
+// Approved but not yet applied (fix plan move 5): say why, with the one tap
+// that unblocks it, instead of letting it drag in silence.
+function WaitingCard({ waiting, access }) {
+  if (!waiting || !waiting.approved || !access) return null;
+  const n = waiting.approved;
+  const fixes = plural(n, 'approved fix', 'approved fixes');
+  const late = waiting.oldest_at && Date.now() - Date.parse(waiting.oldest_at) > 60 * 60_000;
+  if (access.fix_access === 'ask' && waiting.needs_fix_access) {
+    return (
+      <Card accent="warning" className="mt-3 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-body font-semibold">One tap before we can apply {n === 1 ? 'your fix' : `your ${n} fixes`}.</div>
+          <div className="mt-0.5 text-small text-neutral-900">Google will ask once for permission to change your analytics and tracking. Nothing else changes.</div>
+        </div>
+        <Button href={writeStepHref('/app')} className="shrink-0 !px-5 !py-2.5">Allow fixes</Button>
+      </Card>
+    );
+  }
+  if (access.fix_access === 'reconnect') {
+    return (
+      <Card accent="warning" className="mt-3 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-body font-semibold">Reconnect Google to apply {fixes}.</div>
+          <div className="mt-0.5 text-small text-neutral-900">Your Google connection has lapsed. One tap puts it back; your fixes apply within the hour after.</div>
+        </div>
+        <Button href="/auth/google/start?step=discovery" className="shrink-0 !px-5 !py-2.5">Reconnect</Button>
+      </Card>
+    );
+  }
+  if (!late) return null;
+  return (
+    <Card accent="info" className="mt-3 p-5">
+      <div className="text-body font-semibold">{fixes.replace(/^\w/, (c) => c.toUpperCase())} taking longer than usual.</div>
+      <div className="mt-0.5 text-small text-neutral-900">We are on it. History will say what happened either way.</div>
+    </Card>
+  );
+}
+
 // ---------------------------------------------------------------- needs you
 // The total value line under "Waiting for your yes" (spec §2.4) and, at
 // active, the batch yes for the safe categories when two or more are waiting.
@@ -379,6 +419,7 @@ export default function Home() {
       </Card>
 
       <NextStep access={access} pending={pending} latest={latest} money={accessMoney} goUnlock={goUnlock} openSheet={openSheet} />
+      {overview && <WaitingCard waiting={overview.waiting} access={access} />}
 
       {showGraduation && (
         <Card accent="info" className="mt-3 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">

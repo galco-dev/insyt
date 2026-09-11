@@ -8,6 +8,7 @@ import { api } from '../lib/api.js';
 import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';
 import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
+import { needsWriteStep, goWriteStep, FIX_ACCESS_LINE } from '../lib/fix-access.js';
 
 function Detail({ p }) {
   if (!p.explanation && !p.before_line && !p.after_line) return null;
@@ -299,8 +300,11 @@ export default function Approvals() {
     };
     try {
       // A yes needs a plan (gated-platform spec §2); a no is always free.
-      if (kind === 'approve') await gate(run, { kind: 'approve', id, title: p ? p.title : 'This fix' });
-      else await run();
+      if (kind === 'approve') {
+        const ran = await gate(run, { kind: 'approve', id, title: p ? p.title : 'This fix' });
+        // Analytics and tracking fixes: Google's write consent, once, right now.
+        if (ran && needsWriteStep([p], access)) { goWriteStep('/app/approvals'); return; }
+      } else await run();
     } catch (e) { setError(e.message); }
     setBusy(null);
   }
@@ -382,6 +386,7 @@ export default function Approvals() {
                     Not this one
                   </Button>
                 </div>
+                {!locked && needsWriteStep([p], access) && <p className="mt-2 text-tiny text-neutral-900">{FIX_ACCESS_LINE}</p>}
               </Card>
             );
           })}

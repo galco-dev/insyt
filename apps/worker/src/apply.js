@@ -36,8 +36,12 @@ async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }
     try {
       [api, ctx] = await Promise.all([makeApi(tenantId), makeCtx(tenantId)]);
     } catch (err) {
-      // No usable Google connection — leave changes approved for a later pass.
+      // No usable Google connection: leave changes approved for a later pass,
+      // and say so once an hour so it never drags in silence (fix plan move 5).
       await db.update('changesets', `id=eq.${q(changeset.id)}`, { status: 'open', revert_reason: `apply deferred: ${err.message}` }).catch(() => {});
+      const since = new Date(now() - 3600_000).toISOString();
+      const recent = await db.select('audit_log', `tenant_id=eq.${q(tenantId)}&event=eq.apply_deferred&created_at=gte.${q(since)}&select=id&limit=1`, { single: true }).catch(() => null);
+      if (!recent) await db.insert('audit_log', [{ tenant_id: tenantId, event: 'apply_deferred', detail: { changes: changes.length, error: String(err.message || err) } }], { returning: false }).catch(() => {});
       continue;
     }
 

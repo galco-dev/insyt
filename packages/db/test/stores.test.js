@@ -281,6 +281,43 @@ test('dashStore.assistantEnabled: on with an active plan, off without one, tenan
   assert.ok(f.calls[0].body.acked_at);
 });
 
+test('workerStore: saveReport returns the id, mintReportLinks stores hashes only, notifyReport queues audit_ready with a report link', async () => {
+  const f = routedFetch({ payments: [], reports: (url, init) => (init.method === 'POST' ? [{ id: 'rep-9' }] : []), magic_links: [], users: [{ email: 'owner@jobpeak.net' }], tenants: [{ website_url: 'jobpeak.net', email_reports: true }], emails: [] });
+  const s = workerStore(mkDb(f));
+  assert.strictEqual(await s.saveReport('r1', { id: 'rep-9', html_email: '<p/>', html_web: '<p/>', findings_snapshot: [], tenant_id: 't1', type: 'signup' }), 'rep-9');
+  const links = await s.mintReportLinks('t1', 'rep-9', { baseUrl: 'https://app', now: 1_000, pendingCount: 2 });
+  assert.match(links.view_url, /^https:\/\/app\/m\/[A-Za-z0-9_-]{40,}$/);
+  assert.match(links.approve_url, /^https:\/\/app\/m\//);
+  const linkRows = f.calls.filter((c) => /magic_links/.test(c.url) && c.method === 'POST');
+  assert.strictEqual(linkRows.length, 2);
+  assert.deepStrictEqual(linkRows.map((c) => c.body[0].purpose), ['view_report', 'approve_all']);
+  assert.ok(linkRows.every((c) => /^[0-9a-f]{64}$/.test(c.body[0].token_hash)), 'only the hash is stored');
+  const r = await s.notifyReport({ tenantId: 't1', reportId: 'rep-9', type: 'signup', summary: { health_score: 58.4, waste_monthly_usd: 430.2 }, issueCount: 7, pendingCount: 2, links });
+  assert.deepStrictEqual(r, { queued: true, template: 'audit_ready' });
+  const email = f.calls.find((c) => /emails/.test(c.url) && c.method === 'POST').body[0];
+  assert.strictEqual(email.template_id, 'audit_ready');
+  assert.strictEqual(email.to_email, 'owner@jobpeak.net');
+  assert.deepStrictEqual(email.payload, { issue_count: 7, site: 'jobpeak.net', health_score: 58, waste_monthly: '$430', report_url: links.view_url });
+  const { renderTemplate } = require('../../emails/src/templates');
+  assert.doesNotThrow(() => renderTemplate('audit_ready', email.payload), 'every variable the template needs is there');
+});
+
+test('dashStore.access carries fix_access; pendingApprovals flags analytics and tracking changes', async () => {
+  const { dashStore } = require('../src/stores');
+  const mk = (conn) => dashStore(mkDb(routedFetch({ payments: [], subscriptions: [], tenants: [], pricing_config: [], reports: [], changes: [], assets: [], users: [{ id: 'u1' }], google_connections: conn ? [conn] : [] })));
+  assert.strictEqual((await mk({ status: 'valid', scope_level: 'write' }).access('t1')).fix_access, 'ready');
+  assert.strictEqual((await mk({ status: 'valid', scope_level: 'readonly' }).access('t1')).fix_access, 'ask');
+  assert.strictEqual((await mk({ status: 'expired', scope_level: 'write' }).access('t1')).fix_access, 'reconnect');
+  assert.strictEqual((await mk(null).access('t1')).fix_access, 'reconnect');
+  const s = dashStore(mkDb(routedFetch({ assets: [], changes: [
+    { id: 'c1', tool_id: 'ads.add_negative_keywords', summary_text: 'Excluded 3 searches', finding: null },
+    { id: 'c2', tool_id: 'ga4.set_retention', summary_text: 'Set data retention to 14 months', finding: null },
+    { id: 'c3', tool_id: 'settings.autopilot_on', summary_text: 'Autopilot on', finding: null },
+  ] })));
+  const rows = await s.pendingApprovals('t1');
+  assert.deepStrictEqual(rows.map((r) => [r.id, r.needs_fix_access]), [['c1', false], ['c2', true], ['c3', false]]);
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

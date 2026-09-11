@@ -276,7 +276,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         // Redemption signs the tenant in (one tap from inbox — master §5).
         const session = issueSession({ tenantId: r.link.tenant_id, secret: sessionSecret, now: now() });
         const dest = {
-          view_report: `/r/${r.link.target_id}`,
+          view_report: `/app/report/${r.link.target_id}`,
           approve_all: '/app/approvals',
           approve_one: '/app/approvals',
           revert: `/app/revert/${r.link.target_id}`,

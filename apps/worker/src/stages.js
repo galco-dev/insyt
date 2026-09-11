@@ -289,21 +289,52 @@ function buildStages({ google, crawler, model, store }) {
           });
           drafted = await store.saveDrafts(ctx.run.id, ctx.run.tenant_id, drafts, skipped);
         }
-        await store.saveReport(ctx.run.id, {
-          html_email: ctx.html_email,
+        const type = ctx.run.type === 'signup_audit' ? 'signup' : ctx.run.type === 'deep' ? 'deep' : 'weekly';
+        const summary = ctx.envelope ? {
+          currency: ctx.envelope.currency_code || 'USD',
+          health_score: ctx.health_score ?? null,
+          waste_monthly_usd: ctx.envelope.totals ? ctx.envelope.totals.waste_monthly_usd : null,
+          counts: ctx.envelope.counts || null,
+          exec_summary: ctx.envelope.narrative_slots ? ctx.envelope.narrative_slots.exec_summary : '',
+          since_last_week: ctx.envelope.narrative_slots ? ctx.envelope.narrative_slots.since_last_week : '',
+        } : null;
+        // The email (fix plan move 4): the report id is chosen up front so the
+        // one-tap links can be minted and baked into the frozen HTML; a paid
+        // tenant's email is rendered unlocked, with the approve link when
+        // fixes are waiting.
+        const reportId = require('crypto').randomUUID();
+        const pendingCount = Number((drafted && (drafted.proposed ?? drafted.cards)) ?? ctx.findings.filter((f) => f.fix && f.fix.available).length) || 0;
+        let htmlEmail = ctx.html_email;
+        let links = {};
+        if (store.mintReportLinks && ctx.envelope) {
+          try {
+            const baseUrl = process.env.APP_BASE_URL || 'https://app.tryinsyt.com';
+            const paid = store.tenantPaid ? await store.tenantPaid(ctx.run.tenant_id) : false;
+            links = await store.mintReportLinks(ctx.run.tenant_id, reportId, { baseUrl, pendingCount });
+            htmlEmail = renderReport(ctx.envelope, {
+              unlocked: paid, healthScore: ctx.health_score, mode: 'email',
+              links: { web_url: links.view_url, unlock_url: links.view_url, approve_url: links.approve_url, settings_url: links.settings_url, pending_count: pendingCount },
+            });
+          } catch (e) { console.error(`report links failed for ${ctx.run.tenant_id}: ${e.message}`); }
+        }
+        const savedId = await store.saveReport(ctx.run.id, {
+          id: reportId,
+          html_email: htmlEmail,
           html_web: ctx.html_web,
           findings_snapshot: ctx.envelope ? ctx.envelope.findings : ctx.findings,
           tenant_id: ctx.run.tenant_id,
-          type: ctx.run.type === 'signup_audit' ? 'signup' : ctx.run.type === 'deep' ? 'deep' : 'weekly',
-          summary: ctx.envelope ? {
-            currency: ctx.envelope.currency_code || 'USD',
-            health_score: ctx.health_score ?? null,
-            waste_monthly_usd: ctx.envelope.totals ? ctx.envelope.totals.waste_monthly_usd : null,
-            counts: ctx.envelope.counts || null,
-            exec_summary: ctx.envelope.narrative_slots ? ctx.envelope.narrative_slots.exec_summary : '',
-            since_last_week: ctx.envelope.narrative_slots ? ctx.envelope.narrative_slots.since_last_week : '',
-          } : null,
+          type,
+          summary,
         });
+        if (store.notifyReport) {
+          try {
+            await store.notifyReport({
+              tenantId: ctx.run.tenant_id, reportId: savedId || reportId, type, summary,
+              issueCount: (ctx.envelope ? ctx.envelope.findings : ctx.findings).filter((f) => f.status !== 'dismissed' && f.status !== 'resolved').length,
+              pendingCount, links, currencySymbol: (ctx.envelope && ctx.envelope.currency_symbol) || '$',
+            });
+          } catch (e) { console.error(`report email failed for ${ctx.run.tenant_id}: ${e.message}`); }
+        }
         return { _progress: drafted || {} };
       },
     },

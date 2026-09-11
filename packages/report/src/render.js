@@ -213,6 +213,11 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
     ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:8px auto 20px auto;"><tr><td style="background:${TOKENS.cta};border-radius:${TOKENS.radius};">
          <a href="${esc(links.unlock_url)}" style="display:inline-block;padding:12px 24px;font-family:${TOKENS.font};font-size:14px;font-weight:500;color:#ffffff;text-decoration:none;">${esc(COPY.unlock_cta)}</a>
        </td></tr></table>` : '';
+  // Unlocked tenants get the one action the funnel turns on: a yes from the inbox.
+  const approveCta = unlocked && links.approve_url && links.pending_count > 0
+    ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:8px auto 20px auto;"><tr><td style="background:${TOKENS.cta};border-radius:${TOKENS.radius};">
+         <a href="${esc(links.approve_url)}" style="display:inline-block;padding:12px 24px;font-family:${TOKENS.font};font-size:14px;font-weight:500;color:#ffffff;text-decoration:none;">Approve ${links.pending_count} fix${links.pending_count === 1 ? '' : 'es'}</a>
+       </td></tr></table>` : '';
   const cumulative = envelope.totals.ledger_cumulative.fixes > 0
     ? `<div style="font-family:${TOKENS.font};font-size:13px;color:${TOKENS.neutral900};text-align:center;padding:16px 0;border-top:1px solid ${TOKENS.neutral400};">${fill(COPY.cumulative_strip, { fixes: envelope.totals.ledger_cumulative.fixes, amount: (envelope.currency_symbol || '$') + envelope.totals.ledger_cumulative.waste_removed_usd.toLocaleString('en-US') })}</div>` : '';
   const sinceLast = envelope.narrative_slots.since_last_week
@@ -230,7 +235,7 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
     ${moneyHeadline(envelope)}
     ${envelope.performance ? renderPerformanceSection(envelope.performance, TOKENS) : ''}
     ${degraded}
-    ${unlockCta}
+    ${unlockCta}${approveCta}
     ${cards}
     ${renderDeepSections(envelope.deep, { unlocked, mode, currency: envelope.currency_symbol })}
     ${sinceLast}
