@@ -222,8 +222,9 @@ function Alerts({ alerts, onAck }) {
 // ---------------------------------------------------------------- your accounts
 // Three compact rows (spec §2.6): status dot, name or id, last read time.
 // Each row opens the matching Connected data tab; reconnect appears inline.
-const DOT = { ok: 'bg-success', reconnect: 'bg-warning', missing: 'bg-neutral-800' };
-function Accounts({ accounts }) {
+const DOT = { ok: 'bg-success', reconnect: 'bg-warning', unmatched: 'bg-warning', unused: 'bg-neutral-800', missing: 'bg-neutral-800' };
+const UNUSED_LINE = { ga4_property: 'No analytics on your site. We can set it up with you.', gtm_container: 'You do not use Tag Manager. Plenty of good setups skip it.', ads_account: 'Not matched to your site yet.' };
+function Accounts({ accounts, site }) {
   if (!accounts || !accounts.length) return null;
   return (
     <div className="mt-8">
@@ -235,17 +236,24 @@ function Accounts({ accounts }) {
             <div className="min-w-0 flex-1">
               <MonoLabel>{a.label}</MonoLabel>
               <div className="truncate text-body">
-                {a.name ? <Link to={a.href} className="underline-offset-2 hover:underline">{a.name}</Link> : <span className="text-neutral-900">Not matched to your site yet</span>}
+                {a.name ? <Link to={a.href} className="underline-offset-2 hover:underline">{a.name}</Link> : <span className="text-small text-neutral-900">{a.status === 'unused' ? UNUSED_LINE[a.kind] : 'Not matched to your site yet.'}</span>}
               </div>
             </div>
             <div className="shrink-0 text-right text-tiny text-neutral-900">
               {a.status === 'reconnect' && <a href="/auth/google/start?step=discovery" className="text-warning underline underline-offset-2">Reconnect</a>}
               {a.status === 'ok' && (a.read_at ? `read ${ago(a.read_at)}` : 'not read yet')}
-              {a.status === 'missing' && ''}
+              {(a.status === 'unmatched' || a.status === 'missing') && <Link to="/app/confirm" className="text-warning underline underline-offset-2">Choose it</Link>}
             </div>
           </div>
         ))}
       </Card>
+      {site && (site.whatsapp || site.phone || site.consent_tool || site.server_side_gtm) && (
+        <ul className="mt-2 flex flex-col gap-1 text-tiny text-neutral-900">
+          {(site.whatsapp || site.phone) && <li>Customers reach you {site.whatsapp && site.phone ? 'on WhatsApp and by phone' : site.whatsapp ? 'on WhatsApp' : 'by phone'}. Counting those is the one thing that matters; we propose it when it is missing.</li>}
+          {site.consent_tool && <li>Your site waits for cookie consent ({site.consent_tool}) before recording, which is right.</li>}
+          {site.server_side_gtm && <li>You use server-side tagging. We read it through your analytics.</li>}
+        </ul>
+      )}
     </div>
   );
 }
@@ -326,6 +334,15 @@ function NeedsYouHead({ pending, access, money }) {
 // plan does with the fixes already queued, and the door to it.
 function NextStep({ access, pending, latest, money, goUnlock, openSheet }) {
   if (!access || !latest) return null;
+  // An empty report is never charged for (fix plan move 8).
+  if (access.level === 'locked' && access.findings_count === 0 && pending.length === 0) {
+    return (
+      <Card accent="success" className="mt-3 p-5">
+        <div className="text-body font-semibold">Nothing to fix right now.</div>
+        <div className="mt-0.5 text-small text-neutral-900">We keep checking every week and tell you the moment something breaks. No charge for an empty report.</div>
+      </Card>
+    );
+  }
   if (access.level === 'locked') {
     return (
       <Card accent="warning" className="mt-3 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -382,6 +399,18 @@ export default function Home() {
   const code = data.currency || 'USD';
   const money = (n) => (code === 'USD' ? `$${Math.round(n).toLocaleString()}` : `${code} ${Math.round(n).toLocaleString()}`);
   const latest = reports && reports[0];
+  // The first check, with a date on it (fix plan move 8): running, late, or failed.
+  const firstCheckLine = (() => {
+    if (overview && overview.failed_last && !overview.running) return 'The check did not finish, our side. We are on it; you will get the email when it lands.';
+    if (overview && overview.running && overview.running.since) {
+      const mins = (Date.now() - Date.parse(overview.running.since)) / 60_000;
+      if (mins > 20) {
+        const until = new Date(Date.parse(overview.running.since) + 40 * 60_000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        return `Taking longer than usual. Give it until ${until}; if nothing lands, run it again from Settings.`;
+      }
+    }
+    return 'We are reading your Google Ads, Analytics and tracking from the inside. Your report lands here in about ten minutes, and in your inbox.';
+  })();
   const trend = (health.trend || []).map((p) => (typeof p === 'number' ? p : p.score));
   const delta = trend.length >= 2 ? trend[trend.length - 1] - trend[trend.length - 2] : null;
   const showGraduation = (streak || 0) >= 10 && plan && plan.tier === 'core';
@@ -399,7 +428,10 @@ export default function Home() {
           <div className="mt-0.5 text-h5">
             {!latest ? 'Your first check is running.' : health.score < 50 ? 'Needs work - fixes waiting below.' : health.score < 70 ? 'Getting better every week.' : 'Healthy - we keep watch.'}
           </div>
-          {!latest && <p className="mt-1 text-small text-neutral-900">We are reading your Google Ads, Analytics and tracking from the inside. Your report lands here in about ten minutes - we will email you too.</p>}
+          {!latest && <p className="mt-1 text-small text-neutral-900">{firstCheckLine}</p>}
+          {latest && overview && overview.spend === null && overview.this_week && overview.this_week.findings === 0 && (
+            <p className="mt-1 text-small text-neutral-900">Nothing is running. Switch a campaign on and the first check runs the next morning.</p>
+          )}
           {latest && (
             <Link to={`/app/report/${latest.id}`} className="mt-1 inline-flex items-center gap-1 text-small underline underline-offset-2">
               Latest report <ArrowRight size={13} aria-hidden />
@@ -474,7 +506,7 @@ export default function Home() {
       </div>
 
       {overview && <Performance performance={overview.performance} money={accessMoney} />}
-      {overview && <Accounts accounts={overview.accounts} />}
+      {overview && <Accounts accounts={overview.accounts} site={overview.site} />}
       {overview && <Alerts alerts={overview.alerts} onAck={(id) => setOverview((o) => (o ? { ...o, alerts: o.alerts.map((a) => (a.id === id ? { ...a, acked: true } : a)) } : o))} />}
     </div>
   );

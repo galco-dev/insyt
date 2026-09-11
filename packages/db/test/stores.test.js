@@ -168,7 +168,7 @@ test('dashStore.overview: money strip, the week from changes + watches, three ac
   });
   assert.deepStrictEqual(o.accounts.map((a) => [a.kind, a.status, a.name, a.read_at]), [
     ['ads_account', 'ok', 'JobPeak', '2026-09-06T03:10:00Z'],
-    ['ga4_property', 'missing', null, null],
+    ['ga4_property', 'unmatched', null, null],
     ['gtm_container', 'ok', 'GTM-KR92FJZS', '2026-09-06T03:10:00Z'],
   ]);
   assert.deepStrictEqual(o.alerts.map((a) => a.id), ['a2', 'a1'], 'unacknowledged alerts first');
@@ -347,6 +347,26 @@ test('dashStore.discovery: three doors with honest states; confirmAssets links t
   assert.strictEqual(e.no_access, true);
   assert.strictEqual(e.doors.ads_account.state, 'cannot_see');
   assert.strictEqual(e.doors.gtm_container.state, 'unused');
+});
+
+test('dashStore.overview (fix plan moves 3 and 8): unused vs unmatched doors, site signals, an open or failed check', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({
+    spend_daily: [], account_targets: [], campaigns: [], reports: [], ledger_cumulative: [], changes: [], alerts: [], ledger: [], watches: [],
+    runs: (url) => (/status=in\.\(queued/.test(url) ? [{ id: 'r9', type: 'signup_audit', status: 'running', started_at: '2026-09-12T08:00:00Z', finished_at: null }] : []),
+    assets: [{ kind: 'gtm_container', external_id: 'GTM-1', display_name: null }],
+    users: [{ id: 'u1' }], google_connections: [{ status: 'valid' }],
+    tenants: [{ website_url: 'glowstudio.ae' }],
+    crawls: [{ tags_found: { gtm_containers: ['GTM-1'], ga4_ids: [], aw_conversion_ids: [], seen: { consent_tool: 'Cookiebot', other_tools: ['Meta'], contact: { whatsapp: true, phone: false }, server_side_gtm: false } } }],
+  });
+  const o = await dashStore(mkDb(f)).overview('t1', new Date('2026-09-12T08:30:00Z'));
+  assert.deepStrictEqual(o.accounts.map((a) => [a.kind, a.status]), [['ads_account', 'unmatched'], ['ga4_property', 'unused'], ['gtm_container', 'ok']]);
+  assert.deepStrictEqual(o.site, { consent_tool: 'Cookiebot', other_tools: ['Meta'], whatsapp: true, phone: false, server_side_gtm: false });
+  assert.deepStrictEqual(o.running, { since: '2026-09-12T08:00:00Z', type: 'signup_audit' });
+  assert.strictEqual(o.failed_last, false);
+  const { accessFrom } = require('../../billing/src/access');
+  assert.strictEqual(accessFrom({ paid: null, sub: null, tenant: null, pricing: null, report: { summary: { counts: { critical: 0, warning: 0, info: 0 } } }, pending: [], ads: null }).findings_count, 0);
+  assert.strictEqual(accessFrom({ paid: null, sub: null, tenant: null, pricing: null, report: null, pending: [], ads: null }).findings_count, null);
 });
 
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {

@@ -190,6 +190,7 @@ function demoAccess(s) {
     pending_count: s.pending.length,
     pending_value_usd: pendingValue,
     has_report: true,
+    findings_count: 7,
     fix_access: 'ready',
   };
 }
@@ -234,6 +235,9 @@ function demoOverview(s, level) {
   return {
     spend: { month_usd: 1240, month_budget_usd: 1950, pace_line: 'On pace - 64% spent, 68% of the month gone' },
     waiting: { approved: 0, oldest_at: null, needs_fix_access: false },
+    running: null,
+    failed_last: false,
+    site: { consent_tool: 'Cookiebot', other_tools: ['Meta'], whatsapp: true, phone: true, server_side_gtm: false },
     waste_monthly_usd: 1240,
     recovered: active ? { fixes: s.cumulative.fixes, usd: s.cumulative.waste_removed_usd } : { fixes: 0, usd: 0 },
     this_week: {

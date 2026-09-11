@@ -1,7 +1,7 @@
 // Funnel stage 1–3: URL paste → crawl theatre → findings strip → Google sign-in.
 // Public (no session). §5 crawl endpoints; strip shape from findings-strip.js.
 import React, { useEffect, useRef, useState } from 'react';
-import { SearchMd as Search, CheckCircle as CheckCircle2, AlertTriangle, ShieldTick as ShieldCheck } from '@untitledui/icons';
+import { SearchMd as Search, CheckCircle as CheckCircle2, AlertTriangle, ShieldTick as ShieldCheck, Eye } from '@untitledui/icons';
 import { api, isDemo } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { MonoLabel, Button, Card, ErrorNote } from '../lib/ui.jsx';
@@ -15,13 +15,16 @@ const STAGES = [
 ];
 
 const DEMO_STRIP = {
-  headline: '2 things worth fixing, visible from the outside',
+  headline: '1 thing worth fixing, visible from the outside',
   items: [
     'Google tracking installed',
     'Outdated tracking still running - it stopped collecting data in 2023',
-    "Tracking is installed but we couldn't see it recording visits",
+    'Waits for cookie consent (Cookiebot) before recording, which is right',
+    'Your bookings happen on Fresha, which we read through your analytics',
+    'Customers reach you on WhatsApp and by phone. Counting those is the one thing that matters, and we can set it up',
   ],
-  visible_issue_count: 2,
+  tones: ['ok', 'issue', 'ok', 'note', 'note'],
+  visible_issue_count: 1,
 };
 
 export default function Start() {
@@ -186,12 +189,12 @@ export default function Start() {
             <MonoLabel>What we can see from the outside</MonoLabel>
             <h2 className="mt-2 text-h5">{strip.headline}</h2>
             <ul className="mt-4 flex flex-col gap-2.5">
-              {strip.items.map((item) => {
-                const issue = /no |outdated|double|more than one|couldn't|invisible/i.test(item);
-                const IconEl = issue ? AlertTriangle : CheckCircle2;
+              {strip.items.map((item, i) => {
+                const tone = strip.tones && strip.tones[i] ? strip.tones[i] : (/no |outdated|double|more than one|couldn't|invisible/i.test(item) ? 'issue' : 'ok');
+                const IconEl = tone === 'issue' ? AlertTriangle : tone === 'note' ? Eye : CheckCircle2;
                 return (
                   <li key={item} className="flex items-start gap-2 text-small">
-                    <IconEl size={15} className={issue ? 'mt-0.5 shrink-0 text-warning' : 'mt-0.5 shrink-0 text-success'} aria-hidden />
+                    <IconEl size={15} className={tone === 'issue' ? 'mt-0.5 shrink-0 text-warning' : tone === 'note' ? 'mt-0.5 shrink-0 text-neutral-900' : 'mt-0.5 shrink-0 text-success'} aria-hidden />
                     {item}
                   </li>
                 );
@@ -219,7 +222,7 @@ export default function Start() {
               ))}
             </ol>
             <Button href={isDemo() ? '/app/confirm?demo=1' : `/auth/google/start?step=discovery&site=${encodeURIComponent(site)}`} className="mt-4 w-full">
-              Continue with Google - run my free check
+              {strip.no_tracking ? 'Continue with Google - set up my tracking' : 'Continue with Google - run my free check'}
             </Button>
             <p className="mt-2 text-center text-tiny text-neutral-900">You choose the account. Disconnect any time.</p>
           </Card>

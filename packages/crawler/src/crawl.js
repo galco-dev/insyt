@@ -6,6 +6,7 @@
 const { chromium } = require('playwright');
 const {
   extractTags, fingerprintCms, detectBookingProvider, deriveKeyPages, extractPrices,
+  detectSiteSignals,
 } = require('./extract');
 
 const HOMEPAGE_BUDGET_MS = 15_000;
@@ -54,6 +55,7 @@ async function renderPage(context, url, budgetMs) {
 function mergeTags(a, b) {
   const out = {};
   for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (!Array.isArray(a[k]) && !Array.isArray(b[k])) { out[k] = a[k] ?? b[k]; continue; }
     out[k] = [...new Set([...(a[k] || []), ...(b[k] || [])])];
   }
   return out;
@@ -117,11 +119,12 @@ async function discoveryCrawl(url, opts = {}) {
       }
     }
 
+    const seen = detectSiteSignals(home.html, home.requestUrls, target.hostname);
     return {
       url: target.href,
       status: 'complete',
       cms_fingerprint: cms,
-      tags_found: tags,
+      tags_found: { ...tags, seen },
       prices,
       booking_provider: booking,
       pages_crawled: crawled,

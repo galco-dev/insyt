@@ -164,7 +164,7 @@ function ActivityList({ entries, receipts = {}, requestRevert }) {
 function ReportList() {
   const [reports, setReports] = useState(null);
   const [error, setError] = useState(null);
-  const { money } = useAccess();
+  const { money, level } = useAccess();
   useEffect(() => { api('/api/app/reports').then((d) => setReports(d.reports)).catch((e) => setError(e.message)); }, []);
 
   if (error) return <ErrorNote message={error} />;
@@ -174,6 +174,8 @@ function ReportList() {
     return <EmptyState title="Your first report is on its way" body="Reports land here every week - and stay here." />;
   }
   return (
+    <div>
+      {level === 'locked' && reports.length > 1 && <p className="mb-3 text-small text-neutral-900">Unlock once and every report opens, this one and every one after.</p>}
     <Card className="divide-y divide-neutral-200">
       {reports.map((r) => (
         <Link key={r.id} to={`/app/report/${r.id}`} className="flex items-center gap-3 p-4 hover:bg-neutral-50">
@@ -197,6 +199,7 @@ function ReportList() {
         </Link>
       ))}
     </Card>
+    </div>
   );
 }
 

@@ -352,6 +352,28 @@ function RealReport({ reportId }) {
   const counts = summary.counts || snapshot.reduce((c, f) => ({ ...c, [f.severity]: (c[f.severity] || 0) + 1 }), {});
   const waste = summary.waste_monthly_usd != null ? Math.round(summary.waste_monthly_usd) : Math.round(findings.filter((f) => f.rawSeverity === 'warning' || f.rawSeverity === 'critical').reduce((s, f) => s + f.usd, 0));
   const health = summary.health_score != null ? Math.round(summary.health_score) : null;
+  // Empty states with a date (fix plan move 8): early days, nothing running,
+  // or genuinely nothing to fix. Never a padlock on an empty report.
+  const created = new Date(report.created_at);
+  const fmtDay = (d) => d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+  const nextSunday = (from) => { const d = new Date(from); d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7)); return d; };
+  const empty = (() => {
+    if (summary.data_days != null && summary.data_days < 28) {
+      const ready = new Date(created); ready.setDate(ready.getDate() + (28 - summary.data_days));
+      return { title: 'Early days', body: `Your account is set up right. We need four weeks of numbers before we can say what to fix. First proper check: ${fmtDay(nextSunday(ready))}.` };
+    }
+    if (summary.spend_30d_usd === 0) return { title: 'Nothing is running', body: 'No campaign spent anything in the last 30 days. Switch one on and the first check runs the next morning.' };
+    return { title: 'Nothing to fix', body: `We keep watching every week and tell you the moment something breaks. Next check ${fmtDay(nextSunday(new Date()))}.` };
+  })();
+  const campaignsLine = (() => {
+    const c = summary.campaigns;
+    if (!c || !c.by_channel) return null;
+    const NAME = { search: 'search', pmax: 'Performance Max', display: 'display', video: 'video', shopping: 'shopping' };
+    const search = c.by_channel.search || 0;
+    const others = Object.entries(c.by_channel).filter(([k, n]) => k !== 'search' && n > 0);
+    if (!others.length) return null;
+    return `We examined ${search} search campaign${search === 1 ? '' : 's'}; your ${others.map(([k, n]) => `${n} ${NAME[k] || k}`).join(' and ')} campaign${others.reduce((s, [, n]) => s + n, 0) === 1 ? ' is' : 's are'} not covered yet.`;
+  })();
   const healthLabel = health == null ? '' : health < 50 ? 'Needs work' : health < 70 ? 'Needs attention' : 'Healthy';
   const kicker = report.type === 'weekly' ? 'Weekly report' : report.type === 'deep' ? 'Deep review' : 'Your audit';
   const dateLabel = new Date(report.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -390,8 +412,9 @@ function RealReport({ reportId }) {
 
         <DoAllBar pending={pending} access={access} level={level} money={money} />
 
+        {campaignsLine && <p className="mt-6 text-small text-neutral-900">{campaignsLine}</p>}
         {findings.length === 0 ? (
-          <div className="mt-8"><EmptyState title="Nothing needed your attention" body="We checked everything on schedule. The next report lands in a week." /></div>
+          <div className="mt-8"><EmptyState title={empty.title} body={empty.body} /></div>
         ) : (
           <>
             <SectionHead kicker="What we found" title={`${findings.length} finding${findings.length === 1 ? '' : 's'}, biggest money first`} />
@@ -413,7 +436,7 @@ function RealReport({ reportId }) {
           <p className="mt-10 text-small text-neutral-900"><span className="font-mono text-tiny uppercase tracking-[0.12em]">Since last week</span> · {summary.since_last_week}</p>
         )}
       </main>
-      <UnlockBar visible={locked} />
+      <UnlockBar visible={locked && findings.length > 0} />
     </div>
   );
 }

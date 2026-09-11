@@ -123,4 +123,64 @@ function extractPrices(html, { currencies = ['AED', 'USD', 'EUR', 'GBP', '\\$'] 
   return out;
 }
 
-module.exports = { extractTags, fingerprintCms, detectBookingProvider, deriveKeyPages, extractPrices, PATTERNS };
+// What else the page tells us (fix plan move 3): the consent tool that holds
+// tags until a click, the other tools in play, how customers reach the
+// business, server-side tagging, a site that is not really up, and a
+// link-in-bio host that is not the real website. Named on the strip and in
+// the app instead of read as faults.
+const CONSENT_TOOLS = [
+  ['Cookiebot', /cookiebot\.com|Cookiebot/],
+  ['OneTrust', /onetrust\.com|optanon/i],
+  ['Usercentrics', /usercentrics\.eu|usercentrics/i],
+  ['CookieYes', /cookieyes\.com|cookie-law-info/i],
+  ['iubenda', /iubenda\.com/i],
+  ['Termly', /termly\.io/i],
+  ['Complianz', /complianz/i],
+  ['Google consent mode', /gtag\s*\(\s*['"]consent['"]/],
+];
+const OTHER_TOOLS = [
+  ['Meta', /connect\.facebook\.net|fbq\s*\(/],
+  ['HubSpot', /js\.hs-scripts\.com|hs-analytics/],
+  ['Segment', /cdn\.segment\.com|analytics\.load\(/],
+  ['Matomo', /matomo\.js|piwik\.js/],
+  ['Hotjar', /static\.hotjar\.com/],
+  ['TikTok', /analytics\.tiktok\.com/],
+  ['LinkedIn', /snap\.licdn\.com/],
+  ['Klaviyo', /static\.klaviyo\.com/],
+  ['Clarity', /clarity\.ms/],
+];
+const LANDING_HOSTS = /(^|\.)(linktr\.ee|linktree\.com|wixsite\.com|carrd\.co|bio\.site|beacons\.ai|taplink\.cc|lnk\.bio|milkshake\.app)$/i;
+
+function detectSiteSignals(html = '', requestUrls = [], hostname = '') {
+  const h = String(html || '');
+  const consent = (CONSENT_TOOLS.find(([, re]) => re.test(h)) || [null])[0];
+  const other = OTHER_TOOLS.filter(([, re]) => re.test(h)).map(([name]) => name);
+  const head = h.slice(0, 20_000);
+  const title = (/<title[^>]*>([\s\S]*?)<\/title>/i.exec(head) || [, ''])[1];
+  const maintenance = /coming soon|under construction|maintenance mode|site is being updated|we'll be back/i.test(`${title} ${head.replace(/<[^>]+>/g, ' ').slice(0, 4000)}`) && h.length < 60_000;
+  const host = String(hostname || '').toLowerCase();
+  let serverSide = false;
+  if (host) {
+    const site = host.replace(/^www\./, '');
+    for (const u of requestUrls || []) {
+      try {
+        const x = new URL(u);
+        const own = x.hostname === site || x.hostname.endsWith(`.${site}`);
+        if (own && /\/gtm\.js|\/g\/collect|\/gtag\/js/.test(x.pathname + x.search)) { serverSide = true; break; }
+      } catch { /* not a url */ }
+    }
+  }
+  return {
+    consent_tool: consent,
+    other_tools: other,
+    contact: {
+      whatsapp: /wa\.me\/|api\.whatsapp\.com/i.test(h),
+      phone: /href=["']tel:/i.test(h),
+    },
+    server_side_gtm: serverSide,
+    maintenance,
+    landing_page_host: LANDING_HOSTS.test(host),
+  };
+}
+
+module.exports = { extractTags, fingerprintCms, detectBookingProvider, deriveKeyPages, extractPrices, detectSiteSignals, PATTERNS };

@@ -135,7 +135,9 @@ export default function Confirm() {
     try {
       const exceptions = campaigns.filter((c) => fenced[c.id]).map((c) => ({ target: `campaign:${c.id}`, summary_text: `Leave "${c.name}" alone` }));
       await api('/api/app/confirm', { method: 'POST', body: { link: Object.values(chosen).filter(Boolean), exceptions } });
-      navigate('/app');
+      // No tracking on the site at all: the first thing to fix is the setup, so land there (fix plan move 3).
+      const noTracking = doors.gtm_container.state === 'unused' && doors.ga4_property.state !== 'matched';
+      navigate(noTracking ? '/app/journey' : '/app');
     } catch (e) { setError(e.message); setBusy(false); }
   }
 

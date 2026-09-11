@@ -481,6 +481,20 @@ function dashStore(db, deps = {}) {
         // Approved but not yet applied (fix plan move 5): Home says why when it drags.
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.approved&select=id,tool_id,created_at&order=created_at.asc`).catch(() => []),
       ]);
+      // Open or failed checks and what the site carries (fix plan moves 3 and 8).
+      const [openRuns, tenantRow] = await Promise.all([
+        db.select('runs', `tenant_id=eq.${q(tenantId)}&status=in.(queued,running,failed)&select=id,type,status,started_at,finished_at&order=started_at.desc.nullslast&limit=3`).catch(() => []),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=website_url`, { single: true }).catch(() => null),
+      ]);
+      let siteTags = null;
+      if (tenantRow && tenantRow.website_url) {
+        let host = null;
+        try { host = new URL(tenantRow.website_url.startsWith('http') ? tenantRow.website_url : `https://${tenantRow.website_url}`).hostname; } catch { host = null; }
+        if (host) {
+          const c = await db.select('crawls', `url=ilike.*${q(host)}*&status=eq.complete&select=tags_found&order=created_at.desc&limit=1`, { single: true }).catch(() => null);
+          siteTags = (c && c.tags_found) || null;
+        }
+      }
       const changesetIds = [...new Set((applied || []).map((c) => c.changeset_id).filter(Boolean))];
       const [conn, watches] = await Promise.all([
         owner ? db.select('google_connections', `user_id=eq.${q(owner.id)}&select=status&limit=1`, { single: true }).catch(() => null) : null,
@@ -513,6 +527,10 @@ function dashStore(db, deps = {}) {
       const LABEL = { ads_account: 'Google Ads', ga4_property: 'Analytics', gtm_container: 'Tag Manager' };
       const HREF = { ads_account: '/app/connected', ga4_property: '/app/connected/analytics', gtm_container: '/app/connected/tag-manager' };
       const connOk = !!(conn && conn.status === 'valid');
+      // Three states for a door we could not match: the site does not carry
+      // it (unused, neutral), or it does and this login cannot see it or we
+      // could not match it (unmatched, a warning with a way to choose).
+      const onSite = { gtm_container: !!(siteTags && (siteTags.gtm_containers || []).length), ga4_property: !!(siteTags && (siteTags.ga4_ids || []).length), ads_account: true };
       const accounts = ['ads_account', 'ga4_property', 'gtm_container'].map((kind) => {
         const a = (assets || []).find((x) => x.kind === kind) || null;
         return {
@@ -521,14 +539,26 @@ function dashStore(db, deps = {}) {
           href: HREF[kind],
           name: a ? (a.display_name || a.external_id) : null,
           external_id: a ? a.external_id : null,
-          status: !a ? 'missing' : (connOk ? 'ok' : 'reconnect'),
+          status: !a ? (siteTags && !onSite[kind] ? 'unused' : 'unmatched') : (connOk ? 'ok' : 'reconnect'),
           read_at: a && lastRun ? lastRun.finished_at : null,
         };
       });
+      const seen = (siteTags && siteTags.seen) || {};
+      const openRun = (openRuns || []).find((r) => r.status === 'queued' || r.status === 'running') || null;
+      const failedRun = !openRun && (openRuns || []).find((r) => r.status === 'failed') || null;
 
       const waitingRows = approvedWaiting || [];
       return {
         spend: spend || null,
+        running: openRun ? { since: openRun.started_at || null, type: openRun.type } : null,
+        failed_last: !!(failedRun && !lastRun) || !!(failedRun && lastRun && failedRun.started_at && lastRun.finished_at && failedRun.started_at > lastRun.finished_at),
+        site: {
+          consent_tool: seen.consent_tool || null,
+          other_tools: seen.other_tools || [],
+          whatsapp: !!(seen.contact && seen.contact.whatsapp),
+          phone: !!(seen.contact && seen.contact.phone),
+          server_side_gtm: !!seen.server_side_gtm,
+        },
         waiting: {
           approved: waitingRows.length,
           oldest_at: waitingRows.length ? waitingRows[0].created_at : null,

@@ -297,6 +297,15 @@ function buildStages({ google, crawler, model, store }) {
           counts: ctx.envelope.counts || null,
           exec_summary: ctx.envelope.narrative_slots ? ctx.envelope.narrative_slots.exec_summary : '',
           since_last_week: ctx.envelope.narrative_slots ? ctx.envelope.narrative_slots.since_last_week : '',
+          // For the empty states (fix plan move 8) and the campaign-types line (move 3).
+          data_days: ctx.ads && ctx.ads.deep && Array.isArray(ctx.ads.deep.daily) ? ctx.ads.deep.daily.length : null,
+          spend_30d_usd: ctx.ads && ctx.ads.spend_30d_usd != null ? Number(ctx.ads.spend_30d_usd) : null,
+          campaigns: ctx.ads && Array.isArray(ctx.ads.campaigns) ? (() => {
+            const live = ctx.ads.campaigns.filter((c) => c && c.status !== 'removed');
+            const by = {};
+            for (const c of live) { const ch = c.channel || 'search'; by[ch] = (by[ch] || 0) + 1; }
+            return { total: live.length, enabled: live.filter((c) => c.status === 'enabled').length, by_channel: by };
+          })() : null,
         } : null;
         // The email (fix plan move 4): the report id is chosen up front so the
         // one-tap links can be minted and baked into the frozen HTML; a paid

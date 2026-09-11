@@ -56,6 +56,7 @@ function accessFrom({ paid, sub, tenant, pricing, report, pending, ads }) {
     pending_count: rows.length,
     pending_value_usd: pendingValue,
     has_report: !!report,
+    findings_count: report ? (summary && summary.counts ? Object.values(summary.counts).reduce((s, n) => s + Number(n || 0), 0) : (Array.isArray(report.findings_snapshot) ? report.findings_snapshot.length : 0)) : null,
   };
 }
 
