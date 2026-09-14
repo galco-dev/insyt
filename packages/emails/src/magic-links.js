@@ -29,16 +29,27 @@ function mintLink({ tenantId, purpose, targetId = null, baseUrl, now }, store) {
 }
 
 /**
- * Redeem a token. Single-use enforced here: a second redemption fails even
- * inside the expiry window. Returns { ok, link } | { ok:false, reason }.
+ * Look a token up without consuming it. The store may be sync or async
+ * (production is PostgREST, so async: every call here is awaited).
+ * Returns { ok, link } | { ok:false, reason }.
  */
-function redeemLink(token, now, store) {
-  const row = store.findByHash(sha256(token));
+async function peekLink(token, now, store) {
+  const row = await store.findByHash(sha256(token));
   if (!row) return { ok: false, reason: 'unknown' };
   if (row.used_at) return { ok: false, reason: 'used' };
   if (Date.parse(row.expires_at) < now) return { ok: false, reason: 'expired' };
-  store.markUsed(row.id, new Date(now).toISOString());
   return { ok: true, link: row };
 }
 
-module.exports = { mintLink, redeemLink, TTL_HOURS, sha256 };
+/**
+ * Redeem a token. Single-use enforced here: a second redemption fails even
+ * inside the expiry window. Returns { ok, link } | { ok:false, reason }.
+ */
+async function redeemLink(token, now, store) {
+  const r = await peekLink(token, now, store);
+  if (!r.ok) return r;
+  await store.markUsed(r.link.id, new Date(now).toISOString());
+  return r;
+}
+
+module.exports = { mintLink, redeemLink, peekLink, TTL_HOURS, sha256 };

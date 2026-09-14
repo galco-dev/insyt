@@ -98,13 +98,14 @@ function routedFetch(routes) {
   const impl = async (url, init) => {
     calls.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : undefined });
     const table = /rest\/v1\/([a-z_]+)/.exec(url)[1];
-    const r = routes[table];
+    const r = impl.routes[table];
     const body = typeof r === 'function' ? r(url, init) : (r === undefined ? [] : r);
     const single = init.headers && init.headers.accept === 'application/vnd.pgrst.object+json';
     if (single && Array.isArray(body) && !body.length) return { ok: false, status: 406, json: async () => ({}), text: async () => '' };
     return { ok: true, status: 200, json: async () => (single && Array.isArray(body) ? body[0] : body), text: async () => '' };
   };
   impl.calls = calls;
+  impl.routes = routes;
   return impl;
 }
 
@@ -544,9 +545,20 @@ test('agencyStore (fix plan move 14): an invite mints a join link and emails it;
   const { renderTemplate } = require('../../emails/src/templates');
   assert.doesNotThrow(() => renderTemplate('agency_invite', email.payload));
 
-  assert.deepStrictEqual(await ag.activateSeat('seat-9', { tenantId: 'tn-mo', googleSub: 'sub-new', email: 'mo@northlight.ae' }), { ok: true, agency_id: 'ag1' });
-  const bind = f.calls.find((c) => c.method === 'PATCH' && /agency_seats\?id=eq\.seat-9/.test(c.url)).body;
+  // The invite binds the right person (agency plan move 4): the wrong Google account is refused before anything binds.
+  assert.deepStrictEqual(await ag.checkSeat('seat-9', { googleSub: 'sub-x', email: 'stranger@gmail.com' }), { ok: false, reason: 'wrong_account', invited: 'mo@northlight.ae' });
+  assert.deepStrictEqual(await ag.checkSeat('seat-9', { googleSub: 'sub-new', email: 'Mo@Northlight.ae' }), { ok: true, agency_id: 'ag1', already: false });
+  assert.deepStrictEqual(await ag.activateSeat('seat-9', { tenantId: 'tn-mo', googleSub: 'sub-new', email: 'stranger@gmail.com' }), { ok: false, reason: 'wrong_account', invited: 'mo@northlight.ae' });
+  assert.deepStrictEqual(await ag.activateSeat('seat-9', { tenantId: 'tn-mo', googleSub: 'sub-new', email: 'mo@northlight.ae' }), { ok: true, agency_id: 'ag1', already: false });
+  const bind = f.calls.find((c) => c.method === 'PATCH' && /agency_seats\?id=eq\.seat-9/.test(c.url) && c.body.tenant_id).body;
   assert.deepStrictEqual(bind, { tenant_id: 'tn-mo', google_sub: 'sub-new', status: 'active' });
+  // Adding the same email again resends instead of duplicating.
+  const seatRoute = f.routes.agency_seats;
+  f.routes.agency_seats = (url, init) => (init.method === 'GET' && /email=eq\.mo%40northlight\.ae/.test(url) ? [{ id: 'seat-9', status: 'invited', role: 'am', email: 'mo@northlight.ae', name: 'Mo' }] : seatRoute(url, init));
+  const again = await ag.addSeat('ag1', 's1', { email: 'mo@northlight.ae' }, { baseUrl: 'https://app', now: 2000 });
+  assert.strictEqual(again.resent, true);
+  assert.strictEqual(f.calls.filter((c) => c.method === 'POST' && /agency_seats/.test(c.url)).length, 1, 'no second seat row');
+  f.routes.agency_seats = seatRoute;
 
   const acc = await ag.addAccount('ag1', 's1', { display_name: 'Glow', email: 'owner@glow.ae', website: 'https://glowstudio.ae/' }, { baseUrl: 'https://app', now: 1000 });
   assert.strictEqual(acc.id, 'acc-1');
@@ -596,6 +608,74 @@ test('agencyStore (agency plan move 1): every write stays home; foreign ids refu
 
   const batch = await ag.approveBatch('ag1', 's1', ['chg-own', 'chg-brief', 'chg-foreign']);
   assert.deepStrictEqual(batch, { approved: 1, skipped: [{ id: 'chg-brief', reason: 'brief_only' }, { id: 'chg-foreign', reason: 'not_found' }] });
+});
+
+test('agencyStore (agency plan moves 5 and 6): pause pauses the tenant, remove tells the client, adopt attaches an existing business, pending is not billed, a seat cannot remove itself', async () => {
+  const { agencyStore, authStore, opsStore } = require('../src/stores');
+  const f = routedFetch({
+    agency_accounts: (url, init) => {
+      if (init.method !== 'GET') return [];
+      if (/id=eq\.acc-1/.test(url)) return [{ id: 'acc-1', tenant_id: 'tn-c', display_name: 'Glow', status: 'active' }];
+      if (/id=eq\.acc-p/.test(url)) return [{ id: 'acc-p', tenant_id: 'tn-shell', display_name: 'Harbor', status: 'pending' }];
+      if (/tenant_id=eq\.tn-shell&status=eq\.pending/.test(url)) return [{ id: 'acc-p', agency_id: 'ag1', display_name: 'Harbor' }];
+      if (/tenant_id=eq\.tn-real/.test(url)) return [];
+      if (/status=eq\.active&select=id/.test(url)) return [{ id: 'acc-1' }];
+      if (/status=eq\.removed/.test(url)) return [{ id: 'acc-old', tenant_id: 'tn-orphan' }];
+      return [];
+    },
+    agencies: [{ name: 'Northlight', platform_tier: 'base', created_at: '2026-08-01T00:00:00Z' }],
+    agency_seats: (url, init) => (init.method === 'GET' && /id=eq\.s2/.test(url) ? [{ id: 's2', status: 'active' }] : []),
+    users: (url) => (/tenant_id=eq\.tn-c/.test(url) ? [{ email: 'owner@glow.ae' }] : []),
+    tenants: (url, init) => (init.method === 'GET' && /id=eq\.tn-shell/.test(url) ? [{ website_url: 'harbor.ae' }] : []),
+    assets: [], ledger: [], emails: [], magic_links: [], agency_audit_log: [], rpc: [],
+  });
+  const ag = agencyStore(mkDb(f));
+  const patches = (table) => f.calls.filter((c) => c.method === 'PATCH' && new RegExp(`rest/v1/${table}\\?`).test(c.url)).map((c) => [c.url.replace(/^.*rest\/v1\//, ''), c.body]);
+
+  assert.deepStrictEqual(await ag.setAccountStatus('ag1', 's1', 'acc-1', 'paused'), { ok: true });
+  assert.deepStrictEqual(patches('tenants').at(-1), ['tenants?id=eq.tn-c&status=eq.active', { status: 'paused', paused_until: null }], 'the client tenant pauses too');
+  assert.deepStrictEqual(await ag.setAccountStatus('ag1', 's1', 'acc-1', 'removed'), { ok: true });
+  const bye = f.calls.filter((c) => c.method === 'POST' && /emails/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([bye.template_id, bye.to_email, bye.payload.agency], ['agency_stepped_back', 'owner@glow.ae', 'Northlight']);
+  assert.ok(patches('agency_accounts').at(-1)[1].removed_at, 'removal is dated');
+  const { renderTemplate } = require('../../emails/src/templates');
+  assert.doesNotThrow(() => renderTemplate('agency_stepped_back', bye.payload));
+
+  // Request access later, on a pending row; refused on a connected one.
+  const req = await ag.requestAccess('ag1', 's1', 'acc-p', 'Owner@Harbor.ae', { baseUrl: 'https://app', now: 5000 });
+  assert.strictEqual(req.ok, true);
+  const mail = f.calls.filter((c) => c.method === 'POST' && /emails/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([mail.template_id, mail.to_email, mail.payload.site], ['access_request', 'owner@harbor.ae', 'harbor.ae']);
+  assert.deepStrictEqual(patches('agency_accounts').at(-1)[1].request_email, 'owner@harbor.ae');
+  assert.deepStrictEqual(await ag.requestAccess('ag1', 's1', 'acc-1', 'x@y.ae'), { ok: false, reason: 'connected' });
+
+  // Adopt: the shell retires, the real tenant becomes the account, active at once.
+  assert.deepStrictEqual(await ag.adoptTenant('tn-shell', 'tn-real'), { ok: true, account_id: 'acc-p', agency_id: 'ag1' });
+  assert.deepStrictEqual(patches('agency_accounts').at(-1), ['agency_accounts?id=eq.acc-p', { tenant_id: 'tn-real', status: 'active' }]);
+  assert.deepStrictEqual(patches('tenants').at(-1), ['tenants?id=eq.tn-shell', { status: 'cancelled' }]);
+  const hello = f.calls.filter((c) => c.method === 'POST' && /ledger/.test(c.url)).at(-1).body[0];
+  assert.match(hello.summary_text, /^Northlight now looks after this account/);
+
+  // Pending is not billable: only active rows count.
+  const bill = await ag.billing('ag1', '2026-09-14T00:00:00Z');
+  assert.strictEqual(bill.accounts, 1);
+
+  // A seat cannot disable or remove itself; an unknown seat is refused.
+  assert.deepStrictEqual(await ag.updateSeat('ag1', 's2', 's2', { status: 'disabled' }), { ok: false, reason: 'self' });
+  assert.deepStrictEqual(await ag.updateSeat('ag1', 's1', 's-none', { status: 'disabled' }), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual(await ag.updateSeat('ag1', 's1', 's2', { status: 'removed' }), { ok: true });
+
+  // Orphan shells: removed 30 days ago, never connected, deleted.
+  const ops = opsStore(mkDb(f));
+  assert.deepStrictEqual(await ops.retireOrphanShells('2026-10-20T00:00:00Z'), ['tn-orphan']);
+  assert.ok(f.calls.some((c) => c.method === 'POST' && /rpc\/delete_tenant/.test(c.url) && c.body.p_tenant === 'tn-orphan'));
+
+  // A login with several businesses answering an agency request lands on the one whose site matches.
+  const auth = authStore(mkDb(routedFetch({
+    users: (url) => (/select=tenant_id,tenant/.test(url) ? [{ tenant_id: 'tn-a', tenant: { website_url: 'other.ae' } }, { tenant_id: 'tn-b', tenant: { website_url: 'harbor.ae' } }] : [{ tenant_id: 'tn-a' }]),
+    tenants: [{ website_url: 'Harbor.ae' }],
+  })));
+  assert.strictEqual(await auth.findOrCreateTenantByGoogle({ sub: 'sub-1', email: 'o@harbor.ae', preferTenantId: 'tn-shell' }), 'tn-b');
 });
 
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {

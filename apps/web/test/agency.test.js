@@ -104,6 +104,48 @@ async function withApp(deps, fn) {
 const SECRET = 'test-secret';
 const cookie = (tenantId) => cookieFor(issueSession({ tenantId, secret: SECRET, now: Date.now() })).split(';')[0];
 
+test('agency plan push 2: resend and request routes, a disabled seat is told so, the agency switcher, removed accounts on request', async () => {
+  const ags = fakeAgencyStore();
+  ags.seatsByTenant = async (t) => (t === 'tn-two' ? [
+    { id: 's7', agency_id: 'ag1', role: 'am', status: 'active', agency: { name: 'Northlight' } },
+    { id: 's8', agency_id: 'ag2', role: 'admin', status: 'active', agency: { name: 'Southlight' } },
+  ] : t === 'tn-off' ? [{ id: 's9', agency_id: 'ag1', role: 'am', status: 'disabled', agency: { name: 'Northlight' } }]
+    : t === 'tn-admin' ? [{ id: 's1', agency_id: 'ag1', role: 'admin', status: 'active', agency: { name: 'Northlight' } }] : []);
+  ags.resendInvite = async (ag, seat, id) => (id === 's-active' ? { ok: false, reason: 'not_invited' } : { ok: true, invite: { status: 'queued', at: '2026-09-14T09:00:00Z' } });
+  ags.requestAccess = async (ag, seat, id, email) => (id === 'a1' ? { ok: false, reason: 'connected' } : { ok: true, at: '2026-09-14T09:00:00Z' });
+  ags.updateSeat = async (ag, seat, target, patch) => (target === seat ? { ok: false, reason: 'self' } : { ok: true });
+  ags.accountsList = async (ag, opts) => (opts && opts.includeRemoved ? [{ id: 'a1' }, { id: 'a-gone', status: 'removed' }] : [{ id: 'a1' }]);
+  await withApp({ store: baseStore(), crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {
+    const post = (tenant, path, body, extra = {}) => fetch(`${base}${path}`, {
+      method: 'POST', headers: { cookie: cookie(tenant), 'content-type': 'application/json', ...extra }, body: JSON.stringify(body || {}),
+    });
+    const off = await fetch(`${base}/api/agency/me`, { headers: { cookie: cookie('tn-off') } });
+    assert.strictEqual(off.status, 403);
+    assert.strictEqual((await off.json()).code, 'seat_disabled');
+
+    const me = await (await fetch(`${base}/api/agency/me`, { headers: { cookie: cookie('tn-two') } })).json();
+    assert.deepStrictEqual(me.agencies.map((a) => a.name), ['Northlight', 'Southlight']);
+    assert.strictEqual(me.seat.id, 's7', 'first active seat by default');
+    const sw = await post('tn-two', '/api/agency/switch', { agency_id: 'ag2' });
+    assert.strictEqual(sw.status, 200);
+    const setc = sw.headers.get('set-cookie');
+    assert.match(setc, /^insyt_agency=ag2/);
+    const me2 = await (await fetch(`${base}/api/agency/me`, { headers: { cookie: `${cookie('tn-two')}; insyt_agency=ag2` } })).json();
+    assert.strictEqual(me2.seat.id, 's8');
+    assert.strictEqual((await post('tn-two', '/api/agency/switch', { agency_id: 'ag-none' })).status, 404);
+
+    assert.strictEqual((await post('tn-admin', '/api/agency/seats/s4/resend')).status, 200);
+    assert.strictEqual((await post('tn-admin', '/api/agency/seats/s-active/resend')).status, 409);
+    assert.strictEqual((await post('tn-admin', '/api/agency/seats/s1', { status: 'disabled' })).status, 409, 'cannot disable yourself');
+    assert.strictEqual((await post('tn-admin', '/api/agency/seats/s2', { status: 'disabled' })).status, 200);
+
+    assert.strictEqual((await post('tn-admin', '/api/agency/accounts/a2/request', { email: 'o@x.ae' })).status, 200);
+    assert.strictEqual((await post('tn-admin', '/api/agency/accounts/a1/request', { email: 'o@x.ae' })).status, 409);
+    const all = await (await fetch(`${base}/api/agency/accounts?all=1`, { headers: { cookie: cookie('tn-admin') } })).json();
+    assert.strictEqual(all.accounts.length, 2);
+  });
+});
+
 test('agency: seat resolution gates access; no seat = 403; reads work', async () => {
   const ags = fakeAgencyStore();
   await withApp({ store: baseStore(), crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {

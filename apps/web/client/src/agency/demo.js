@@ -102,7 +102,7 @@ const SEATS = [
   { id: 's1', email: 'ana@northlight.ae', name: 'Ana Barros', role: 'admin', status: 'active', created_at: '2026-07-01T09:00:00Z' },
   { id: 's2', email: 'mo@northlight.ae', name: 'Mo Haddad', role: 'am', status: 'active', created_at: '2026-07-01T09:05:00Z' },
   { id: 's3', email: 'rita@northlight.ae', name: 'Rita Kim', role: 'am', status: 'active', created_at: '2026-07-08T10:00:00Z' },
-  { id: 's4', email: 'finance@northlight.ae', name: 'Finance', role: 'readonly', status: 'invited', created_at: '2026-08-10T12:00:00Z' },
+  { id: 's4', email: 'finance@northlight.ae', name: 'Finance', role: 'readonly', status: 'invited', created_at: '2026-08-10T12:00:00Z', invite: { status: 'sent', at: '2026-08-10T12:00:20Z' } },
 ];
 
 const CREDITS = {
@@ -124,7 +124,7 @@ const ACCOUNTS = [
   { id: 'a6', display_name: 'Desert Rose Spa', status: 'active', report_register: 'simple', brief_only: false, seat: { name: 'Mo Haddad' }, created_at: '2026-07-21T09:00:00Z' },
   { id: 'a7', display_name: 'Bluewater Yachts', status: 'active', report_register: 'technical', brief_only: true, seat: { name: 'Ana Barros' }, created_at: '2026-08-01T09:00:00Z' },
   { id: 'a8', display_name: 'Cedar Kitchen', status: 'active', report_register: 'simple', brief_only: false, seat: { name: 'Rita Kim' }, created_at: '2026-08-04T09:00:00Z' },
-  { id: 'a9', display_name: 'Harbor Clinic', status: 'pending', report_register: 'simple', brief_only: false, seat: null, created_at: '2026-08-19T16:00:00Z' },
+  { id: 'a9', display_name: 'Harbor Clinic', status: 'pending', report_register: 'simple', brief_only: false, seat: null, created_at: '2026-08-19T16:00:00Z', request_email: 'owner@harborclinic.ae', request_sent_at: '2026-08-19T16:01:00Z' },
   { id: 'a10', display_name: 'Old Town Motors', status: 'paused', report_register: 'simple', brief_only: false, seat: { name: 'Ana Barros' }, created_at: '2026-07-03T09:00:00Z' },
 ];
 
@@ -155,7 +155,7 @@ function state() {
     S = structuredClone({
       me: ME, portfolio: PORTFOLIO, triage: TRIAGE, drafts: DRAFTS, campaigns: CAMPAIGNS,
       pacing: PACING, alerts: ALERTS, review: REVIEW, brand: BRAND, seats: SEATS,
-      credits: CREDITS, accounts: ACCOUNTS, log: LOG, draftSeq: 3, accountSeq: 11, campaignSeq: 90000001,
+      credits: CREDITS, accounts: ACCOUNTS, removedAccounts: [], log: LOG, draftSeq: 3, accountSeq: 11, campaignSeq: 90000001,
     });
     const role = demoRole();
     if (role !== 'admin') S.me.seat = { ...S.me.seat, role, name: role === 'readonly' ? 'Sam Reid' : 'Mo Haddad', email: role === 'readonly' ? 'sam@northlight.ae' : 'mo@northlight.ae' };
@@ -176,7 +176,7 @@ function portfolioView(s) {
 }
 
 function billingView(s) {
-  const count = s.accounts.filter((a) => a.status === 'active' || a.status === 'pending').length;
+  const count = s.accounts.filter((a) => a.status === 'active').length;
   const rate = count > 30 ? 35 : 45;
   const band = count <= 10 ? '1–10' : count <= 30 ? '11–30' : '31+';
   return {
@@ -260,7 +260,7 @@ export function agencyDemo(path, method, body) {
   const p = path.split('?')[0].slice('/api/agency'.length) || '/';
 
   if (method === 'GET') {
-    if (p === '/me') return { seat: s.me.seat, agency: s.me.agency };
+    if (p === '/me') return { seat: s.me.seat, agency: s.me.agency, agencies: [{ id: s.me.agency.id, name: s.me.agency.name, role: s.me.seat.role }] };
     if (p === '/portfolio') return { accounts: portfolioView(s) };
     if (p === '/triage') return { queue: s.triage };
     if (p === '/drafts') return { drafts: s.drafts };
@@ -272,7 +272,7 @@ export function agencyDemo(path, method, body) {
     if (p === '/seats') return { seats: s.seats };
     if (p === '/me') return s.me;
     if (p === '/credits') return { balance: s.credits.balance, events: s.credits.events };
-    if (p === '/accounts') return { accounts: s.accounts };
+    if (p === '/accounts') return { accounts: /all=1/.test(path) ? [...s.accounts, ...s.removedAccounts] : s.accounts };
     if (p === '/billing') return billingView(s);
     if (p === '/log') return { entries: s.log };
     return undefined;
@@ -365,10 +365,30 @@ export function agencyDemo(path, method, body) {
     log(s, 'seat_invited', { email: seat.email, role: seat.role });
     return { ok: true, seat };
   }
+  if (/^\/seats\/[^/]+\/resend$/.test(p)) {
+    const seat = s.seats.find((x) => x.id === p.split('/')[2]);
+    if (!seat) return { status: 404, error: 'Unknown seat.' };
+    if (seat.status !== 'invited') return { status: 409, error: 'This seat has already joined.' };
+    seat.invite = { status: 'queued', at: now() };
+    log(s, 'seat_invite_resent', { seat_id: seat.id, email: seat.email });
+    return { ok: true, invite: seat.invite };
+  }
   if (/^\/seats\/[^/]+$/.test(p)) {
     const seat = s.seats.find((x) => x.id === p.split('/')[2]);
-    if (seat && body && body.role) { seat.role = body.role; log(s, 'seat_updated', { seat_id: seat.id, role: body.role }); }
+    if (!seat) return { status: 404, error: 'Unknown seat.' };
+    if (body && body.status && seat.id === s.me.seat.id) return { status: 409, error: 'You cannot disable or remove your own seat. Ask another admin.' };
+    if (body && body.role) { seat.role = body.role; log(s, 'seat_updated', { seat_id: seat.id, role: body.role }); }
+    if (body && body.status === 'removed') { s.seats = s.seats.filter((x) => x.id !== seat.id); log(s, 'seat_removed', { seat_id: seat.id }); }
+    else if (body && body.status) { seat.status = body.status; log(s, body.status === 'disabled' ? 'seat_disabled' : 'seat_updated', { seat_id: seat.id, status: body.status }); }
     return { ok: true };
+  }
+  if (/^\/accounts\/[^/]+\/request$/.test(p)) {
+    const acc = s.accounts.find((a) => a.id === p.split('/')[2]);
+    if (!acc) return { status: 404, error: 'Unknown account.' };
+    if (acc.status !== 'pending') return { status: 409, error: 'This account is already connected.' };
+    acc.request_email = String((body && body.email) || '').toLowerCase(); acc.request_sent_at = now();
+    log(s, 'access_requested', { account: acc.display_name, email: acc.request_email });
+    return { ok: true, at: acc.request_sent_at };
   }
   if (p.startsWith('/drafts/')) {
     const [, , id, action] = p.split('/');
@@ -417,7 +437,7 @@ export function agencyDemo(path, method, body) {
     const [, , id, kind] = p.split('/');
     const i = s.accounts.findIndex((a) => a.id === id);
     if (i !== -1) {
-      if (kind === 'remove') { log(s, 'account_removed', { account: s.accounts[i].display_name }); s.accounts.splice(i, 1); }
+      if (kind === 'remove') { log(s, 'account_removed', { account: s.accounts[i].display_name }); const [gone] = s.accounts.splice(i, 1); s.removedAccounts.push({ ...gone, status: 'removed', removed_at: now() }); }
       else { s.accounts[i].status = kind === 'pause' ? 'paused' : 'active'; log(s, kind === 'pause' ? 'account_paused' : 'account_resumed', { account: s.accounts[i].display_name }); }
     }
     return { ok: true };

@@ -16,7 +16,7 @@ const http = require('http');
 const fs = require('fs');
 const nodePath = require('path');
 const { findingsStrip } = require('../../../packages/crawler/src/findings-strip');
-const { redeemLink } = require('../../../packages/emails/src/magic-links');
+const { redeemLink, peekLink } = require('../../../packages/emails/src/magic-links');
 const { landingPage, progressPage } = require('./pages');
 const { handleOps } = require('./ops');
 const { issueSession, readSession, cookieFor, clearCookie } = require('./session');
@@ -225,6 +225,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           ...googleAuth, sessionSecret, now, issueSession, cookieFor,
           findOrCreateTenantByGoogle: authBridge ? authBridge.findOrCreateTenantByGoogle : null,
           activateSeat: agencyStore && agencyStore.activateSeat ? agencyStore.activateSeat : null,
+          checkSeat: agencyStore && agencyStore.checkSeat ? agencyStore.checkSeat : null,
+          adoptTenant: agencyStore && agencyStore.adoptTenant ? agencyStore.adoptTenant : null,
+          consumeLink: store.magicLinks && store.magicLinks.markUsed ? (id) => store.magicLinks.markUsed(id, new Date(now()).toISOString()) : null,
         });
         if (handled) return undefined;
       }
@@ -287,20 +290,23 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       // Magic-link redemption: single-use, purpose-routed (§12).
       if (req.method === 'GET' && path.startsWith('/m/')) {
         const token = path.slice(3);
-        const r = redeemLink(token, now(), store.magicLinks);
+        const r = await peekLink(token, now(), store.magicLinks);
         if (!r.ok) {
-          const msg = r.reason === 'expired' ? 'This link has expired — request a fresh one from your latest email.'
+          const msg = r.reason === 'expired' ? 'This link has expired. If it was an invite, ask the person who sent it to resend it; otherwise request a fresh one from your latest email.'
             : r.reason === 'used' ? 'This link was already used. Open your dashboard instead.'
               : 'This link is not valid.';
           return html(res, 410, `<p style="font-family:sans-serif">${msg}</p>`);
         }
         // Agency joins (fix plan move 14) do not sign anyone in: they set a short
         // join cookie and start the Google sign-in, which binds the identity.
+        // The link is consumed when the identity binds, not here (agency plan
+        // move 4), so an abandoned Google screen does not kill the invite.
         if (r.link.purpose === 'join_agency' || r.link.purpose === 'join_account') {
-          const value = r.link.purpose === 'join_agency' ? `seat:${r.link.target_id}` : `account:${r.link.tenant_id}`;
+          const value = `${r.link.purpose === 'join_agency' ? `seat:${r.link.target_id}` : `account:${r.link.tenant_id}`}.${r.link.id}`;
           res.writeHead(302, { location: '/auth/google/start?step=discovery&switch=1', 'set-cookie': `insyt_join=${value}; HttpOnly; Path=/; Max-Age=900; SameSite=Lax` });
           return res.end();
         }
+        await store.magicLinks.markUsed(r.link.id, new Date(now()).toISOString());
         // Redemption signs the tenant in (one tap from inbox — master §5).
         // A viewer link signs in read-only; an approve-join link adds the requester (fix plan move 12).
         if (r.link.purpose === 'join_approve' && dashStore && dashStore.approveJoin) await dashStore.approveJoin(r.link.tenant_id, r.link.target_id).catch(() => {});
@@ -621,15 +627,24 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       if (path.startsWith('/api/agency') && agencyStore) {
         const session = readSession(req.headers.cookie, sessionSecret, now());
         if (!session) return json(res, 401, { error: 'Sign in first.' });
-        const seat = await agencyStore.seatByTenant(session.tenantId);
-        if (!seat) return json(res, 403, { error: 'This sign-in has no agency seat.' });
+        // One login, several agencies (agency plan move 4): the insyt_agency
+        // cookie picks the seat; a disabled seat is told so.
+        const allSeats = agencyStore.seatsByTenant ? await agencyStore.seatsByTenant(session.tenantId) : null;
+        let seat = null;
+        if (allSeats) {
+          const wanted = ((req.headers.cookie || '').split(';').map((c) => c.trim()).find((c) => c.startsWith('insyt_agency=')) || '').slice('insyt_agency='.length);
+          const live = allSeats.filter((x) => x.status === 'active');
+          seat = live.find((x) => x.agency_id === wanted) || live[0] || null;
+          if (!seat && allSeats.length) return json(res, 403, { error: `Your seat at ${(allSeats[0].agency && allSeats[0].agency.name) || 'the agency'} is disabled. Ask an admin there to enable it.`, code: 'seat_disabled' });
+        } else seat = await agencyStore.seatByTenant(session.tenantId);
+        if (!seat) return json(res, 403, { error: 'This sign-in has no agency seat.', code: 'no_seat' });
         const ag = seat.agency_id;
         const sub = path.slice('/api/agency'.length) || '/';
         const canWrite = seat.role === 'admin' || seat.role === 'am';
         const isAdmin = seat.role === 'admin';
 
         if (req.method === 'GET') {
-          if (sub === '/me') return json(res, 200, { seat, agency: await agencyStore.agency(ag) });
+          if (sub === '/me') return json(res, 200, { seat, agency: await agencyStore.agency(ag), agencies: (allSeats || [seat]).filter((x) => !x.status || x.status === 'active').map((x) => ({ id: x.agency_id, name: x.agency ? x.agency.name : null, role: x.role })) });
           if (sub === '/portfolio') return json(res, 200, { accounts: await agencyStore.portfolio(ag) });
           if (sub === '/triage') return json(res, 200, { queue: await agencyStore.triage(ag) });
           if (sub === '/review') return json(res, 200, { queue: await agencyStore.reviewQueue(ag) });
@@ -637,12 +652,22 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/seats') return json(res, 200, { seats: await agencyStore.seats(ag) });
           if (sub === '/credits') return json(res, 200, await agencyStore.credits(ag));
           if (sub === '/log') return json(res, 200, { entries: await agencyStore.auditLog(ag) });
-          if (sub === '/accounts') return json(res, 200, { accounts: await agencyStore.accountsList(ag) });
+          if (sub === '/accounts') return json(res, 200, { accounts: await agencyStore.accountsList(ag, { includeRemoved: u.searchParams.get('all') === '1' }) });
           if (sub === '/billing') return json(res, 200, await agencyStore.billing(ag, new Date(now()).toISOString()));
           if (sub === '/campaigns') return json(res, 200, { campaigns: await agencyStore.campaignsFor(ag) });
           if (sub === '/pacing') return json(res, 200, { accounts: await agencyStore.pacing(ag, new Date(now()).toISOString()) });
           if (sub === '/alerts') return json(res, 200, { alerts: await agencyStore.alertsFor(ag) });
           if (sub === '/drafts') return json(res, 200, { drafts: await agencyStore.draftsFor(ag) });
+        }
+        if (req.method === 'POST' && sub === '/switch') {
+          let body = '';
+          req.on('data', (c) => { body += c; });
+          await new Promise((r) => req.on('end', r));
+          let parsed; try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
+          const target = (allSeats || []).find((x) => x.status === 'active' && x.agency_id === parsed.agency_id);
+          if (!target) return json(res, 404, { error: 'No seat at that agency.' });
+          res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': `insyt_agency=${target.agency_id}; HttpOnly; Path=/; Max-Age=31536000; SameSite=Lax` });
+          return res.end(JSON.stringify({ ok: true }));
         }
         if (req.method === 'POST') {
           if (!canWrite) return json(res, 403, { error: 'This seat is view only. Ask an admin to change your role under Seats.', code: 'view_only' });
@@ -714,18 +739,49 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (m) {
               if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
               const status = m[2] === 'pause' ? 'paused' : m[2] === 'resume' ? 'active' : 'removed';
-              await agencyStore.setAccountStatus(ag, seat.id, m[1], status);
+              const r = await agencyStore.setAccountStatus(ag, seat.id, m[1], status);
+              if (refused(r)) return undefined;
               return json(res, 200, { ok: true });
+            }
+          }
+          {
+            // Request access later, or again (agency plan move 5).
+            const m = /^\/accounts\/([^/]+)\/request$/.exec(sub);
+            if (m) {
+              if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
+              const r = await agencyStore.requestAccess(ag, seat.id, m[1], parsed.email, { baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com', now: now() });
+              if (!r || r.ok === false) {
+                if (r && r.reason === 'email') return json(res, 400, { error: 'That does not look like an email address.' });
+                if (r && r.reason === 'connected') return json(res, 409, { error: 'This account is already connected.' });
+                if (r && r.reason === 'send_failed') return json(res, 502, { error: 'Could not send the email. Try again in a minute.' });
+                return json(res, 404, { error: 'Unknown account.' });
+              }
+              return json(res, 200, { ok: true, at: r.at });
             }
           }
           if (sub === '/seats') {
             if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
             const row = await agencyStore.addSeat(ag, seat.id, parsed, { baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com', now: now() });
-            return json(res, 200, { ok: true, seat: row });
+            if (row && row.error) return json(res, 409, { error: row.error });
+            return json(res, 200, { ok: true, seat: row, resent: !!(row && row.resent) });
+          }
+          {
+            const m = /^\/seats\/([^/]+)\/resend$/.exec(sub);
+            if (m) {
+              if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
+              const r = await agencyStore.resendInvite(ag, seat.id, m[1], { baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com', now: now() });
+              if (!r || r.ok === false) return json(res, r && r.reason === 'not_invited' ? 409 : 404, { error: r && r.reason === 'not_invited' ? 'This seat has already joined.' : 'Unknown seat.' });
+              return json(res, 200, { ok: true, invite: r.invite });
+            }
           }
           if (sub.startsWith('/seats/')) {
             if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
-            await agencyStore.updateSeat(ag, seat.id, sub.split('/')[2], parsed);
+            const r = await agencyStore.updateSeat(ag, seat.id, sub.split('/')[2], parsed);
+            if (r && r.ok === false) {
+              if (r.reason === 'self') return json(res, 409, { error: 'You cannot disable or remove your own seat. Ask another admin.' });
+              if (r.reason === 'not_found') return json(res, 404, { error: 'Unknown seat.' });
+              return json(res, 400, { error: 'Nothing to change.' });
+            }
             return json(res, 200, { ok: true });
           }
         }

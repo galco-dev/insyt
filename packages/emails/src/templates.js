@@ -70,6 +70,14 @@ const TEMPLATES = [
     ],
     (v) => ({ label: 'Pay and start the plan', url: v.pay_url || 'https://app.tryinsyt.com/app/plan' })),
 
+  T('agency_stepped_back', 'transactional',
+    (v) => `${v.agency || 'Your agency'} has stepped back from ${v.business || 'your account'} on Insyt`,
+    (v) => [
+      `${v.agency || 'Your agency'} is no longer looking after ${v.business || 'your account'} on Insyt. The weekly checks and emails have stopped, and nothing in your Google accounts has changed.`,
+      'Your history stays where it was. Sign in any time to pick things up yourself, or ignore this and nothing more happens.',
+    ],
+    () => ({ label: 'Open Insyt', url: 'https://app.tryinsyt.com/app' })),
+
   T('agency_invite', 'transactional',
     (v) => `${v.agency || 'Your agency'} invited you to Insyt`,
     (v) => [

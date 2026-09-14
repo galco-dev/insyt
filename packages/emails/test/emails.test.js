@@ -16,23 +16,23 @@ function mkStore() {
 
 const NOW = Date.parse('2026-08-19T00:00:00Z');
 
-test('magic links: token never stored, single-use, expiring, purpose TTLs', () => {
+test('magic links: token never stored, single-use, expiring, purpose TTLs', async () => {
   const store = mkStore();
   const { token, url } = mintLink({ tenantId: 'tn1', purpose: 'view_report', targetId: 'rep1', baseUrl: 'https://app.tryinsyt.com', now: NOW }, store);
   assert.ok(url.includes(token));
   assert.ok(!JSON.stringify(store.rows).includes(token), 'only the hash is stored');
 
-  const first = redeemLink(token, NOW + 1000, store);
+  const first = await redeemLink(token, NOW + 1000, store);
   assert.strictEqual(first.ok, true);
   assert.strictEqual(first.link.purpose, 'view_report');
-  const second = redeemLink(token, NOW + 2000, store);
+  const second = await redeemLink(token, NOW + 2000, store);
   assert.deepStrictEqual(second, { ok: false, reason: 'used' }, 'single-use');
 
   const store2 = mkStore();
   const { token: t2 } = mintLink({ tenantId: 'tn1', purpose: 'view_report', baseUrl: 'x', now: NOW }, store2);
-  assert.strictEqual(redeemLink(t2, NOW + 73 * 3600 * 1000, store2).reason, 'expired', '72h report links');
+  assert.strictEqual((await redeemLink(t2, NOW + 73 * 3600 * 1000, store2)).reason, 'expired', '72h report links');
   assert.strictEqual(TTL_HOURS.approve_all, 168, 'approve links live 7 days');
-  assert.strictEqual(redeemLink('garbage', NOW, mkStore()).reason, 'unknown');
+  assert.strictEqual((await redeemLink('garbage', NOW, mkStore())).reason, 'unknown');
 });
 
 test('template set: the §12 catalogue is present with correct streams', () => {

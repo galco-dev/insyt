@@ -24,6 +24,7 @@ const store = {
   resumeDue: ops.resumeDue,
   weeklyCadence: ops.weeklyCadence,
   activatePendingAgencyAccounts: ops.activatePendingAgencyAccounts,
+  retireOrphanShells: ops.retireOrphanShells,
   connectionsForSweep: ops.connectionsForSweep,
   runExists: async (key) => !!(await db.select('runs', `idempotency_key=eq.${q(key)}&select=id`, { single: true })),
   // Active tenants with at least one linked asset and no completed or in-flight run.

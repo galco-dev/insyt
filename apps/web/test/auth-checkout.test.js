@@ -196,6 +196,36 @@ test('agency join (fix plan move 14): the join cookie binds the arriving Google 
   const cookies = [].concat(res.headers['set-cookie']);
   assert.ok(cookies.some((c) => /^insyt_s=sess-tn-mo/.test(c)), 'signed in');
   assert.ok(cookies.some((c) => /^insyt_join=; .*Max-Age=0/.test(c)), 'join cookie cleared');
+
+  // Agency plan move 4: the wrong Google account is refused before any tenant is created,
+  // the join cookie stays so they can try again; the right one consumes the link and never runs discovery.
+  const discovered = [];
+  const consumed = [];
+  const created = [];
+  const deps2 = { ...deps,
+    findOrCreateTenantByGoogle: async () => { created.push(1); return 'tn-mo'; },
+    discoverAssets: async () => { discovered.push(1); return { assets: [], errors: [] }; },
+    checkSeat: async (id, who) => (who.email === 'mo@northlight.ae' ? { ok: true, agency_id: 'ag1', already: false } : { ok: false, reason: 'wrong_account', invited: 'mo@northlight.ae' }),
+    consumeLink: async (id) => { consumed.push(id); },
+  };
+  const wrong = fakeRes();
+  await handleGoogleAuth({ method: 'GET', headers: { cookie: 'insyt_join=seat:seat-9.link-1' } }, wrong, u, null, { ...deps2, fetchUserinfo: async () => ({ sub: 'sub-x', email: 'stranger@gmail.com' }) });
+  assert.strictEqual(wrong.code, 400);
+  assert.match(wrong.body, /This invite was for mo@northlight\.ae/);
+  assert.strictEqual(created.length, 0, 'no tenant for the wrong person');
+  const right = fakeRes();
+  await handleGoogleAuth({ method: 'GET', headers: { cookie: 'insyt_join=seat:seat-9.link-1' } }, right, u, null, deps2);
+  assert.strictEqual(right.headers.location, '/app/agency');
+  assert.deepStrictEqual(consumed, ['link-1'], 'the link is consumed when the seat binds');
+  assert.strictEqual(discovered.length, 0, 'joining an agency never runs discovery');
+
+  // Agency plan move 5: a client who already owns a business attaches it to the agency's account.
+  const adopted = [];
+  const acc = fakeRes();
+  await handleGoogleAuth({ method: 'GET', headers: { cookie: 'insyt_join=account:tn-shell.link-2' } }, acc, u, null, { ...deps2, findOrCreateTenantByGoogle: async () => 'tn-existing', adoptTenant: async (shell, real) => { adopted.push([shell, real]); return { ok: true }; } });
+  assert.deepStrictEqual(adopted, [['tn-shell', 'tn-existing']]);
+  assert.deepStrictEqual(consumed, ['link-1', 'link-2']);
+  assert.match(acc.headers.location, /^\/app\/confirm/);
 });
 
 test('write step (fix plan move 5): asked in place, next rides in the state, the callback returns there', async () => {

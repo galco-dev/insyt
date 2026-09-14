@@ -62,6 +62,20 @@ function ActionNote({ error, className }) {
   );
 }
 
+// "2 minutes ago", "3 days ago": for invite and request lines.
+function since(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - Date.parse(iso);
+  if (!(ms >= 0)) return '';
+  const m = Math.round(ms / 60_000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
 const ViewOnly = () => (
   <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900" title="This seat can read everything and change nothing">view only</span>
 );
@@ -1052,8 +1066,9 @@ function Review() {
 
 const ACC_STATUS = {
   active: { label: 'active', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'color-mix(in srgb, var(--ui-success) 22%, transparent)' },
-  pending: { label: 'awaiting Google connection', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'color-mix(in srgb, var(--ui-info) 22%, transparent)' },
-  paused: { label: 'paused - not billed', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
+  pending: { label: 'awaiting Google connection - not billed', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'color-mix(in srgb, var(--ui-info) 22%, transparent)' },
+  removed: { label: 'removed', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
+  paused: { label: 'paused - not checked, not billed', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
 };
 
 function AccountRow({ a, onAction }) {
@@ -1061,6 +1076,11 @@ function AccountRow({ a, onAction }) {
   const [gone, setGone] = useState(false);
   const [status, setStatus] = useState(a.status);
   const [err, setErr] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [email, setEmail] = useState(a.request_email || '');
+  const [requested, setRequested] = useState(a.request_sent_at ? { at: a.request_sent_at, to: a.request_email } : null);
+  const { readOnly } = useScope();
   async function act(kind) {
     setBusy(true); setErr(null);
     try {
@@ -1069,17 +1089,29 @@ function AccountRow({ a, onAction }) {
       else setStatus(kind === 'pause' ? 'paused' : 'active');
       onAction();
     } catch (e) { setErr(e); }
+    setBusy(false); setConfirming(false);
+  }
+  // Request access later, or again (agency plan move 5).
+  async function request() {
+    if (!email.includes('@')) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await api(`/api/agency/accounts/${a.id}/request`, { method: 'POST', body: { email: email.trim() } });
+      setRequested({ at: r.at || new Date().toISOString(), to: email.trim().toLowerCase() });
+      setAsking(false);
+    } catch (e) { setErr(e); }
     setBusy(false);
   }
   if (gone) {
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         <Check size={15} className="text-success" aria-hidden />
-        {a.display_name} removed from your portfolio - billing stops at the end of this cycle.
+        {a.display_name} removed. Checks and emails have stopped, the client has been told, and billing stops at the end of this cycle. Show removed accounts to read its history.
       </Card>
     );
   }
   const st = ACC_STATUS[status] || ACC_STATUS.active;
+  const field = 'rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)';
   return (
     <Card className="flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
@@ -1089,23 +1121,52 @@ function AccountRow({ a, onAction }) {
         </div>
         <div className="mt-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900">
           {a.seat ? a.seat.name : 'Unassigned'} · {a.report_register}{a.brief_only ? ' · brief-only' : ''} · added {new Date(a.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+          {status === 'removed' && a.removed_at ? ` · removed ${new Date(a.removed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
         </div>
+        {status === 'pending' && (
+          <div className="mt-2 text-small text-neutral-900">
+            {requested ? <>Asked {requested.to} to connect {since(requested.at)}.{' '}</> : <>Nobody has been asked to connect yet.{' '}</>}
+            {!readOnly && !asking && (
+              <button type="button" onClick={() => setAsking(true)} className="underline underline-offset-2">{requested ? 'Send again' : 'Request access'}</button>
+            )}
+            {asking && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && request()} type="email" placeholder="Client's Google email" aria-label="Client email" className={clsx(field, 'min-w-[220px]')} />
+                <Button variant="secondary" onClick={request} disabled={busy || !email.includes('@')} className="!px-3 !py-2">Send request</Button>
+                <button type="button" onClick={() => setAsking(false)} className="text-small underline underline-offset-2">Cancel</button>
+              </div>
+            )}
+          </div>
+        )}
+        <ActionNote error={err} />
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-2">
-        <div className="flex gap-2">
-          {status === 'paused'
-            ? <Button variant="secondary" onClick={() => act('resume')} disabled={busy} className="!px-3 !py-2"><Play size={13} aria-hidden /> Resume</Button>
-            : <Button variant="secondary" onClick={() => act('pause')} disabled={busy} className="!px-3 !py-2"><Pause size={13} aria-hidden /> Pause</Button>}
-          <Button variant="ghost" onClick={() => act('remove')} disabled={busy} className="!py-2"><Trash2 size={13} aria-hidden /> Remove</Button>
+      {status !== 'removed' && !readOnly && (
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {confirming ? (
+            <div className="flex flex-col items-end gap-2 rounded bg-neutral-50 p-3 text-small">
+              <span>Remove {a.display_name}? Checks and emails stop, the client is told, and the history stays readable.</span>
+              <div className="flex gap-2">
+                <Button onClick={() => act('remove')} disabled={busy} className="!px-3 !py-2">Yes, remove</Button>
+                <Button variant="ghost" onClick={() => setConfirming(false)} className="!py-2">Keep it</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              {status === 'paused'
+                ? <Button variant="secondary" onClick={() => act('resume')} disabled={busy} className="!px-3 !py-2"><Play size={13} aria-hidden /> Resume</Button>
+                : <Button variant="secondary" onClick={() => act('pause')} disabled={busy} className="!px-3 !py-2"><Pause size={13} aria-hidden /> Pause</Button>}
+              <Button variant="ghost" onClick={() => setConfirming(true)} disabled={busy} className="!py-2"><Trash2 size={13} aria-hidden /> Remove</Button>
+            </div>
+          )}
         </div>
-        <ActionNote error={err} className="!mt-0" />
-      </div>
+      )}
     </Card>
   );
 }
 
 function Accounts() {
-  const { data, error } = useAgency('/api/agency/accounts');
+  const [showRemoved, setShowRemoved] = useState(false);
+  const { data, error } = useAgency(showRemoved ? '/api/agency/accounts?all=1' : '/api/agency/accounts');
   const [bill, setBill] = useState(null);
   const [name, setName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
@@ -1126,7 +1187,7 @@ function Accounts() {
     try {
       const r = await api('/api/agency/accounts', { method: 'POST', body: { display_name: name.trim(), email: clientEmail.trim() || undefined, website: website.trim() || undefined } });
       setAdded((xs) => [...xs, r.account || { id: `new-${xs.length}`, display_name: name.trim(), status: 'pending', created_at: new Date().toISOString() }]);
-      setAddNote(r.requested ? `Added. We asked ${clientEmail.trim()} to connect Google; the account goes live the moment they do.` : 'Added without an email, so nobody has been asked to connect yet. Requesting access later is coming to this row; for now add the client\'s email when you add the account.');
+      setAddNote(r.requested ? `Added. We asked ${clientEmail.trim()} to connect Google; the account goes live the moment they do.` : 'Added. Use Request access on the row when you have the client\'s email.');
       setName(''); setClientEmail(''); setWebsite('');
       refreshBilling();
     } catch (e) { setAddNote(e.message); }
@@ -1145,7 +1206,7 @@ function Accounts() {
           <Card className="p-4">
             <MonoLabel>This cycle</MonoLabel>
             <div className="mt-1 text-h3">${bill.total.toLocaleString()}<span className="text-small text-neutral-900">/mo</span></div>
-            <div className="mt-1 text-small text-neutral-900">{bill.accounts} billable × ${bill.rate} (band {bill.band}) + ${bill.platformFee} platform</div>
+            <div className="mt-1 text-small text-neutral-900">{bill.accounts} connected × ${bill.rate} (band {bill.band}) + ${bill.platformFee} platform · pending accounts are not billed</div>
           </Card>
           <Card className="p-4">
             <MonoLabel>Add an account today</MonoLabel>
@@ -1181,12 +1242,15 @@ function Accounts() {
       </div>
       {addNote && <p className="mt-2 text-tiny text-neutral-900">{addNote}</p>}
       <p className="mt-2 max-w-[72ch] text-tiny text-neutral-900">
-        A new account starts as "awaiting Google connection": when you add the client&apos;s email we ask them to connect, and the first audit runs the day they do. Pausing stops billing for the account; pausing the client&apos;s own checks and emails arrives with the next release.
+        A new account starts as "awaiting Google connection": when you add the client&apos;s email we ask them to connect, and the first audit runs the day they do. If they already use Insyt, their existing account attaches here the moment they accept. Pause an account any time: paused accounts keep their history but are not checked, not emailed and not billed.
       </p>
 
       <div className="mt-5 flex flex-col gap-2">
         {rows.map((a) => <AccountRow key={a.id} a={a} onAction={refreshBilling} />)}
       </div>
+      <button type="button" onClick={() => setShowRemoved((v) => !v)} className="mt-3 font-mono text-tiny uppercase tracking-wide text-neutral-900 underline underline-offset-2">
+        {showRemoved ? 'Hide removed accounts' : 'Show removed accounts'}
+      </button>
 
       <p className="mt-6 max-w-[76ch] border-t border-neutral-200 pt-4 text-tiny text-neutral-900">
         What we bill you is the whole money story here. The platform never asks what you charge your clients, never stores your client fees, and takes no share of them - your commercial relationship with your clients is yours alone.
@@ -1280,11 +1344,33 @@ function Seats() {
   const [busy, setBusy] = useState(null);
   const [note, setNote] = useState(null);
   const [err, setErr] = useState(null);
+  const [removing, setRemoving] = useState(null);
   useEffect(() => { if (data) setSeats(data.seats); }, [data]);
   if (error) return <ErrorNote message={error.message} />;
   if (!data || !seats) return <Spinner label="Loading seats" />;
   const roleLabel = { admin: 'Admin - billing, brand, seats, all accounts', am: 'Account manager - can action every account (per-account assignment is coming)', readonly: 'Read-only - sees everything, changes nothing' };
   const isAdmin = !me || !me.seat || me.seat.role === 'admin';
+  const myId = me && me.seat ? me.seat.id : null;
+  async function seatAction(id, kind) {
+    setBusy(id); setErr(null); setNote(null);
+    try {
+      if (kind === 'resend') {
+        const r = await api(`/api/agency/seats/${id}/resend`, { method: 'POST', body: {} });
+        setSeats((xs) => xs.map((s) => (s.id === id ? { ...s, invite: (r.invite && r.invite.status !== 'failed') ? { status: r.invite.status, at: r.invite.at } : { status: 'failed', at: null } } : s)));
+      } else {
+        await api(`/api/agency/seats/${id}`, { method: 'POST', body: { status: kind } });
+        setSeats((xs) => (kind === 'removed' ? xs.filter((s) => s.id !== id) : xs.map((s) => (s.id === id ? { ...s, status: kind } : s))));
+      }
+    } catch (e) { setErr(e); }
+    setBusy(null);
+  }
+  const inviteLine = (s) => {
+    if (s.status !== 'invited' || !s.invite) return null;
+    if (s.invite.status === 'failed' || s.invite.status === 'missing') return 'The invite email could not be sent. Resend it.';
+    if (s.invite.status === 'sent' || s.invite.status === 'delivered') return `Invite sent ${since(s.invite.at)}. Not joined yet.`;
+    if (s.invite.status === 'suppressed' || s.invite.status === 'bounced') return 'The invite email bounced. Check the address, then resend.';
+    return `Invite on its way (${since(s.invite.at)}).`;
+  };
   // The door (fix plan move 14): add a seat, and the invite goes out with a
   // seven-day link that signs them in with Google and binds the seat.
   async function add() {
@@ -1292,8 +1378,13 @@ function Seats() {
     setBusy('add'); setNote(null); setErr(null);
     try {
       const r = await api('/api/agency/seats', { method: 'POST', body: form });
-      setSeats((xs) => [...xs, r.seat || { id: `new-${xs.length}`, ...form, status: 'invited' }]);
-      setNote(`Invited ${form.email}. The email carries a link that signs them in with Google.`);
+      if (r.resent) {
+        setSeats((xs) => xs.map((s) => (s.id === r.seat.id ? { ...s, invite: r.seat.invite || s.invite } : s)));
+        setNote(`${form.email} was already invited, so we sent the invite again.`);
+      } else {
+        setSeats((xs) => [...xs, r.seat || { id: `new-${xs.length}`, ...form, status: 'invited' }]);
+        setNote(`Invited ${form.email}. The email carries a link that signs them in with Google; it only works for that address.`);
+      }
       setForm({ email: '', name: '', role: 'am' });
     } catch (e) { setErr(e); }
     setBusy(null);
@@ -1311,15 +1402,35 @@ function Seats() {
       <ActionNote error={err} />
       <div className="mt-5 flex flex-col gap-2">
         {seats.map((s) => (
-          <Card key={s.id} className="flex flex-col items-start gap-1 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-body font-medium">{s.name || s.email} {s.status === 'invited' && <span className="ml-1 rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">invited</span>}</div>
+          <Card key={s.id} className={clsx('flex flex-col items-start gap-2 p-4 sm:flex-row sm:items-center sm:justify-between', s.status === 'disabled' && 'opacity-70')}>
+            <div className="min-w-0">
+              <div className="text-body font-medium">
+                {s.name || s.email}
+                {s.status === 'invited' && <span className="ml-1 rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">invited</span>}
+                {s.status === 'disabled' && <span className="ml-1 rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">disabled</span>}
+                {s.id === myId && <span className="ml-1 font-mono text-tiny uppercase tracking-wide text-neutral-900">you</span>}
+              </div>
               <div className="text-small text-neutral-900">{s.email}</div>
+              {inviteLine(s) && <div className="mt-1 text-small text-neutral-900">{inviteLine(s)}</div>}
             </div>
             {isAdmin ? (
-              <select value={s.role} onChange={(e) => setRole(s.id, e.target.value)} disabled={busy === s.id} className={field} aria-label={`Role for ${s.name || s.email}`}>
-                <option value="admin">Admin</option><option value="am">Account manager</option><option value="readonly">Read-only</option>
-              </select>
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={s.role} onChange={(e) => setRole(s.id, e.target.value)} disabled={busy === s.id} className={field} aria-label={`Role for ${s.name || s.email}`}>
+                  <option value="admin">Admin</option><option value="am">Account manager</option><option value="readonly">Read-only</option>
+                </select>
+                {s.status === 'invited' && <Button variant="secondary" onClick={() => seatAction(s.id, 'resend')} disabled={busy === s.id} className="!px-3 !py-2">Resend invite</Button>}
+                {s.id !== myId && s.status === 'active' && <Button variant="ghost" onClick={() => seatAction(s.id, 'disabled')} disabled={busy === s.id} className="!py-2">Disable</Button>}
+                {s.id !== myId && s.status === 'disabled' && <Button variant="ghost" onClick={() => seatAction(s.id, 'active')} disabled={busy === s.id} className="!py-2">Enable</Button>}
+                {s.id !== myId && (removing === s.id ? (
+                  <span className="flex items-center gap-2 text-small">
+                    Remove {s.name || s.email}?
+                    <Button onClick={() => { setRemoving(null); seatAction(s.id, 'removed'); }} disabled={busy === s.id} className="!px-3 !py-2">Yes, remove</Button>
+                    <button type="button" onClick={() => setRemoving(null)} className="underline underline-offset-2">Keep</button>
+                  </span>
+                ) : (
+                  <Button variant="ghost" onClick={() => setRemoving(s.id)} disabled={busy === s.id} className="!py-2"><Trash2 size={13} aria-hidden /> Remove</Button>
+                ))}
+              </div>
             ) : <div className="text-small text-neutral-900">{roleLabel[s.role] || s.role}</div>}
           </Card>
         ))}
@@ -1456,12 +1567,17 @@ function AgencyRoutes() {
     );
   }
   if (error && error.status === 403 && !isDemo()) {
+    const disabled = error.data && error.data.code === 'seat_disabled';
     return (
       <div className="mx-auto max-w-s2 px-5 pt-20 text-center">
-        <h1 className="text-h3">This sign-in has no agency seat.</h1>
-        <p className="mt-2 text-small text-neutral-900">Ask your agency admin for an invite, or contact us to set up your agency.</p>
+        <h1 className="text-h3">{disabled ? 'Your seat is disabled.' : 'This sign-in has no agency seat.'}</h1>
+        <p className="mt-2 text-small text-neutral-900">{disabled ? error.message : 'Ask your agency admin for an invite, or contact us to set up your agency.'}</p>
       </div>
     );
+  }
+  // One login, several agencies (agency plan move 4): a switcher in the header.
+  async function switchAgency(agencyId) {
+    try { await api('/api/agency/switch', { method: 'POST', body: { agency_id: agencyId } }); window.location.reload(); } catch { /* the header keeps the current one */ }
   }
 
   return (
@@ -1472,7 +1588,11 @@ function AgencyRoutes() {
           <div className="flex items-center gap-3">
             <Link to={demoHref('/app/agency')} className="flex items-center"><Wordmark className="h-8" /></Link>
             <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900">Agency</span>
-            {me && me.agency && <span className="hidden text-small text-neutral-900 sm:inline">{me.agency.name}</span>}
+            {me && me.agencies && me.agencies.length > 1 ? (
+              <select value={me.agency ? me.agency.id : ''} onChange={(e) => switchAgency(e.target.value)} className="rounded border border-neutral-400 bg-(--ui-well) px-2 py-1 text-small outline-none" aria-label="Agency">
+                {me.agencies.map((a) => <option key={a.id} value={a.id}>{a.name || 'Agency'}</option>)}
+              </select>
+            ) : me && me.agency && <span className="hidden text-small text-neutral-900 sm:inline">{me.agency.name}</span>}
           </div>
           <div className="flex items-center gap-3">
             {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}

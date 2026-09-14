@@ -112,7 +112,23 @@ async function handleGoogleAuth(req, res, u, session, deps) {
     // agency seat to whoever arrives; `insyt_join=account:<tenant>` lands a
     // client on the account their agency made for them.
     const joinRaw = (req.headers && req.headers.cookie ? req.headers.cookie : '').split(';').map((s) => s.trim()).find((s) => s.startsWith('insyt_join='));
-    const join = joinRaw ? /^insyt_join=(seat|account):([A-Za-z0-9-]{1,64})$/.exec(joinRaw) : null;
+    const join = joinRaw ? /^insyt_join=(seat|account):([A-Za-z0-9-]{1,64})(?:\.([A-Za-z0-9-]{1,64}))?$/.exec(joinRaw) : null;
+    const joinLinkId = join && join[3] ? join[3] : null;
+    // The invite binds the right person (agency plan move 4): before any
+    // tenant exists for the arriving identity, check the seat is still open
+    // and that this is who it was for. Wrong person: say so, keep the cookie.
+    let seatCheck = null;
+    if (join && join[1] === 'seat' && deps.checkSeat) {
+      seatCheck = await deps.checkSeat(join[2], { googleSub: who.sub, email: who.email }).catch(() => ({ ok: false, reason: 'unknown' }));
+      if (!seatCheck.ok) {
+        const again = '/auth/google/start?step=discovery&switch=1';
+        const msg = seatCheck.reason === 'wrong_account' ? `This invite was for ${seatCheck.invited}. <a href="${again}">Sign in with that Google account</a> to take the seat.`
+          : seatCheck.reason === 'used' ? 'This invite was already used by someone else. Ask your admin to send you your own.'
+            : seatCheck.reason === 'disabled' ? 'This seat has been disabled. Ask your admin to enable it.'
+              : 'This invite is not valid any more. Ask your admin to resend it.';
+        return fail(msg);
+      }
+    }
     if (!st.tenantId || switched) {
       if (!deps.findOrCreateTenantByGoogle || !deps.issueSession || !deps.cookieFor) return fail('Sign-in is not available right now.');
       st.tenantId = await deps.findOrCreateTenantByGoogle({ sub: who.sub, email: who.email, name: who.name, preferTenantId: join && join[1] === 'account' ? join[2] : null });
@@ -127,6 +143,13 @@ async function handleGoogleAuth(req, res, u, session, deps) {
       const r = await deps.activateSeat(join[2], { tenantId: st.tenantId, googleSub: who.sub, email: who.email }).catch(() => ({ ok: false }));
       joinedAgency = !!(r && r.ok);
     }
+    // Clients land where they belong (agency plan move 5): an identity that
+    // already owned a business attaches that business to the agency's account.
+    if (join && join[1] === 'account' && st.tenantId !== join[2] && deps.adoptTenant) {
+      await deps.adoptTenant(join[2], st.tenantId).catch(() => null);
+    }
+    // The link is consumed now that the identity has bound (agency plan move 4).
+    if (joinLinkId && deps.consumeLink && (joinedAgency || join[1] === 'account')) await deps.consumeLink(joinLinkId).catch(() => {});
     const clearJoin = join ? 'insyt_join=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax' : null;
     const redirectWithSession = (loc) => {
       const cookies = [setCookie, clearJoin].filter(Boolean);
@@ -134,6 +157,12 @@ async function handleGoogleAuth(req, res, u, session, deps) {
       res.end();
       return true;
     };
+    // Joining an agency never runs discovery (agency plan move 4): the seat
+    // binds to the identity, not to that person's own ads. Straight to the console.
+    if (joinedAgency) {
+      await db.insert('ledger', [{ tenant_id: st.tenantId, event: 'connection_changed', actor: 'user', summary_text: 'Signed in with Google to join an agency console.' }], { returning: false }).catch(() => {});
+      return redirectWithSession('/app/agency');
+    }
 
     // Upsert the connection on the tenant's owner user.
     const user = await db.select('users', `tenant_id=eq.${q(st.tenantId)}&select=id&limit=1`, { single: true });

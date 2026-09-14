@@ -414,6 +414,23 @@ function opsStore(db) {
       }
       return out;
     },
+    // Orphan shells (agency plan move 6): an account removed 30 days ago whose
+    // tenant never had a user or an asset is deleted; nothing was ever there.
+    retireOrphanShells: async (nowIso) => {
+      const cutoff = new Date(Date.parse(nowIso || new Date().toISOString()) - 30 * 86_400_000).toISOString();
+      const rows = await db.select('agency_accounts', `status=eq.removed&removed_at=lt.${q(cutoff)}&select=id,tenant_id`).catch(() => []);
+      const out = [];
+      for (const a of rows || []) {
+        const [user, asset] = await Promise.all([
+          db.select('users', `tenant_id=eq.${q(a.tenant_id)}&select=id&limit=1`, { single: true }).catch(() => null),
+          db.select('assets', `tenant_id=eq.${q(a.tenant_id)}&select=id&limit=1`, { single: true }).catch(() => null),
+        ]);
+        if (user || asset) continue;
+        await db.rpc('delete_tenant', { p_tenant: a.tenant_id }).catch(() => {}); // removes the agency_accounts row too
+        out.push(a.tenant_id);
+      }
+      return out;
+    },
     // Four ops buttons (fix plan move 15): so nobody writes SQL against production again.
     tenantDetail: async (tenantId) => {
       const [tenant, assets, users, notice] = await Promise.all([
@@ -1354,6 +1371,46 @@ function agencyStore(db, deps = {}) {
     return db.select('agency_accounts',
       `agency_id=eq.${q(agencyId)}&tenant_id=eq.${q(tenantId)}&status=eq.active&select=id,brief_only,display_name`, { single: true }).catch(() => null);
   };
+  // The door (fix plan move 14, agency plan move 4): a seven-day link that
+  // runs the Google sign-in and binds the seat to the identity that arrives.
+  // Earlier links for the same seat expire when a new one goes out.
+  const sendInvite = async (agencyId, seatId, seat, { baseUrl = 'https://app.tryinsyt.com', now = Date.now() } = {}) => {
+    try {
+      const [inviter, agency] = await Promise.all([
+        db.select('agency_seats', `id=eq.${q(seatId)}&select=tenant_id,name,email`, { single: true }).catch(() => null),
+        db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null),
+      ]);
+      const linkTenant = inviter && inviter.tenant_id;
+      if (!linkTenant) return { status: 'failed', at: null };
+      const { mintLink } = require('../../emails/src/magic-links');
+      await db.update('magic_links', `purpose=eq.join_agency&target_id=eq.${q(seat.id)}&used_at=is.null`, { expires_at: new Date(now).toISOString() }).catch(() => {});
+      const inserts = [];
+      const link = mintLink({ tenantId: linkTenant, purpose: 'join_agency', targetId: seat.id, baseUrl, now }, { insertLink: (r) => inserts.push(db.insert('magic_links', [r], { returning: false })) });
+      await Promise.all(inserts);
+      const ROLE = { admin: 'an admin', am: 'an account manager', readonly: 'read-only' };
+      const at = new Date(now).toISOString();
+      await db.insert('emails', [{ tenant_id: linkTenant, template_id: 'agency_invite', to_email: seat.email, stream: 'transactional', status: 'queued', payload: { agency: (agency && agency.name) || 'the agency', from_name: (inviter && (inviter.name || inviter.email)) || 'An admin', role_label: ROLE[seat.role || 'am'], join_url: link.url } }], { returning: false });
+      await db.update('agency_seats', `id=eq.${q(seat.id)}`, { invite_sent_at: at }).catch(() => {});
+      return { status: 'queued', at };
+    } catch { return { status: 'failed', at: null }; }
+  };
+  // Connect for the client (fix plan move 14): one email, one tap, their
+  // Google login lands on this account and the first audit runs by itself.
+  const requestAccess = async (agencyId, seatId, acc, to, { baseUrl = 'https://app.tryinsyt.com', now = Date.now() } = {}) => {
+    try {
+      const agency = await db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null);
+      const { mintLink } = require('../../emails/src/magic-links');
+      await db.update('magic_links', `purpose=eq.join_account&tenant_id=eq.${q(acc.tenant_id)}&used_at=is.null`, { expires_at: new Date(now).toISOString() }).catch(() => {});
+      const inserts = [];
+      const link = mintLink({ tenantId: acc.tenant_id, purpose: 'join_account', targetId: acc.id, baseUrl, now }, { insertLink: (r) => inserts.push(db.insert('magic_links', [r], { returning: false })) });
+      await Promise.all(inserts);
+      const at = new Date(now).toISOString();
+      await db.insert('emails', [{ tenant_id: acc.tenant_id, template_id: 'access_request', to_email: to, stream: 'transactional', status: 'queued', payload: { site: acc.site || acc.display_name, from_name: (agency && agency.name) || 'Your agency', start_url: link.url } }], { returning: false });
+      await db.update('agency_accounts', `id=eq.${q(acc.id)}`, { request_email: to, request_sent_at: at }).catch(() => {});
+      await log(agencyId, seatId, 'access_requested', { account_id: acc.id, email: to });
+      return { ok: true, at };
+    } catch { return { ok: false }; }
+  };
   const ownedRow = async (agencyId, table, id, extra = '') => {
     const row = await db.select(table, `id=eq.${q(id)}&select=id,tenant_id${extra}`, { single: true }).catch(() => null);
     if (!row) return null;
@@ -1364,6 +1421,10 @@ function agencyStore(db, deps = {}) {
     // Resolve the acting seat from the platform session's tenant id.
     seatByTenant: async (tenantId) => db.select('agency_seats',
       `tenant_id=eq.${q(tenantId)}&status=eq.active&select=id,agency_id,role,name,email&limit=1`, { single: true }),
+    // One login may hold seats at more than one agency (agency plan move 4);
+    // disabled seats come back too so the route can say so.
+    seatsByTenant: async (tenantId) => db.select('agency_seats',
+      `tenant_id=eq.${q(tenantId)}&status=in.(active,disabled)&select=id,agency_id,role,name,email,status,agency:agencies(name)&order=created_at.asc`).catch(() => []),
     agency: async (agencyId) => db.select('agencies', `id=eq.${q(agencyId)}&select=*`, { single: true }),
 
     // Portfolio grid: every managed account with health, pending count and
@@ -1661,38 +1722,66 @@ function agencyStore(db, deps = {}) {
       return { version };
     },
 
-    seats: async (agencyId) => db.select('agency_seats',
-      `agency_id=eq.${q(agencyId)}&select=id,email,name,role,status,created_at&order=created_at.asc`),
-    addSeat: async (agencyId, seatId, { email, name, role }, { baseUrl = 'https://app.tryinsyt.com', now = Date.now() } = {}) => {
+    seats: async (agencyId) => {
+      const rows = await db.select('agency_seats',
+        `agency_id=eq.${q(agencyId)}&status=neq.removed&select=id,email,name,role,status,created_at,invite_sent_at&order=created_at.asc`);
+      // The invite email's fate (agency plan move 4): sent, queued or failed, from the emails row.
+      const invited = (rows || []).filter((r) => r.status === 'invited').map((r) => r.email);
+      let mail = [];
+      if (invited.length) {
+        mail = await db.select('emails', `template_id=eq.agency_invite&to_email=in.(${invited.map(q).join(',')})&select=to_email,status,created_at&order=created_at.desc&limit=200`).catch(() => []);
+      }
+      const latest = {};
+      for (const m of mail || []) if (!latest[m.to_email]) latest[m.to_email] = m;
+      return (rows || []).map((r) => ({ ...r, invite: r.status === 'invited' ? (latest[r.email] ? { status: latest[r.email].status, at: latest[r.email].created_at } : { status: 'missing', at: r.invite_sent_at }) : null }));
+    },
+    addSeat: async (agencyId, seatId, { email, name, role }, opts = {}) => {
       const to = String(email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { error: 'That does not look like an email address.' };
+      // One seat per email per agency (agency plan move 4): an invited seat is resent, a live one is refused.
+      const existing = await db.select('agency_seats', `agency_id=eq.${q(agencyId)}&email=eq.${q(to)}&status=neq.removed&select=id,status,role,email,name`, { single: true }).catch(() => null);
+      if (existing && existing.status === 'invited') {
+        const r = await sendInvite(agencyId, seatId, existing, opts);
+        await log(agencyId, seatId, 'seat_invite_resent', { email: to, seat_id: existing.id });
+        return { ...existing, resent: true, invite: r };
+      }
+      if (existing) return { error: `${to} already has a seat here.` };
       const [row] = await db.insert('agency_seats', [{ agency_id: agencyId, email: to, name: name || null, role: role || 'am' }]);
       await log(agencyId, seatId, 'seat_invited', { email: to, role: role || 'am' });
-      // The door (fix plan move 14): a seven-day link that runs the Google
-      // sign-in and binds this seat to the identity that arrives.
-      try {
-        const [inviter, agency] = await Promise.all([
-          db.select('agency_seats', `id=eq.${q(seatId)}&select=tenant_id,name,email`, { single: true }).catch(() => null),
-          db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null),
-        ]);
-        const linkTenant = inviter && inviter.tenant_id;
-        if (linkTenant && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-          const { mintLink } = require('../../emails/src/magic-links');
-          const inserts = [];
-          const link = mintLink({ tenantId: linkTenant, purpose: 'join_agency', targetId: row.id, baseUrl, now }, { insertLink: (r) => inserts.push(db.insert('magic_links', [r], { returning: false })) });
-          await Promise.all(inserts);
-          const ROLE = { admin: 'an admin', am: 'an account manager', readonly: 'read-only' };
-          await db.insert('emails', [{ tenant_id: linkTenant, template_id: 'agency_invite', to_email: to, stream: 'transactional', status: 'queued', payload: { agency: (agency && agency.name) || 'the agency', from_name: (inviter && (inviter.name || inviter.email)) || 'An admin', role_label: ROLE[role || 'am'], join_url: link.url } }], { returning: false });
-        }
-      } catch { /* the seat exists; the invite can be re-sent */ }
-      return row;
+      const invite = await sendInvite(agencyId, seatId, { ...row, email: to, name: name || null, role: role || 'am' }, opts);
+      return { ...row, email: to, invite };
+    },
+    resendInvite: async (agencyId, seatId, targetSeatId, opts = {}) => {
+      const seat = await db.select('agency_seats', `id=eq.${q(targetSeatId)}&agency_id=eq.${q(agencyId)}&select=id,email,name,role,status`, { single: true }).catch(() => null);
+      if (!seat) return { ok: false, reason: 'not_found' };
+      if (seat.status !== 'invited') return { ok: false, reason: 'not_invited' };
+      const r = await sendInvite(agencyId, seatId, seat, opts);
+      await log(agencyId, seatId, 'seat_invite_resent', { email: seat.email, seat_id: seat.id });
+      return { ok: true, invite: r };
+    },
+    // Before any tenant is created for the arriving identity (agency plan
+    // move 4): is this seat still open, and is this the person it was for?
+    checkSeat: async (seatId, { googleSub, email }) => {
+      const seat = await db.select('agency_seats', `id=eq.${q(seatId)}&select=id,agency_id,status,email,google_sub`, { single: true }).catch(() => null);
+      if (!seat) return { ok: false, reason: 'unknown' };
+      if (seat.status === 'active') return seat.google_sub && seat.google_sub === googleSub ? { ok: true, agency_id: seat.agency_id, already: true } : { ok: false, reason: 'used', invited: seat.email };
+      if (seat.status !== 'invited') return { ok: false, reason: 'disabled', invited: seat.email };
+      if (String(email || '').trim().toLowerCase() !== String(seat.email || '').toLowerCase()) {
+        await log(seat.agency_id, seatId, 'seat_join_refused', { invited_as: seat.email, arrived_as: email || null });
+        return { ok: false, reason: 'wrong_account', invited: seat.email };
+      }
+      return { ok: true, agency_id: seat.agency_id, already: false };
     },
     // The invited person arrived through Google: bind the seat to that identity.
     activateSeat: async (seatId, { tenantId, googleSub, email }) => {
-      const seat = await db.select('agency_seats', `id=eq.${q(seatId)}&select=id,agency_id,status,email`, { single: true }).catch(() => null);
-      if (!seat || seat.status !== 'invited') return { ok: false };
+      const seat = await db.select('agency_seats', `id=eq.${q(seatId)}&select=id,agency_id,status,email,google_sub`, { single: true }).catch(() => null);
+      if (!seat) return { ok: false, reason: 'unknown' };
+      if (seat.status === 'active') return seat.google_sub === googleSub ? { ok: true, agency_id: seat.agency_id, already: true } : { ok: false, reason: 'used' };
+      if (seat.status !== 'invited') return { ok: false, reason: 'disabled' };
+      if (String(email || '').trim().toLowerCase() !== String(seat.email || '').toLowerCase()) return { ok: false, reason: 'wrong_account', invited: seat.email };
       await db.update('agency_seats', `id=eq.${q(seatId)}`, { tenant_id: tenantId, google_sub: googleSub || null, status: 'active' });
       await log(seat.agency_id, seatId, 'seat_joined', { email: email || seat.email, invited_as: seat.email });
-      return { ok: true, agency_id: seat.agency_id };
+      return { ok: true, agency_id: seat.agency_id, already: false };
     },
     // Brief-only accounts (fix plan move 14). Kept for callers that ask before
     // acting; a change this agency does not own answers true (fails closed).
@@ -1702,10 +1791,18 @@ function agencyStore(db, deps = {}) {
     },
     updateSeat: async (agencyId, seatId, targetSeatId, patch) => {
       const allowed = {};
-      if (patch.role) allowed.role = patch.role;
-      if (patch.status) allowed.status = patch.status;
+      if (patch.role && ['admin', 'am', 'readonly'].includes(patch.role)) allowed.role = patch.role;
+      if (patch.status && ['active', 'disabled', 'removed'].includes(patch.status)) allowed.status = patch.status;
+      if (!Object.keys(allowed).length) return { ok: false, reason: 'nothing' };
+      if (String(targetSeatId) === String(seatId) && allowed.status) return { ok: false, reason: 'self' };
+      const target = await db.select('agency_seats', `id=eq.${q(targetSeatId)}&agency_id=eq.${q(agencyId)}&select=id,status`, { single: true }).catch(() => null);
+      if (!target) return { ok: false, reason: 'not_found' };
+      // Disabling or removing an invited seat retires it; re-enabling one that never joined makes no sense.
+      if (allowed.status === 'active' && target.status === 'invited') delete allowed.status;
+      if (!Object.keys(allowed).length) return { ok: false, reason: 'nothing' };
       await db.update('agency_seats', `id=eq.${q(targetSeatId)}&agency_id=eq.${q(agencyId)}`, allowed);
-      await log(agencyId, seatId, 'seat_updated', { seat_id: targetSeatId, ...allowed });
+      await log(agencyId, seatId, allowed.status === 'removed' ? 'seat_removed' : allowed.status === 'disabled' ? 'seat_disabled' : 'seat_updated', { seat_id: targetSeatId, ...allowed });
+      return { ok: true };
     },
 
     credits: async (agencyId) => {
@@ -1724,40 +1821,85 @@ function agencyStore(db, deps = {}) {
     // billable account (pending or active). Paused/removed accounts never
     // bill. The platform never stores or computes what the agency charges
     // its own clients.
-    accountsList: async (agencyId) => db.select('agency_accounts',
-      `agency_id=eq.${q(agencyId)}&status=in.(pending,active,paused)&select=id,tenant_id,display_name,status,brief_only,report_register,created_at,seat:agency_seats(name)&order=created_at.asc`),
-    addAccount: async (agencyId, seatId, { display_name, email = null, website = null }, { baseUrl = 'https://app.tryinsyt.com', now = Date.now() } = {}) => {
+    accountsList: async (agencyId, { includeRemoved = false } = {}) => db.select('agency_accounts',
+      `agency_id=eq.${q(agencyId)}&status=in.(${includeRemoved ? 'pending,active,paused,removed' : 'pending,active,paused'})&select=id,tenant_id,display_name,status,brief_only,report_register,created_at,request_email,request_sent_at,removed_at,seat:agency_seats(name)&order=created_at.asc`),
+    addAccount: async (agencyId, seatId, { display_name, email = null, website = null }, opts = {}) => {
       const site = website ? String(website).trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase().slice(0, 200) : null;
       const [tenant] = await db.insert('tenants', [{ status: 'active', business_name: display_name, ...(site ? { website_url: site } : {}) }]);
       const [row] = await db.insert('agency_accounts',
         [{ agency_id: agencyId, tenant_id: tenant.id, display_name, status: 'pending' }]);
       await log(agencyId, seatId, 'account_added', { account_id: row.id, display_name });
-      // Connect for the client (fix plan move 14): one email, one tap, their
-      // Google login lands on this account and the first audit runs by itself.
       const to = String(email || '').trim().toLowerCase();
       if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-        try {
-          const agency = await db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null);
-          const { mintLink } = require('../../emails/src/magic-links');
-          const inserts = [];
-          const link = mintLink({ tenantId: tenant.id, purpose: 'join_account', targetId: row.id, baseUrl, now }, { insertLink: (r) => inserts.push(db.insert('magic_links', [r], { returning: false })) });
-          await Promise.all(inserts);
-          await db.insert('emails', [{ tenant_id: tenant.id, template_id: 'access_request', to_email: to, stream: 'transactional', status: 'queued', payload: { site: site || display_name, from_name: (agency && agency.name) || 'Your agency', start_url: link.url } }], { returning: false });
-          await log(agencyId, seatId, 'access_requested', { account_id: row.id, email: to });
-        } catch { /* the account exists; the request can be re-sent */ }
+        const r = await requestAccess(agencyId, seatId, { ...row, tenant_id: tenant.id, display_name, site }, to, opts);
+        return { ...row, request_email: to, request_sent_at: r.at || null };
       }
       return row;
     },
+    // Request access later (agency plan move 5): the email can arrive after the account does, and can be sent again.
+    requestAccess: async (agencyId, seatId, accountId, email, opts = {}) => {
+      const to = String(email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { ok: false, reason: 'email' };
+      const acc = await db.select('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}&select=id,tenant_id,display_name,status`, { single: true }).catch(() => null);
+      if (!acc) return { ok: false, reason: 'not_found' };
+      if (acc.status !== 'pending') return { ok: false, reason: 'connected' };
+      const t = await db.select('tenants', `id=eq.${q(acc.tenant_id)}&select=website_url`, { single: true }).catch(() => null);
+      const r = await requestAccess(agencyId, seatId, { ...acc, site: t && t.website_url }, to, opts);
+      return r.ok ? { ok: true, at: r.at } : { ok: false, reason: 'send_failed' };
+    },
+    // Pause means pause (agency plan move 6): the client tenant pauses too, so
+    // the cron, the poller and the email drain all stop. Remove keeps the row
+    // readable, pauses the tenant and tells the client the agency stepped back.
     setAccountStatus: async (agencyId, seatId, accountId, status) => {
-      await db.update('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}`, { status });
-      await log(agencyId, seatId, `account_${status}`, { account_id: accountId });
+      const acc = await db.select('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}&select=id,tenant_id,display_name,status`, { single: true }).catch(() => null);
+      if (!acc) return { ok: false, reason: 'not_found' };
+      const agency = await db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null);
+      const who = (agency && agency.name) || 'Your agency';
+      const patch = { status };
+      if (status === 'removed') patch.removed_at = new Date().toISOString();
+      await db.update('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}`, patch);
+      await log(agencyId, seatId, `account_${status}`, { account_id: accountId, display_name: acc.display_name });
+      if (status === 'paused' || status === 'removed') {
+        await db.update('tenants', `id=eq.${q(acc.tenant_id)}&status=eq.active`, { status: 'paused', paused_until: null }).catch(() => {});
+        await db.insert('ledger', [{ tenant_id: acc.tenant_id, event: 'subscription_changed', actor: 'system', summary_text: status === 'paused' ? `${who} paused this account. Checks and emails stop until they resume it.` : `${who} has stepped back from this account. Checks and emails have stopped; sign in any time to pick things up yourself.` }], { returning: false }).catch(() => {});
+        if (status === 'removed') {
+          const owner = await db.select('users', `tenant_id=eq.${q(acc.tenant_id)}&role=eq.owner&select=email&limit=1`, { single: true }).catch(() => null);
+          if (owner && owner.email) await db.insert('emails', [{ tenant_id: acc.tenant_id, template_id: 'agency_stepped_back', to_email: owner.email, stream: 'transactional', status: 'queued', payload: { agency: who, business: acc.display_name } }], { returning: false }).catch(() => {});
+        }
+      }
+      if (status === 'active' && acc.status === 'paused') {
+        await db.update('tenants', `id=eq.${q(acc.tenant_id)}&status=eq.paused`, { status: 'active', paused_until: null }).catch(() => {});
+        await db.insert('ledger', [{ tenant_id: acc.tenant_id, event: 'subscription_changed', actor: 'system', summary_text: `${who} resumed this account. Checks run again from the next Sunday.` }], { returning: false }).catch(() => {});
+      }
+      return { ok: true };
+    },
+    // Clients land where they belong (agency plan move 5): the arriving login
+    // already owns a tenant, so the agency's empty shell is retired and the
+    // account attaches to the real one, active at once.
+    adoptTenant: async (shellTenantId, realTenantId) => {
+      if (!shellTenantId || !realTenantId || shellTenantId === realTenantId) return { ok: false, reason: 'same' };
+      const row = await db.select('agency_accounts', `tenant_id=eq.${q(shellTenantId)}&status=eq.pending&select=id,agency_id,display_name`, { single: true }).catch(() => null);
+      if (!row) return { ok: false, reason: 'not_found' };
+      const dup = await db.select('agency_accounts', `agency_id=eq.${q(row.agency_id)}&tenant_id=eq.${q(realTenantId)}&select=id,status`, { single: true }).catch(() => null);
+      if (dup) {
+        await db.update('agency_accounts', `id=eq.${q(row.id)}`, { status: 'removed', removed_at: new Date().toISOString() });
+        if (dup.status !== 'active') await db.update('agency_accounts', `id=eq.${q(dup.id)}`, { status: 'active' });
+      } else {
+        await db.update('agency_accounts', `id=eq.${q(row.id)}`, { tenant_id: realTenantId, status: 'active' });
+      }
+      await db.update('tenants', `id=eq.${q(shellTenantId)}`, { status: 'cancelled' }).catch(() => {});
+      const agency = await db.select('agencies', `id=eq.${q(row.agency_id)}&select=name`, { single: true }).catch(() => null);
+      await db.insert('ledger', [{ tenant_id: realTenantId, event: 'connection_changed', actor: 'system', summary_text: `${(agency && agency.name) || 'Your agency'} now looks after this account. They see what you see and can propose fixes; nothing changes without an approval.` }], { returning: false }).catch(() => {});
+      await log(row.agency_id, null, 'account_connected', { account_id: dup ? dup.id : row.id, display_name: row.display_name, adopted: true });
+      return { ok: true, account_id: dup ? dup.id : row.id, agency_id: row.agency_id };
     },
     billing: async (agencyId, nowIso) => {
       const { monthlyCharge, prorateAdd, cycleFor } = require('../../billing/src/agency-pricing');
       const now = nowIso || new Date().toISOString();
+      // Pending is not billable (agency plan move 5): only connected accounts count.
       const [ag, billable] = await Promise.all([
         db.select('agencies', `id=eq.${q(agencyId)}&select=platform_tier,billing_anchor,created_at`, { single: true }),
-        db.select('agency_accounts', `agency_id=eq.${q(agencyId)}&status=in.(pending,active)&select=id`),
+        db.select('agency_accounts', `agency_id=eq.${q(agencyId)}&status=eq.active&select=id`),
       ]);
       const n = (billable || []).length;
       const tier = (ag && ag.platform_tier) || 'base';
@@ -1778,7 +1920,18 @@ function authStore(db) {
     /** users by google sub → tenant; first login creates tenant + user. */
     findOrCreateTenantByGoogle: async ({ sub, email, name, preferTenantId = null }) => {
       // One login may own several businesses (fix plan move 12): the last one used opens.
-      const existing = await db.select('users', `google_sub=eq.${q(sub)}&select=tenant_id&order=last_seen_at.desc.nullslast&limit=1`, { single: true });
+      // Answering an agency's request (agency plan move 5): the business whose
+      // website matches the account the agency made wins over recency.
+      let existing = await db.select('users', `google_sub=eq.${q(sub)}&select=tenant_id&order=last_seen_at.desc.nullslast&limit=1`, { single: true });
+      if (existing && preferTenantId) {
+        const [shell, owned] = await Promise.all([
+          db.select('tenants', `id=eq.${q(preferTenantId)}&select=website_url`, { single: true }).catch(() => null),
+          db.select('users', `google_sub=eq.${q(sub)}&select=tenant_id,tenant:tenants(website_url)`).catch(() => []),
+        ]);
+        const site = shell && shell.website_url ? String(shell.website_url).toLowerCase() : null;
+        const match = site ? (owned || []).find((u) => u.tenant && String(u.tenant.website_url || '').toLowerCase() === site) : null;
+        if (match) existing = { tenant_id: match.tenant_id };
+      }
       if (existing) {
         await db.update('users', `google_sub=eq.${q(sub)}&tenant_id=eq.${q(existing.tenant_id)}`, { last_seen_at: new Date().toISOString() }).catch(() => {});
         return existing.tenant_id;
