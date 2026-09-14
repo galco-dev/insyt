@@ -439,6 +439,18 @@ export default function Home() {
       {overview && overview.notice && (
         <Card accent="info" className="mb-3 p-4 text-small">{overview.notice}</Card>
       )}
+      {access && access.managed && (
+        <Card className="mb-3 p-4 text-small">
+          Looked after by <strong>{access.managed.agency}</strong>. {access.managed.mode === 'read_only'
+            ? 'They approve fixes and undo changes for you; everything here is yours to read.'
+            : 'They see what you see and can approve fixes; anything you approve here is logged for them too.'}
+        </Card>
+      )}
+      {overview && overview.held_report && (
+        <Card accent="info" className="mb-3 p-4 text-small">
+          Your agency is reviewing this week&apos;s check. The report lands here once they have looked at it.
+        </Card>
+      )}
       <Card className="flex items-center gap-5 p-5">
         {latest ? <MiniDial score={health.score} /> : (
           <div className="flex h-[100px] w-[100px] shrink-0 items-center justify-center" aria-hidden>

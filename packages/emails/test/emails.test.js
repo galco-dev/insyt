@@ -62,3 +62,24 @@ test('single-CTA rule: every rendered template has at most one link button', () 
     assert.ok(subject.length > 0 && html.includes('<!doctype html>'));
   }
 });
+
+test('drain (agency plan move 9): a report held for review stays queued, a rejected one is suppressed, an approved one sends', async () => {
+  const { drainQueuedEmails } = require('../src/sender');
+  const updates = [];
+  const REPORTS = { 'rep-p': { html_email: '<p>x</p>', type: 'weekly', review_status: 'pending' }, 'rep-r': { html_email: '<p>x</p>', type: 'weekly', review_status: 'rejected' }, 'rep-a': { html_email: '<p>x</p>', type: 'weekly', review_status: 'approved' } };
+  const db = {
+    select: async (table, query, opts) => {
+      if (table === 'emails') return [{ id: 'e1', report_id: 'rep-p', to_email: 'a@x', stream: 'report', tenant_id: 't1' }, { id: 'e2', report_id: 'rep-r', to_email: 'a@x', stream: 'report', tenant_id: 't1' }, { id: 'e3', report_id: 'rep-a', to_email: 'a@x', stream: 'report', tenant_id: 't1', payload: { subject: 'Weekly' } }];
+      if (table === 'tenants') return { email_reports: true };
+      if (table === 'reports') return REPORTS[/id=eq\.([^&]+)/.exec(query)[1]] || null;
+      return opts && opts.single ? null : [];
+    },
+    update: async (table, query, patch) => { updates.push([query, patch.status]); },
+    insert: async () => {},
+  };
+  const sentTo = [];
+  const r = await drainQueuedEmails({ db, apiKey: 'k', baseUrl: 'https://app', fetchImpl: async (url, init) => { sentTo.push(JSON.parse(init.body).subject); return { ok: true, json: async () => ({ id: 'm1' }) }; } });
+  assert.deepStrictEqual(r, { sent: 1, failed: 0 });
+  assert.deepStrictEqual(sentTo, ['Weekly']);
+  assert.deepStrictEqual(updates, [['id=eq.e2', 'suppressed'], ['id=eq.e3', 'sent']]);
+});

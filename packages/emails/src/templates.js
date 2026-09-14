@@ -70,6 +70,23 @@ const TEMPLATES = [
     ],
     (v) => ({ label: 'Pay and start the plan', url: v.pay_url || 'https://app.tryinsyt.com/app/plan' })),
 
+  T('report_ready_copy', 'report',
+    (v) => `${v.agency || 'Your agency'} has this week's check for ${v.site || 'your website'}`,
+    (v) => [
+      `The weekly check for ${v.site || 'your website'} is done. ${v.agency || 'Your agency'} looks after it: they review what we found and decide what to do, and nothing changes in your accounts without their approval.`,
+      v.held ? 'The report opens once they have looked at it.' : 'You can read the report any time.',
+    ],
+    (v) => ({ label: 'See the report', url: v.report_url || 'https://app.tryinsyt.com/app' })),
+
+  T('agency_digest', 'transactional',
+    (v) => `${v.agency || 'Your agency'} this morning: ${v.alerts || 0} alert${v.alerts === 1 ? '' : 's'}${v.reviews ? `, ${v.reviews} report${v.reviews === 1 ? '' : 's'} to review` : ''}`,
+    (v) => [
+      `Good morning${v.name ? ` ${v.name}` : ''}. Waiting on you across your accounts:`,
+      ...((v.lines || []).map((l) => `- ${l}`)),
+      'Acknowledging an alert or approving a report in the console takes it off tomorrow\'s list.',
+    ],
+    (v) => ({ label: 'Open the console', url: v.console_url || 'https://app.tryinsyt.com/app/agency' })),
+
   T('agency_stepped_back', 'transactional',
     (v) => `${v.agency || 'Your agency'} has stepped back from ${v.business || 'your account'} on Insyt`,
     (v) => [

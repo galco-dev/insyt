@@ -315,9 +315,22 @@ function buildStages({ google, crawler, model, store }) {
         const pendingCount = Number((drafted && (drafted.proposed ?? drafted.cards)) ?? ctx.findings.filter((f) => f.fix && f.fix.available).length) || 0;
         let htmlEmail = ctx.html_email;
         let links = {};
-        if (store.mintReportLinks && ctx.envelope) {
+        const baseUrl = process.env.APP_BASE_URL || 'https://app.tryinsyt.com';
+        // A managed tenant (agency plan moves 9 and 10): the email goes to the
+        // agency with console links, never the client's sign-in links, and the
+        // report waits for a seat's review when the account asks for that.
+        const managed = store.managedBy ? await store.managedBy(ctx.run.tenant_id).catch(() => null) : null;
+        if (managed && ctx.envelope) {
           try {
-            const baseUrl = process.env.APP_BASE_URL || 'https://app.tryinsyt.com';
+            const consoleUrl = `${baseUrl}/app/agency/accounts/${managed.account_id}`;
+            links = { view_url: consoleUrl, approve_url: null, settings_url: consoleUrl };
+            htmlEmail = renderReport(ctx.envelope, {
+              unlocked: true, healthScore: ctx.health_score, mode: 'email',
+              links: { web_url: consoleUrl, unlock_url: consoleUrl, approve_url: null, settings_url: consoleUrl, pending_count: pendingCount },
+            });
+          } catch (e) { console.error(`agency report render failed for ${ctx.run.tenant_id}: ${e.message}`); }
+        } else if (store.mintReportLinks && ctx.envelope) {
+          try {
             const paid = store.tenantPaid ? await store.tenantPaid(ctx.run.tenant_id) : false;
             links = await store.mintReportLinks(ctx.run.tenant_id, reportId, { baseUrl, pendingCount });
             htmlEmail = renderReport(ctx.envelope, {
@@ -341,6 +354,7 @@ function buildStages({ google, crawler, model, store }) {
           tenant_id: ctx.run.tenant_id,
           type,
           summary,
+          review_status: managed && managed.review_reports ? 'pending' : null,
         });
         if (store.notifyReport) {
           try {
@@ -348,6 +362,7 @@ function buildStages({ google, crawler, model, store }) {
               tenantId: ctx.run.tenant_id, reportId: savedId || reportId, type, summary,
               issueCount: (ctx.envelope ? ctx.envelope.findings : ctx.findings).filter((f) => f.status !== 'dismissed' && f.status !== 'resolved').length,
               pendingCount, links, currencySymbol: (ctx.envelope && ctx.envelope.currency_symbol) || '$',
+              managed, baseUrl,
             });
           } catch (e) { console.error(`report email failed for ${ctx.run.tenant_id}: ${e.message}`); }
         }

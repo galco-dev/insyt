@@ -730,6 +730,72 @@ test('agencyStore (agency plan moves 7 and 8): am scope filters reads and writes
   assert.strictEqual(await ag.accountDetail('ag1', 'acc-1', { seatId: 's9' }) === null, false, 'an unassigned account is visible to every am');
 });
 
+test('agency plan push 4: a managed tenant routes report and alert emails to the seat, holds reports for review, is active in the gate, and the digest goes out once at 8am agency time', async () => {
+  const { workerStore, dashStore, opsStore, managedBy, agencyStore } = require('../src/stores');
+  const MANAGED = { id: 'acc-1', agency_id: 'ag1', seat_id: 's2', review_reports: true, client_mode: 'read_only', client_copy: true, display_name: 'Glow', agency: { name: 'Northlight', timezone: 'Asia/Dubai', notify_email: null }, seat: { email: 'mo@northlight.ae', name: 'Mo', status: 'active' } };
+  const f = routedFetch({
+    agency_accounts: (url, init) => (init.method === 'GET' && /tenant_id=eq\.tn-c/.test(url) ? [MANAGED] : /agency_id=eq\.ag1&status=eq\.active/.test(url) ? [{ id: 'acc-1', tenant_id: 'tn-c', display_name: 'Glow', seat_id: 's2' }] : []),
+    users: [{ id: 'u1', email: 'owner@glow.ae' }], tenants: [{ website_url: 'glow.ae', email_reports: true, size_band: '4k', paused_until: null }],
+    emails: [],
+    payments: [], subscriptions: [], pricing_config: [],
+    reports: (url, init) => (init.method === 'GET' && /review_status=eq\.pending&select=id,created_at/.test(url) ? [{ id: 'rep-h', created_at: '2026-09-13T00:00:00Z' }] : /review_status=eq\.pending/.test(url) ? [{ tenant_id: 'tn-c', created_at: '2026-09-13T00:00:00Z' }] : /id=eq\.rep-h/.test(url) ? [{ id: 'rep-h', review_status: 'pending' }] : []),
+    changes: [], assets: [], google_connections: [{ status: 'valid', scope_level: 'write' }],
+    agencies: [{ id: 'ag1', name: 'Northlight', timezone: 'Asia/Dubai' }],
+    agency_seats: (url) => (/role=eq\.admin/.test(url) ? [{ email: 'ana@northlight.ae' }] : [{ id: 's2', email: 'mo@northlight.ae', name: 'Mo', role: 'am', tenant_id: 'tn-mo' }, { id: 's1', email: 'ana@northlight.ae', name: 'Ana', role: 'admin', tenant_id: 'tn-ana' }]),
+    alerts: [{ tenant_id: 'tn-c', title: 'Spend 2.4x a normal day', severity: 'warning', created_at: '2026-09-14T03:00:00Z' }],
+    ledger: [], agency_audit_log: [],
+  });
+  const db = mkDb(f);
+  const m = await managedBy(db, 'tn-c');
+  assert.deepStrictEqual([m.to, m.review_reports, m.client_mode, m.client_copy, m.agency_name], ['mo@northlight.ae', true, 'read_only', true, 'Northlight']);
+  assert.strictEqual(await managedBy(db, 'tn-solo'), null);
+
+  // The report email goes to the seat with console links; the client gets a plain copy because the account asks for one.
+  const w = workerStore(db);
+  const r = await w.notifyReport({ tenantId: 'tn-c', reportId: 'rep-1', type: 'weekly', summary: { waste_monthly_usd: 300 }, issueCount: 4, pendingCount: 2, managed: m, baseUrl: 'https://app' });
+  assert.deepStrictEqual(r, { queued: true, template: 'agency_report', to: 'mo@northlight.ae' });
+  const mails = f.calls.filter((c) => c.method === 'POST' && /emails/.test(c.url)).map((c) => c.body[0]);
+  assert.deepStrictEqual(mails.map((x) => [x.template_id, x.to_email]), [['report_weekly', 'mo@northlight.ae'], ['report_ready_copy', 'owner@glow.ae']]);
+  assert.strictEqual(mails[0].payload.report_url, 'https://app/app/agency/accounts/acc-1');
+  assert.strictEqual(mails[0].payload.approve_url, '');
+  assert.match(mails[0].payload.subject, /held for your review/);
+  const { renderTemplate } = require('../../emails/src/templates');
+  assert.doesNotThrow(() => renderTemplate('report_ready_copy', mails[1].payload));
+
+  // The client's gate: active, never asked to pay, says who looks after it; held reports stay hidden.
+  const d = dashStore(db);
+  const a = await d.access('tn-c');
+  assert.deepStrictEqual([a.level, a.has_customer, a.credit_applies, a.managed], ['active', true, false, { agency: 'Northlight', mode: 'read_only' }]);
+  assert.match(a.plan.label, /^Looked after by Northlight/);
+  assert.deepStrictEqual(await d.reportData('tn-c', 'rep-h'), { held: true });
+  assert.deepStrictEqual(await d.heldReport('tn-c'), { id: 'rep-h', created_at: '2026-09-13T00:00:00Z' });
+  await d.reports('tn-c');
+  assert.match(decodeURIComponent(f.calls.at(-1).url), /or=\(review_status\.is\.null,review_status\.neq\.pending\)/);
+
+  // An agency dismissal is a dismissal, with a line in the client's History.
+  const ag = agencyStore(db);
+  f.routes.changes = (url, init) => (init.method === 'GET' ? [{ id: 'chg-1', tenant_id: 'tn-c', finding_id: null, finding: null }] : []);
+  assert.deepStrictEqual(await ag.dismissChange('ag1', 's2', 'chg-1', 'client asked'), { ok: true });
+  assert.deepStrictEqual(f.calls.filter((c) => c.method === 'PATCH' && /changes/.test(c.url)).at(-1).body, { status: 'dismissed' });
+  const line = f.calls.filter((c) => c.method === 'POST' && /ledger/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([line.event, line.summary_text], ['fix_dismissed', 'Northlight decided against this one: client asked.']);
+
+  // The digest: 8am Dubai is 04:00 UTC; one email per seat, the am only sees assigned-or-unassigned accounts, nothing twice.
+  const ops = opsStore(db);
+  assert.deepStrictEqual(await ops.agencyDigests('2026-09-14T03:00:00Z'), [], 'not 8am yet');
+  const sent = await ops.agencyDigests('2026-09-14T04:10:00Z', { baseUrl: 'https://app' });
+  assert.deepStrictEqual(sent, ['mo@northlight.ae', 'ana@northlight.ae']);
+  const digest = f.calls.filter((c) => c.method === 'POST' && /emails/.test(c.url)).map((c) => c.body[0]).filter((x) => x.template_id === 'agency_digest');
+  assert.strictEqual(digest.length, 2);
+  assert.deepStrictEqual([digest[0].payload.alerts, digest[0].payload.reviews], [1, 1]);
+  assert.doesNotThrow(() => renderTemplate('agency_digest', digest[0].payload));
+  f.routes.emails = (url, init) => (init.method === 'GET' ? [{ id: 'e1' }] : []);
+  assert.deepStrictEqual(await ops.agencyDigests('2026-09-14T04:20:00Z'), [], 'never twice in a day');
+
+  // The monthly tail never applies to a managed tenant.
+  assert.deepStrictEqual(await ops.weeklyCadence('tn-c', Date.now()), { cadence: 'weekly', due: true });
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

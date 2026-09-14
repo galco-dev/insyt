@@ -288,3 +288,22 @@ test('ops console: token required, tenants table renders, manual run enqueues', 
     assert.deepStrictEqual(enqueued, ['r9']);
   });
 });
+
+test('agency plan move 11: a managed tenant in read-only mode is a viewer, its held report answers 404 with held', async () => {
+  const ds = dashStore();
+  ds.managed = async () => ({ agency_name: 'Northlight', client_mode: 'read_only' });
+  ds.reportData = async (t, id) => (id === 'rep-h' ? { held: true } : null);
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const r = await fetch(`${base}/api/app/approve/ch1`, { method: 'POST', headers: { cookie: authedCookie() } });
+    assert.strictEqual(r.status, 403);
+    const body = await r.json();
+    assert.strictEqual(body.view_only, true);
+    assert.match(body.error, /^Northlight looks after approvals/);
+    assert.ok(!ds.actions.some((a) => a[0] === 'approve'), 'nothing approved');
+    const held = await fetch(`${base}/api/app/report/rep-h`, { headers: { cookie: authedCookie() } });
+    assert.strictEqual(held.status, 404);
+    assert.strictEqual((await held.json()).held, true);
+    ds.managed = async () => ({ agency_name: 'Northlight', client_mode: 'shared' });
+    assert.strictEqual((await fetch(`${base}/api/app/approve/ch1`, { method: 'POST', headers: { cookie: authedCookie() } })).status, 200, 'shared mode keeps the client\'s yes');
+  });
+});

@@ -42,6 +42,9 @@ async function tick({ store, queue, sweep, now = Date.now() }) {
   // A client account an agency asked for goes live once its login linked something (fix plan move 14).
   if (store.activatePendingAgencyAccounts) actions.agency_accounts = (await store.activatePendingAgencyAccounts()).length;
 
+  // The morning digest (agency plan move 10): one email per seat at 8am, agency time.
+  if (store.agencyDigests) actions.digests = (await store.agencyDigests(new Date(now).toISOString())).length;
+
   // Orphan shells (agency plan move 6): removed 30 days ago, never connected, deleted.
   if (store.retireOrphanShells) actions.retired = (await store.retireOrphanShells(new Date(now).toISOString())).length;
 

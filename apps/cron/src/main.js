@@ -25,6 +25,7 @@ const store = {
   weeklyCadence: ops.weeklyCadence,
   activatePendingAgencyAccounts: ops.activatePendingAgencyAccounts,
   retireOrphanShells: ops.retireOrphanShells,
+  agencyDigests: (nowIso) => ops.agencyDigests(nowIso, { baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com' }),
   connectionsForSweep: ops.connectionsForSweep,
   runExists: async (key) => !!(await db.select('runs', `idempotency_key=eq.${q(key)}&select=id`, { single: true })),
   // Active tenants with at least one linked asset and no completed or in-flight run.
@@ -41,7 +42,13 @@ const store = {
     return out;
   },
   insertRun: async (row) => { const [r] = await db.insert('runs', [row]); return r; },
-  subscriptionFor: async (tenantId) => db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status&limit=1`, { single: true }),
+  // Managed tenants are eligible for deep reviews on the agency's tier (agency plan move 11).
+  subscriptionFor: async (tenantId) => {
+    const sub = await db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status&limit=1`, { single: true });
+    if (sub) return sub;
+    const managed = await require('../../../packages/db/src/stores').managedBy(db, tenantId).catch(() => null);
+    return managed ? { tier: 'core', status: 'active', managed: true } : null;
+  },
   lastDeepRunAt: async (tenantId) => {
     const r = await db.select('runs', `tenant_id=eq.${q(tenantId)}&type=eq.deep&select=started_at&order=started_at.desc.nullslast&limit=1`, { single: true });
     return r ? r.started_at : null;

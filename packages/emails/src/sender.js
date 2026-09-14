@@ -47,7 +47,14 @@ async function drainQueuedEmails({ db, apiKey, baseUrl, limit = 20, fetchImpl = 
       }
       let subject; let html;
       if (email.report_id) {
-        const report = await db.select('reports', `id=eq.${q(email.report_id)}&select=html_email,type`, { single: true });
+        const report = await db.select('reports', `id=eq.${q(email.report_id)}&select=html_email,type,review_status`, { single: true });
+        // The review gate (agency plan move 9): a report held for a seat's
+        // review stays queued until it is approved; a rejected one never goes.
+        if (report && report.review_status === 'pending') continue;
+        if (report && report.review_status === 'rejected') {
+          await db.update('emails', `id=eq.${q(email.id)}`, { status: 'suppressed' }).catch(() => {});
+          continue;
+        }
         if (!report || !report.html_email) throw new Error('report html missing');
         html = report.html_email;
         subject = (email.payload && email.payload.subject)

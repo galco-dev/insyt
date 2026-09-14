@@ -331,9 +331,13 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         if (!session) return json(res, 401, { error: 'Sign in first.' });
         const t = session.tenantId;
         const sub = path.slice('/api/app'.length) || '/';
-        const role = session.role || 'owner';
+        let role = session.role || 'owner';
+        // A managed tenant in read-only mode (agency plan move 11): the client
+        // reads everything; approvals and undo belong to the agency.
+        const managed = dashStore.managed ? await dashStore.managed(t).catch(() => null) : null;
+        if (managed && managed.client_mode === 'read_only' && role === 'owner') role = 'viewer';
         // A viewer (fix plan move 12) reads everything and changes nothing.
-        if (role === 'viewer' && req.method === 'POST' && sub !== '/event') return json(res, 403, { error: 'View only. Approvals stay with the owner.', view_only: true });
+        if (role === 'viewer' && req.method === 'POST' && sub !== '/event') return json(res, 403, { error: managed && managed.client_mode === 'read_only' ? `${managed.agency_name} looks after approvals for this account. Ask them.` : 'View only. Approvals stay with the owner.', view_only: true });
         const accessWithRole = async () => { const a = await accessFor(dashStore, t); return a ? { ...a, role } : a; };
         // Connected data (Settings → "See what Insyt reads"): the raw objects
         // each granted Google API returns for this tenant, plus the two Ads
@@ -364,6 +368,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             const overview = dashStore.overview ? await dashStore.overview(t, new Date(now())) : null;
             // The $20 tail (fix plan move 13): say when checks have gone monthly.
             if (overview && opsStore && opsStore.weeklyCadence) { try { overview.cadence = (await opsStore.weeklyCadence(t, now())).cadence; } catch { overview.cadence = 'weekly'; } }
+            // A report held for the agency's review (agency plan move 9).
+            if (overview && dashStore.heldReport) { try { const h = await dashStore.heldReport(t); overview.held_report = h ? { since: h.created_at } : null; } catch { overview.held_report = null; } }
             return json(res, 200, { overview, access: await accessWithRole() });
           }
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessWithRole() });
@@ -390,6 +396,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/setup') return json(res, 200, dashStore.setupSteps ? await dashStore.setupSteps(t) : { steps: [] });
           if (sub.startsWith('/report/')) {
             const r = await dashStore.reportData(t, sub.split('/')[2]);
+            if (r && r.held) return json(res, 404, { error: 'Your agency is reviewing this report. It arrives once they have looked at it.', held: true });
             if (!r) return json(res, 404, { error: 'Report not found.' });
             // Pending changes ride along so each finding can carry its
             // "Fix this" (spec §4, Report), and the gate decides what it does.

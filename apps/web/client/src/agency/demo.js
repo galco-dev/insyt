@@ -419,6 +419,9 @@ export function agencyDemo(path, method, body) {
     const acc = s.accounts.find((a) => a.id === p.split('/')[2]);
     if (!acc) return { status: 404, error: 'Unknown account.' };
     if (typeof body.brief_only === 'boolean') acc.brief_only = body.brief_only;
+    if (typeof body.review_reports === 'boolean') acc.review_reports = body.review_reports;
+    if (typeof body.client_copy === 'boolean') acc.client_copy = body.client_copy;
+    if (body.client_mode) acc.client_mode = body.client_mode;
     if (body.report_register) acc.report_register = body.report_register;
     if ('seat_id' in body) { const seat = s.seats.find((x) => x.id === body.seat_id); acc.seat = seat ? { name: seat.name } : null; }
     const row = s.portfolio.find((a) => a.name === acc.display_name);

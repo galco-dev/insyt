@@ -9,6 +9,19 @@
 
 const { judgePulse } = require('../../../packages/rules/src/pulse');
 const { ownerEmail } = require('./handlers');
+const { managedBy } = require('../../../packages/db/src/stores');
+
+// Alerts go to the agency for a managed tenant (agency plan move 10), and to
+// the client too only when the account asks for a copy.
+async function alertRecipients(db, tenantId) {
+  const m = await managedBy(db, tenantId).catch(() => null);
+  const owner = await ownerEmail(db, tenantId);
+  if (!m) return owner ? [owner] : [];
+  const out = [];
+  if (m.to) out.push(m.to);
+  if (m.client_copy && owner) out.push(owner);
+  return out;
+}
 
 const DAY_MS = 86_400_000;
 
@@ -45,11 +58,14 @@ async function pumpDailyPulse({ db, google, queue = null, now = Date.now, limit 
         if (seen.has(a.kind)) continue; // one alert per kind per day
         await db.insert('alerts', [{ tenant_id: tenantId, severity: a.severity, kind: a.kind, title: a.title, detail: a.detail, campaign_ref: a.campaign_ref }], { returning: false });
         actions.alerts += 1;
-        await db.insert('emails', [{
-          tenant_id: tenantId, template_id: 'daily_alert', to_email: await ownerEmail(db, tenantId), stream: 'transactional', status: 'queued',
-          payload: { title: a.title, severity: a.severity, kind: a.kind, app_url: `${process.env.APP_BASE_URL || 'https://app.tryinsyt.com'}/app` },
-        }], { returning: false }).catch(() => {});
-        await db.insert('ledger', [{ tenant_id: tenantId, event: 'watch_triggered', actor: 'system', summary_text: `Daily check: ${a.title}. We emailed you.` }], { returning: false }).catch(() => {});
+        const recipients = await alertRecipients(db, tenantId);
+        for (const to of recipients) {
+          await db.insert('emails', [{
+            tenant_id: tenantId, template_id: 'daily_alert', to_email: to, stream: 'transactional', status: 'queued',
+            payload: { title: a.title, severity: a.severity, kind: a.kind, app_url: `${process.env.APP_BASE_URL || 'https://app.tryinsyt.com'}/app` },
+          }], { returning: false }).catch(() => {});
+        }
+        await db.insert('ledger', [{ tenant_id: tenantId, event: 'watch_triggered', actor: 'system', summary_text: `Daily check: ${a.title}. ${recipients.length ? 'We emailed ' + (recipients.length > 1 ? 'you and your agency' : 'the person looking after this') + '.' : ''}`.trim() }], { returning: false }).catch(() => {});
         if (a.trigger_run) triggerRun = true;
       }
       if (triggerRun) {

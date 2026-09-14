@@ -788,7 +788,7 @@ function Alerts() {
       <MonoLabel>Alerts</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{open === 0 ? 'Nothing waiting on you' : `${open} unacknowledged`}</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        Breakage and fast movers that can&apos;t wait for the weekly run: tags going dark, spend spikes, disapprovals, conversion flatlines. Today the alert email goes to the client&apos;s own inbox; a morning digest for seats is coming. Acknowledging here marks it handled for the whole team. Alerts only ever notify; fixes still go through triage.
+        Breakage and fast movers that can&apos;t wait for the weekly run: tags going dark, spend spikes, disapprovals, conversion flatlines. Each alert emails the account&apos;s assigned seat (the client too, when the account copies them), and every seat gets one morning digest of what is still unacknowledged. Acknowledging here takes it off tomorrow&apos;s digest. Alerts only ever notify; fixes still go through triage.
       </p>
       {rows.length === 0 ? (
         <div className="mt-5"><EmptyState title="All quiet" body="Alerts land here the moment monitoring spots them." /></div>
@@ -1019,7 +1019,7 @@ function ReviewItem({ r }) {
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         {state === 'approve' ? <Check size={15} className="text-success" aria-hidden /> : <X size={15} aria-hidden />}
-        {r.account}: report {state === 'approve' ? 'approved' : 'sent back'} · logged
+        {r.account}: report {state === 'approve' ? 'approved and on its way to the client' : 'sent back; the client will not see it'} · logged
       </Card>
     );
   }
@@ -1033,6 +1033,7 @@ function ReviewItem({ r }) {
         <ActionNote error={err} />
       </div>
       <div className="flex shrink-0 gap-2">
+        <a href={r.url || demoHref('/app/report')} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-(--ui-well) px-4 py-2 text-small font-medium">Preview</a>
         {readOnly ? <ViewOnly /> : (
           <>
             <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Approve</Button>
@@ -1056,10 +1057,10 @@ function Review() {
       <MonoLabel>Report review</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{queue.length} awaiting sign-off</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        Today a client&apos;s weekly report is emailed to them when the check finishes. A review hold, where nothing reaches the client until a seat approves it here, is coming; until then this queue only shows reports that were held by hand.
+        Reports for accounts with review on wait here. Nothing reaches the client until a seat approves it: the email stays held and the client&apos;s app says their agency is reviewing. Send back keeps it hidden; the next weekly check produces a fresh one. Review is on by default and per account, on the account page.
       </p>
       {queue.length === 0 ? (
-        <div className="mt-5"><EmptyState title="Nothing waiting" body="Reports go straight to clients today. Held reports will land here once review holds ship." /></div>
+        <div className="mt-5"><EmptyState title="Nothing waiting" body="Every weekly report for an account with review on lands here before the client sees it." /></div>
       ) : (
         <div className="mt-5 flex flex-col gap-3">{queue.map((r) => <ReviewItem key={r.id} r={r} />)}</div>
       )}
@@ -1591,6 +1592,21 @@ function AccountPage({ id }) {
               <input type="checkbox" checked={!!account.brief_only} onChange={(e) => save({ brief_only: e.target.checked })} disabled={saving} className="size-4 accent-(--ui-cta-a)" />
               Brief-only: we propose, you apply by hand
             </label>
+            <label className="flex items-center gap-2 text-small">
+              <input type="checkbox" checked={account.review_reports !== false} onChange={(e) => save({ review_reports: e.target.checked })} disabled={saving} className="size-4 accent-(--ui-cta-a)" />
+              Hold reports for a seat&apos;s review before the client sees them
+            </label>
+            <label className="flex items-center gap-2 text-small">
+              <input type="checkbox" checked={!!account.client_copy} onChange={(e) => save({ client_copy: e.target.checked })} disabled={saving} className="size-4 accent-(--ui-cta-a)" />
+              Copy the client on report and alert emails (no approve links)
+            </label>
+            <label className="flex flex-col gap-1 text-small">
+              <span>The client&apos;s own app</span>
+              <select value={account.client_mode || 'shared'} onChange={(e) => save({ client_mode: e.target.value })} disabled={saving} className={field}>
+                <option value="shared">Shared - they can approve too; every action is logged here</option>
+                <option value="read_only">Read only - approvals and undo stay with you</option>
+              </select>
+            </label>
             <label className="flex flex-col gap-1 text-small">
               <span>Report register</span>
               <select value={account.report_register} onChange={(e) => save({ report_register: e.target.value })} disabled={saving} className={field}>
@@ -1800,7 +1816,7 @@ function AgencyRoutes() {
       <main className="page-fade mx-auto max-w-xl2 px-5 pb-24 pt-8">{screen}</main>
       <footer className="mx-auto max-w-xl2 px-5 pb-10 text-tiny text-neutral-900">
         <Undo2 size={12} className="mr-1 inline" aria-hidden />
-        No auto-apply, ever. Changes land on client accounts under your name - every one waits for a seat&apos;s explicit approval, is applied with the client&apos;s own Google connection, and is watched for 48 hours with an undo in the client&apos;s History.
+        No auto-apply, ever. Changes land on client accounts under your name - every one waits for a seat&apos;s explicit approval, is applied with the client&apos;s own Google connection, and is watched for 48 hours with an undo on the account page.
       </footer>
     </div>
     </ScopeContext.Provider>
