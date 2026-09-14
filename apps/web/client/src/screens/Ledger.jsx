@@ -10,6 +10,7 @@ import { MonoLabel, Card, Spinner, EmptyState, ErrorNote, Button, Segments } fro
 
 const EVENT_ICON = {
   change_applied: CheckCircle2, fix_applied: CheckCircle2, tag_verified: CheckCircle2, approval: CheckCircle2,
+  fix_approved: CheckCircle2,
   change_reverted: Undo2, fix_reverted: Undo2, revert_requested: Undo2, fix_proposed: FileText,
   report_sent: FileText, connection_changed: Link2,
   watch_triggered: Eye, subscription_changed: FileText,

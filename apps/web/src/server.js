@@ -642,22 +642,33 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         const sub = path.slice('/api/agency'.length) || '/';
         const canWrite = seat.role === 'admin' || seat.role === 'am';
         const isAdmin = seat.role === 'admin';
+        // Account managers see and touch their assigned accounts, plus the
+        // unassigned ones (agency plan move 7). Admins and read-only see all.
+        const scope = seat.role === 'am' ? { seatId: seat.id } : null;
 
         if (req.method === 'GET') {
           if (sub === '/me') return json(res, 200, { seat, agency: await agencyStore.agency(ag), agencies: (allSeats || [seat]).filter((x) => !x.status || x.status === 'active').map((x) => ({ id: x.agency_id, name: x.agency ? x.agency.name : null, role: x.role })) });
-          if (sub === '/portfolio') return json(res, 200, { accounts: await agencyStore.portfolio(ag) });
-          if (sub === '/triage') return json(res, 200, { queue: await agencyStore.triage(ag) });
-          if (sub === '/review') return json(res, 200, { queue: await agencyStore.reviewQueue(ag) });
+          if (sub === '/portfolio') return json(res, 200, { accounts: await agencyStore.portfolio(ag, scope) });
+          if (sub === '/triage') return json(res, 200, { queue: await agencyStore.triage(ag, scope) });
+          if (sub === '/review') return json(res, 200, { queue: await agencyStore.reviewQueue(ag, scope) });
           if (sub === '/brand') return json(res, 200, { kit: (await agencyStore.brandKit(ag)) || null });
           if (sub === '/seats') return json(res, 200, { seats: await agencyStore.seats(ag) });
           if (sub === '/credits') return json(res, 200, await agencyStore.credits(ag));
           if (sub === '/log') return json(res, 200, { entries: await agencyStore.auditLog(ag) });
-          if (sub === '/accounts') return json(res, 200, { accounts: await agencyStore.accountsList(ag, { includeRemoved: u.searchParams.get('all') === '1' }) });
+          if (sub === '/accounts') return json(res, 200, { accounts: await agencyStore.accountsList(ag, { includeRemoved: u.searchParams.get('all') === '1' }, scope) });
           if (sub === '/billing') return json(res, 200, await agencyStore.billing(ag, new Date(now()).toISOString()));
-          if (sub === '/campaigns') return json(res, 200, { campaigns: await agencyStore.campaignsFor(ag) });
-          if (sub === '/pacing') return json(res, 200, { accounts: await agencyStore.pacing(ag, new Date(now()).toISOString()) });
-          if (sub === '/alerts') return json(res, 200, { alerts: await agencyStore.alertsFor(ag) });
-          if (sub === '/drafts') return json(res, 200, { drafts: await agencyStore.draftsFor(ag) });
+          if (sub === '/campaigns') return json(res, 200, { campaigns: await agencyStore.campaignsFor(ag, scope) });
+          if (sub === '/pacing') return json(res, 200, { accounts: await agencyStore.pacing(ag, new Date(now()).toISOString(), scope) });
+          if (sub === '/alerts') return json(res, 200, { alerts: await agencyStore.alertsFor(ag, scope) });
+          if (sub === '/drafts') return json(res, 200, { drafts: await agencyStore.draftsFor(ag, scope) });
+          {
+            const m = /^\/accounts\/([^/]+)$/.exec(sub);
+            if (m && agencyStore.accountDetail) {
+              const d = await agencyStore.accountDetail(ag, m[1], scope);
+              if (!d) return json(res, 404, { error: 'This account is not in your portfolio.' });
+              return json(res, 200, d);
+            }
+          }
         }
         if (req.method === 'POST' && sub === '/switch') {
           let body = '';
@@ -687,30 +698,30 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
 
           if (sub === '/approve-batch') {
             if (!Array.isArray(parsed.ids) || !parsed.ids.length) return json(res, 400, { error: 'ids required' });
-            const r = await agencyStore.approveBatch(ag, seat.id, parsed.ids);
+            const r = await agencyStore.approveBatch(ag, seat.id, parsed.ids, scope);
             return json(res, 200, { ok: true, approved: r.approved, skipped: r.skipped || [] });
           }
           if (sub.startsWith('/approve/')) {
-            const r = await agencyStore.approveChange(ag, seat.id, sub.split('/')[2]);
+            const r = await agencyStore.approveChange(ag, seat.id, sub.split('/')[2], scope);
             if (refused(r)) return undefined; return json(res, 200, { ok: true });
           }
           if (sub.startsWith('/dismiss/')) {
-            const r = await agencyStore.dismissChange(ag, seat.id, sub.split('/')[2], parsed.reason);
+            const r = await agencyStore.dismissChange(ag, seat.id, sub.split('/')[2], parsed.reason, scope);
             if (refused(r)) return undefined; return json(res, 200, { ok: true });
           }
           if (sub.startsWith('/snooze/')) {
-            const r = await agencyStore.snoozeChange(ag, seat.id, sub.split('/')[2], parsed.days, parsed.reason);
+            const r = await agencyStore.snoozeChange(ag, seat.id, sub.split('/')[2], parsed.days, parsed.reason, scope);
             if (refused(r)) return undefined; return json(res, 200, { ok: true, until: r.until });
           }
           if (sub.startsWith('/targets/')) {
-            const row = await agencyStore.setTargets(ag, seat.id, sub.split('/')[2], parsed);
+            const row = await agencyStore.setTargets(ag, seat.id, sub.split('/')[2], parsed, scope);
             if (!row) return json(res, 404, { error: 'Unknown account.' });
             return json(res, 200, { ok: true });
           }
-          if (/^\/alerts\/[^/]+\/ack$/.test(sub)) { const r = await agencyStore.ackAlert(ag, seat.id, sub.split('/')[2]); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
+          if (/^\/alerts\/[^/]+\/ack$/.test(sub)) { const r = await agencyStore.ackAlert(ag, seat.id, sub.split('/')[2], scope); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
           if (sub === '/drafts') {
             if (!parsed.account_id || !parsed.template) return json(res, 400, { error: 'account_id and template required' });
-            const row = await agencyStore.createDraft(ag, seat.id, parsed);
+            const row = await agencyStore.createDraft(ag, seat.id, parsed, scope);
             if (!row) return json(res, 404, { error: 'Unknown account.' });
             return json(res, 200, { ok: true, draft: row });
           }
@@ -725,8 +736,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               return json(res, 200, { ok: true, ...r });
             }
           }
-          if (/^\/report\/[^/]+\/approve$/.test(sub)) { const r = await agencyStore.approveReport(ag, seat.id, sub.split('/')[2]); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
-          if (/^\/report\/[^/]+\/reject$/.test(sub)) { const r = await agencyStore.rejectReport(ag, seat.id, sub.split('/')[2], parsed.reason); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
+          if (/^\/report\/[^/]+\/approve$/.test(sub)) { const r = await agencyStore.approveReport(ag, seat.id, sub.split('/')[2], scope); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
+          if (/^\/report\/[^/]+\/reject$/.test(sub)) { const r = await agencyStore.rejectReport(ag, seat.id, sub.split('/')[2], parsed.reason, scope); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
           if (sub === '/brand') { const r = await agencyStore.saveBrandKit(ag, seat.id, parsed); return json(res, 200, { ok: true, version: r.version }); }
           if (sub === '/accounts') {
             if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
@@ -740,6 +751,30 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
               const status = m[2] === 'pause' ? 'paused' : m[2] === 'resume' ? 'active' : 'removed';
               const r = await agencyStore.setAccountStatus(ag, seat.id, m[1], status);
+              if (refused(r)) return undefined;
+              return json(res, 200, { ok: true });
+            }
+          }
+          {
+            // Three switches on the row (agency plan move 7).
+            const m = /^\/accounts\/([^/]+)\/settings$/.exec(sub);
+            if (m) {
+              if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
+              const r = await agencyStore.updateAccount(ag, seat.id, m[1], parsed);
+              if (!r || r.ok === false) {
+                if (r && r.reason === 'seat') return json(res, 400, { error: 'That seat is not active at this agency.' });
+                if (r && r.reason === 'nothing') return json(res, 400, { error: 'Nothing to change.' });
+                return json(res, 404, { error: 'Unknown account.' });
+              }
+              return json(res, 200, { ok: true, ...r });
+            }
+          }
+          {
+            // Undo from the seat (agency plan move 8).
+            const m = /^\/accounts\/([^/]+)\/revert\/([^/]+)$/.exec(sub);
+            if (m) {
+              const r = await agencyStore.revertChange(ag, seat.id, m[1], m[2], scope);
+              if (r && r.ok === false && r.reason === 'state') return json(res, 409, { error: r.error || 'Only applied changes can be undone.' });
               if (refused(r)) return undefined;
               return json(res, 200, { ok: true });
             }

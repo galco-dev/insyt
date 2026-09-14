@@ -1366,10 +1366,16 @@ function agencyStore(db, deps = {}) {
   // Every write stays home (agency plan move 1): a change, alert or report is
   // actionable only when its tenant is one of this agency's active accounts.
   // Foreign ids resolve to null and the caller refuses; nothing fails open.
-  const ownedAccount = async (agencyId, tenantId) => {
+  // Account managers are scoped to their assigned accounts, plus the ones
+  // nobody has been assigned yet (agency plan move 7). Admins and read-only
+  // seats see the whole portfolio. `scope` is { seatId } or null.
+  const scopeFilter = (scope) => (scope && scope.seatId ? `&or=(seat_id.eq.${q(scope.seatId)},seat_id.is.null)` : '');
+  const accountsFor = (agencyId, statuses, select, scope) => db.select('agency_accounts',
+    `agency_id=eq.${q(agencyId)}&status=${statuses}${scopeFilter(scope)}&select=${select}`);
+  const ownedAccount = async (agencyId, tenantId, scope) => {
     if (!tenantId) return null;
     return db.select('agency_accounts',
-      `agency_id=eq.${q(agencyId)}&tenant_id=eq.${q(tenantId)}&status=eq.active&select=id,brief_only,display_name`, { single: true }).catch(() => null);
+      `agency_id=eq.${q(agencyId)}&tenant_id=eq.${q(tenantId)}&status=eq.active${scopeFilter(scope)}&select=id,brief_only,display_name`, { single: true }).catch(() => null);
   };
   // The door (fix plan move 14, agency plan move 4): a seven-day link that
   // runs the Google sign-in and binds the seat to the identity that arrives.
@@ -1411,11 +1417,35 @@ function agencyStore(db, deps = {}) {
       return { ok: true, at };
     } catch { return { ok: false }; }
   };
-  const ownedRow = async (agencyId, table, id, extra = '') => {
+  const ownedRow = async (agencyId, table, id, extra = '', scope = null) => {
     const row = await db.select(table, `id=eq.${q(id)}&select=id,tenant_id${extra}`, { single: true }).catch(() => null);
     if (!row) return null;
-    const account = await ownedAccount(agencyId, row.tenant_id);
+    const account = await ownedAccount(agencyId, row.tenant_id, scope);
     return account ? { row, account } : null;
+  };
+  // What happened after yes (agency plan move 8): the approval row carries
+  // the seat, and the client's History says who approved it, at once.
+  const mirrorApproval = async (tenantId, changeId, seatId, who) => {
+    await db.insert('approvals', [{ tenant_id: tenantId, scope: 'change', target_id: changeId, channel: 'agency' }], { returning: false }).catch(() => {});
+    await db.insert('ledger', [{ tenant_id: tenantId, event: 'fix_approved', actor: `seat:${seatId}`, change_id: changeId, summary_text: `Approved by ${who}. Applying within the hour, then watched for 48 hours.` }], { returning: false }).catch(() => {});
+  };
+  const agencyName = async (agencyId) => {
+    const a = await db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null);
+    return (a && a.name) || 'Your agency';
+  };
+  // Connection state per client tenant: connected | reconnect | none.
+  const connectionsFor = async (tenantIds) => {
+    if (!tenantIds.length) return {};
+    const owners = await db.select('users', `tenant_id=in.(${tenantIds.map(q).join(',')})&role=eq.owner&select=id,tenant_id`).catch(() => []);
+    const conns = (owners || []).length ? await db.select('google_connections', `user_id=in.(${owners.map((o) => q(o.id)).join(',')})&select=user_id,status,scope_level`).catch(() => []) : [];
+    const byUser = Object.fromEntries((conns || []).map((c) => [c.user_id, c]));
+    const out = {};
+    for (const t of tenantIds) out[t] = 'none';
+    for (const o of owners || []) {
+      const c = byUser[o.id];
+      out[o.tenant_id] = !c ? 'none' : c.status === 'valid' ? 'connected' : 'reconnect';
+    }
+    return out;
   };
   return {
     // Resolve the acting seat from the platform session's tenant id.
@@ -1429,9 +1459,8 @@ function agencyStore(db, deps = {}) {
 
     // Portfolio grid: every managed account with health, pending count and
     // last-report age, computed from one query per table (no N+1).
-    portfolio: async (agencyId) => {
-      const accounts = await db.select('agency_accounts',
-        `agency_id=eq.${q(agencyId)}&status=eq.active&select=id,tenant_id,display_name,brief_only,report_register,seat:agency_seats(name)`);
+    portfolio: async (agencyId, scope = null) => {
+      const accounts = await accountsFor(agencyId, 'eq.active', 'id,tenant_id,display_name,brief_only,report_register,seat:agency_seats(name)', scope);
       if (!accounts.length) return [];
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
       const [findings, changes, reports] = await Promise.all([
@@ -1441,6 +1470,7 @@ function agencyStore(db, deps = {}) {
       ]);
       const by = (rows) => rows.reduce((m, r) => ((m[r.tenant_id] = m[r.tenant_id] || []).push(r), m), {});
       const f = by(findings); const c = by(changes); const r = by(reports);
+      const conn = await connectionsFor(accounts.map((a) => a.tenant_id));
       return accounts.map((a) => {
         const own = f[a.tenant_id] || [];
         const latest = (r[a.tenant_id] || [])[0];
@@ -1448,6 +1478,7 @@ function agencyStore(db, deps = {}) {
           id: a.id,
           tenant_id: a.tenant_id,
           name: a.display_name,
+          connection: conn[a.tenant_id] || 'none',
           manager: a.seat ? a.seat.name : null,
           brief_only: a.brief_only,
           register: a.report_register,
@@ -1463,9 +1494,8 @@ function agencyStore(db, deps = {}) {
 
     // Triage queue: proposed changes across every managed account, one
     // stream, biggest money first.
-    triage: async (agencyId) => {
-      const accounts = await db.select('agency_accounts',
-        `agency_id=eq.${q(agencyId)}&status=eq.active&select=tenant_id,display_name,brief_only`);
+    triage: async (agencyId, scope = null) => {
+      const accounts = await accountsFor(agencyId, 'eq.active', 'tenant_id,display_name,brief_only', scope);
       if (!accounts.length) return [];
       const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
@@ -1494,9 +1524,8 @@ function agencyStore(db, deps = {}) {
 
     // Campaign snapshots across all managed accounts — powers the scope bar
     // dropdowns and name/ID search. Refreshed by the weekly audit runs.
-    campaignsFor: async (agencyId) => {
-      const accounts = await db.select('agency_accounts',
-        `agency_id=eq.${q(agencyId)}&status=in.(pending,active)&select=id,tenant_id,display_name`);
+    campaignsFor: async (agencyId, scope = null) => {
+      const accounts = await accountsFor(agencyId, 'in.(pending,active)', 'id,tenant_id,display_name', scope);
       if (!accounts.length) return [];
       const byTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
@@ -1516,9 +1545,8 @@ function agencyStore(db, deps = {}) {
     // ---- Campaign creation (design doc): a build is the biggest possible
     // "change". Drafts flow approve → created PAUSED → enable (second
     // explicit click). Never created enabled. Every step seat-logged.
-    draftsFor: async (agencyId) => {
-      const accounts = await db.select('agency_accounts',
-        `agency_id=eq.${q(agencyId)}&status=in.(pending,active)&select=id,tenant_id,display_name`);
+    draftsFor: async (agencyId, scope = null) => {
+      const accounts = await accountsFor(agencyId, 'in.(pending,active)', 'id,tenant_id,display_name', scope);
       if (!accounts.length) return [];
       const byTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
@@ -1530,9 +1558,9 @@ function agencyStore(db, deps = {}) {
         account: byTenant[d.tenant_id] ? byTenant[d.tenant_id].display_name : null,
       }));
     },
-    createDraft: async (agencyId, seatId, { account_id, template, inputs, source_finding }) => {
+    createDraft: async (agencyId, seatId, { account_id, template, inputs, source_finding }, scope = null) => {
       const acc = await db.select('agency_accounts',
-        `id=eq.${q(account_id)}&agency_id=eq.${q(agencyId)}&select=tenant_id,display_name`, { single: true });
+        `id=eq.${q(account_id)}&agency_id=eq.${q(agencyId)}${scopeFilter(scope)}&select=tenant_id,display_name`, { single: true });
       if (!acc) return null;
       const row = await drafts.create({ tenantId: acc.tenant_id, agencyId, seatId, template, inputs: { ...(inputs || {}), business: (inputs && inputs.business) || acc.display_name }, sourceFinding: source_finding || null });
       await log(agencyId, seatId, 'draft_created', { draft_id: row.id, account_id, template: row.spec.template, name: row.spec.name, copy_source: row.spec.copy && row.spec.copy.source });
@@ -1565,12 +1593,11 @@ function agencyStore(db, deps = {}) {
 
     // ---- P0: budget pacing + performance targets (agency's OWN operating
     // targets — never client fees; that principle is binding).
-    pacing: async (agencyId, nowIso) => {
+    pacing: async (agencyId, nowIso, scope = null) => {
       const now = nowIso || new Date().toISOString();
       const monthStart = `${now.slice(0, 8)}01`;
       const sevenAgo = new Date(Date.parse(now) - 7 * 86_400_000).toISOString().slice(0, 10);
-      const accounts = await db.select('agency_accounts',
-        `agency_id=eq.${q(agencyId)}&status=eq.active&select=id,tenant_id,display_name`);
+      const accounts = await accountsFor(agencyId, 'eq.active', 'id,tenant_id,display_name', scope);
       if (!accounts.length) return [];
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
       const [targets, spend] = await Promise.all([
@@ -1596,9 +1623,9 @@ function agencyStore(db, deps = {}) {
       });
       return sortPacing(rows);
     },
-    setTargets: async (agencyId, seatId, accountId, patch) => {
+    setTargets: async (agencyId, seatId, accountId, patch, scope = null) => {
       const acc = await db.select('agency_accounts',
-        `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}&select=tenant_id`, { single: true });
+        `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}${scopeFilter(scope)}&select=tenant_id`, { single: true });
       if (!acc) return null;
       const row = {
         tenant_id: acc.tenant_id,
@@ -1613,9 +1640,8 @@ function agencyStore(db, deps = {}) {
     },
 
     // ---- P0: alert stream (daily digest renders from the same rows).
-    alertsFor: async (agencyId) => {
-      const accounts = await db.select('agency_accounts',
-        `agency_id=eq.${q(agencyId)}&status=in.(pending,active)&select=tenant_id,display_name`);
+    alertsFor: async (agencyId, scope = null) => {
+      const accounts = await accountsFor(agencyId, 'in.(pending,active)', 'tenant_id,display_name', scope);
       if (!accounts.length) return [];
       const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a.display_name]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
@@ -1623,8 +1649,8 @@ function agencyStore(db, deps = {}) {
         `tenant_id=in.(${ids})&select=id,tenant_id,severity,kind,title,detail,campaign_ref,created_at,acked_at,acked_seat:agency_seats(name)&order=created_at.desc&limit=100`);
       return rows.map((r) => ({ ...r, account: nameByTenant[r.tenant_id] }));
     },
-    ackAlert: async (agencyId, seatId, alertId) => {
-      const own = await ownedRow(agencyId, 'alerts', alertId);
+    ackAlert: async (agencyId, seatId, alertId, scope = null) => {
+      const own = await ownedRow(agencyId, 'alerts', alertId, '', scope);
       if (!own) return { ok: false, reason: 'not_found' };
       await db.update('alerts', `id=eq.${q(alertId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { acked_by: seatId, acked_at: new Date().toISOString() });
       await log(agencyId, seatId, 'alert_acked', { alert_id: alertId });
@@ -1633,8 +1659,8 @@ function agencyStore(db, deps = {}) {
 
     // ---- P0: triage snooze + batch approval. Batch logs every id
     // individually — the audit trail never compresses.
-    snoozeChange: async (agencyId, seatId, changeId, days, reason) => {
-      const own = await ownedRow(agencyId, 'changes', changeId);
+    snoozeChange: async (agencyId, seatId, changeId, days, reason, scope = null) => {
+      const own = await ownedRow(agencyId, 'changes', changeId, '', scope);
       if (!own) return { ok: false, reason: 'not_found' };
       const until = new Date(Date.now() + (days || 7) * 86_400_000).toISOString();
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { snoozed_until: until, snoozed_by: seatId, snooze_reason: reason || null });
@@ -1643,14 +1669,16 @@ function agencyStore(db, deps = {}) {
     },
     // Batch approve runs the same two checks per id as a single approve
     // (owned, not brief-only) and reports what it skipped and why.
-    approveBatch: async (agencyId, seatId, changeIds) => {
+    approveBatch: async (agencyId, seatId, changeIds, scope = null) => {
       let n = 0;
       const skipped = [];
+      const who = await agencyName(agencyId);
       for (const id of changeIds || []) {
-        const own = await ownedRow(agencyId, 'changes', id);
+        const own = await ownedRow(agencyId, 'changes', id, '', scope);
         if (!own) { skipped.push({ id, reason: 'not_found' }); continue; }
         if (own.account.brief_only) { skipped.push({ id, reason: 'brief_only' }); continue; }
         await db.update('changes', `id=eq.${q(id)}&tenant_id=eq.${q(own.row.tenant_id)}`, { status: 'approved' });
+        await mirrorApproval(own.row.tenant_id, id, seatId, who);
         await log(agencyId, seatId, 'change_approved', { change_id: id, batch: true });
         n += 1;
       }
@@ -1658,16 +1686,17 @@ function agencyStore(db, deps = {}) {
       return { approved: n, skipped };
     },
 
-    approveChange: async (agencyId, seatId, changeId) => {
-      const own = await ownedRow(agencyId, 'changes', changeId);
+    approveChange: async (agencyId, seatId, changeId, scope = null) => {
+      const own = await ownedRow(agencyId, 'changes', changeId, '', scope);
       if (!own) { await log(agencyId, seatId, 'write_refused', { action: 'approve', change_id: changeId, reason: 'not_found' }); return { ok: false, reason: 'not_found' }; }
       if (own.account.brief_only) { await log(agencyId, seatId, 'write_refused', { action: 'approve', change_id: changeId, reason: 'brief_only' }); return { ok: false, reason: 'brief_only' }; }
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { status: 'approved' });
+      await mirrorApproval(own.row.tenant_id, changeId, seatId, await agencyName(agencyId));
       await log(agencyId, seatId, 'change_approved', { change_id: changeId });
       return { ok: true };
     },
-    dismissChange: async (agencyId, seatId, changeId, reason) => {
-      const own = await ownedRow(agencyId, 'changes', changeId, ',finding_id,finding:findings(rule_id)');
+    dismissChange: async (agencyId, seatId, changeId, reason, scope = null) => {
+      const own = await ownedRow(agencyId, 'changes', changeId, ',finding_id,finding:findings(rule_id)', scope);
       if (!own) return { ok: false, reason: 'not_found' };
       const full = own.row;
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(full.tenant_id)}`, { status: 'failed' });
@@ -1681,9 +1710,8 @@ function agencyStore(db, deps = {}) {
     },
 
     // Review queue: nothing reaches a client without a seat's approval.
-    reviewQueue: async (agencyId) => {
-      const accounts = await db.select('agency_accounts',
-        `agency_id=eq.${q(agencyId)}&status=eq.active&select=tenant_id,display_name`);
+    reviewQueue: async (agencyId, scope = null) => {
+      const accounts = await accountsFor(agencyId, 'eq.active', 'tenant_id,display_name', scope);
       if (!accounts.length) return [];
       const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a.display_name]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
@@ -1691,15 +1719,15 @@ function agencyStore(db, deps = {}) {
         `tenant_id=in.(${ids})&review_status=eq.pending&select=id,tenant_id,type,created_at&order=created_at.asc`);
       return rows.map((r) => ({ id: r.id, account: nameByTenant[r.tenant_id], type: r.type, created_at: r.created_at }));
     },
-    approveReport: async (agencyId, seatId, reportId) => {
-      const own = await ownedRow(agencyId, 'reports', reportId);
+    approveReport: async (agencyId, seatId, reportId, scope = null) => {
+      const own = await ownedRow(agencyId, 'reports', reportId, '', scope);
       if (!own) return { ok: false, reason: 'not_found' };
       await db.update('reports', `id=eq.${q(reportId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { review_status: 'approved', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
       await log(agencyId, seatId, 'report_approved', { report_id: reportId });
       return { ok: true };
     },
-    rejectReport: async (agencyId, seatId, reportId, reason) => {
-      const own = await ownedRow(agencyId, 'reports', reportId);
+    rejectReport: async (agencyId, seatId, reportId, reason, scope = null) => {
+      const own = await ownedRow(agencyId, 'reports', reportId, '', scope);
       if (!own) return { ok: false, reason: 'not_found' };
       await db.update('reports', `id=eq.${q(reportId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { review_status: 'rejected', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
       await log(agencyId, seatId, 'report_rejected', { report_id: reportId, reason: reason || null });
@@ -1821,8 +1849,8 @@ function agencyStore(db, deps = {}) {
     // billable account (pending or active). Paused/removed accounts never
     // bill. The platform never stores or computes what the agency charges
     // its own clients.
-    accountsList: async (agencyId, { includeRemoved = false } = {}) => db.select('agency_accounts',
-      `agency_id=eq.${q(agencyId)}&status=in.(${includeRemoved ? 'pending,active,paused,removed' : 'pending,active,paused'})&select=id,tenant_id,display_name,status,brief_only,report_register,created_at,request_email,request_sent_at,removed_at,seat:agency_seats(name)&order=created_at.asc`),
+    accountsList: async (agencyId, { includeRemoved = false } = {}, scope = null) => db.select('agency_accounts',
+      `agency_id=eq.${q(agencyId)}&status=in.(${includeRemoved ? 'pending,active,paused,removed' : 'pending,active,paused'})${scopeFilter(scope)}&select=id,tenant_id,display_name,status,brief_only,report_register,created_at,request_email,request_sent_at,removed_at,seat:agency_seats(name)&order=created_at.asc`),
     addAccount: async (agencyId, seatId, { display_name, email = null, website = null }, opts = {}) => {
       const site = website ? String(website).trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase().slice(0, 200) : null;
       const [tenant] = await db.insert('tenants', [{ status: 'active', business_name: display_name, ...(site ? { website_url: site } : {}) }]);
@@ -1892,6 +1920,84 @@ function agencyStore(db, deps = {}) {
       await db.insert('ledger', [{ tenant_id: realTenantId, event: 'connection_changed', actor: 'system', summary_text: `${(agency && agency.name) || 'Your agency'} now looks after this account. They see what you see and can propose fixes; nothing changes without an approval.` }], { returning: false }).catch(() => {});
       await log(row.agency_id, null, 'account_connected', { account_id: dup ? dup.id : row.id, display_name: row.display_name, adopted: true });
       return { ok: true, account_id: dup ? dup.id : row.id, agency_id: row.agency_id };
+    },
+    // Three switches on the row (agency plan move 7): brief-only, register, assigned seat.
+    updateAccount: async (agencyId, seatId, accountId, patch) => {
+      const acc = await db.select('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}&select=id,display_name`, { single: true }).catch(() => null);
+      if (!acc) return { ok: false, reason: 'not_found' };
+      const allowed = {};
+      if (typeof patch.brief_only === 'boolean') allowed.brief_only = patch.brief_only;
+      if (patch.report_register && ['simple', 'technical'].includes(patch.report_register)) allowed.report_register = patch.report_register;
+      if ('seat_id' in patch) {
+        if (patch.seat_id === null || patch.seat_id === '') allowed.seat_id = null;
+        else {
+          const seat = await db.select('agency_seats', `id=eq.${q(patch.seat_id)}&agency_id=eq.${q(agencyId)}&status=eq.active&select=id`, { single: true }).catch(() => null);
+          if (!seat) return { ok: false, reason: 'seat' };
+          allowed.seat_id = patch.seat_id;
+        }
+      }
+      if (!Object.keys(allowed).length) return { ok: false, reason: 'nothing' };
+      await db.update('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}`, allowed);
+      await log(agencyId, seatId, 'account_updated', { account_id: accountId, display_name: acc.display_name, ...allowed });
+      return { ok: true, ...allowed };
+    },
+    // The account page (agency plan move 8): connection state, the latest
+    // report, and what happened to every change after the seat said yes,
+    // read from the client's own ledger and receipts.
+    accountDetail: async (agencyId, accountId, scope = null) => {
+      const acc = await db.select('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}${scopeFilter(scope)}&select=id,tenant_id,display_name,status,brief_only,report_register,seat_id,request_email,request_sent_at,removed_at,created_at,seat:agency_seats(id,name)`, { single: true }).catch(() => null);
+      if (!acc) return null;
+      const t = acc.tenant_id;
+      const [tenant, report, runs, changes, ledger, conn, receipts] = await Promise.all([
+        db.select('tenants', `id=eq.${q(t)}&select=business_name,website_url,status,paused_until,timezone`, { single: true }).catch(() => null),
+        db.select('reports', `tenant_id=eq.${q(t)}&select=id,type,created_at,summary,review_status&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+        db.select('runs', `tenant_id=eq.${q(t)}&select=id,type,status,started_at,finished_at&order=started_at.desc.nullslast&limit=3`).catch(() => []),
+        db.select('changes', `tenant_id=eq.${q(t)}&status=in.(approved,applied,failed,reverted)&select=id,status,applied_at,created_at,summary_text,finding:findings(title,severity,money_impact_monthly_usd)&order=created_at.desc&limit=50`).catch(() => []),
+        db.select('ledger', `tenant_id=eq.${q(t)}&select=event,summary_text,created_at,change_id&order=created_at.desc&limit=40`).catch(() => []),
+        connectionsFor([t]),
+        dashStore(db).receipts(t).catch(() => ({ by_change: {} })),
+      ]);
+      const connection = conn[t] || 'none';
+      const activity = (changes || []).map((c) => {
+        const r = receipts.by_change[c.id] || null;
+        let state = c.status;
+        if (c.status === 'approved') state = connection === 'connected' ? 'applying' : 'waiting';
+        else if (r) state = r.state;
+        return {
+          change_id: c.id,
+          title: (c.finding && c.finding.title) || c.summary_text || 'Change',
+          severity: c.finding ? c.finding.severity : null,
+          money_monthly_usd: c.finding ? c.finding.money_impact_monthly_usd : null,
+          state,
+          applied_at: c.applied_at || null,
+          approved_at: c.created_at,
+          line: r ? r.line : null,
+          verified_at: r ? r.verified_at : null,
+          watch_until: r ? r.watch_until : null,
+          can_undo: c.status === 'applied' && !!r && (r.state === 'watching' || r.state === 'verified' || r.state === 'inconclusive'),
+        };
+      });
+      return {
+        account: { id: acc.id, tenant_id: t, display_name: acc.display_name, status: acc.status, brief_only: acc.brief_only, report_register: acc.report_register, seat_id: acc.seat_id, seat: acc.seat, request_email: acc.request_email, request_sent_at: acc.request_sent_at, removed_at: acc.removed_at, created_at: acc.created_at },
+        tenant: tenant ? { business_name: tenant.business_name, website_url: tenant.website_url, status: tenant.status, paused_until: tenant.paused_until } : null,
+        connection,
+        latest_report: report ? { id: report.id, type: report.type, created_at: report.created_at, review_status: report.review_status || null, url: `/r/${report.id}` } : null,
+        runs: runs || [],
+        activity,
+        history: (ledger || []).map((l) => ({ event: l.event, text: l.summary_text, at: l.created_at, change_id: l.change_id })),
+      };
+    },
+    // Undo from the seat (agency plan move 8): the client's own revert path, logged under the seat.
+    revertChange: async (agencyId, seatId, accountId, changeId, scope = null) => {
+      const acc = await db.select('agency_accounts', `id=eq.${q(accountId)}&agency_id=eq.${q(agencyId)}&status=eq.active${scopeFilter(scope)}&select=tenant_id,brief_only`, { single: true }).catch(() => null);
+      if (!acc) return { ok: false, reason: 'not_found' };
+      if (acc.brief_only) return { ok: false, reason: 'brief_only' };
+      const ch = await db.select('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(acc.tenant_id)}&select=id`, { single: true }).catch(() => null);
+      if (!ch) return { ok: false, reason: 'not_found' };
+      const r = await dashStore(db).requestRevert(acc.tenant_id, changeId);
+      if (r && r.ok === false) return { ok: false, reason: 'state', error: r.reason };
+      await log(agencyId, seatId, 'change_reverted', { change_id: changeId, account_id: accountId });
+      return { ok: true };
     },
     billing: async (agencyId, nowIso) => {
       const { monthlyCharge, prorateAdd, cycleFor } = require('../../billing/src/agency-pricing');

@@ -678,6 +678,58 @@ test('agencyStore (agency plan moves 5 and 6): pause pauses the tenant, remove t
   assert.strictEqual(await auth.findOrCreateTenantByGoogle({ sub: 'sub-1', email: 'o@harbor.ae', preferTenantId: 'tn-shell' }), 'tn-b');
 });
 
+test('agencyStore (agency plan moves 7 and 8): am scope filters reads and writes, three switches save, approval mirrors into the client history, the account page reads receipts', async () => {
+  const { agencyStore } = require('../src/stores');
+  const f = routedFetch({
+    agency_accounts: (url, init) => {
+      if (init.method !== 'GET') return [];
+      if (/id=eq\.acc-1/.test(url)) return [{ id: 'acc-1', tenant_id: 'tn-c', display_name: 'Glow', status: 'active', brief_only: false, report_register: 'simple', seat_id: null, created_at: '2026-07-01T00:00:00Z', seat: null }];
+      if (/tenant_id=eq\.tn-c/.test(url)) return [{ id: 'acc-1', brief_only: false, display_name: 'Glow' }];
+      return [{ id: 'acc-1', tenant_id: 'tn-c', display_name: 'Glow', brief_only: false, report_register: 'simple' }];
+    },
+    agency_seats: (url) => (/id=eq\.s2/.test(url) ? [{ id: 's2' }] : []),
+    agencies: [{ name: 'Northlight' }],
+    changes: (url, init) => (init.method === 'GET' ? (/status=in\.\(approved/.test(url)
+      ? [{ id: 'chg-1', status: 'applied', applied_at: '2026-09-10T00:00:00Z', created_at: '2026-09-09T00:00:00Z', summary_text: 'x', finding: { title: 'Raise budget', severity: 'warning', money_impact_monthly_usd: 120 } }, { id: 'chg-2', status: 'approved', applied_at: null, created_at: '2026-09-12T00:00:00Z', summary_text: 'y', finding: { title: 'Pause ad group', severity: 'info', money_impact_monthly_usd: null } }]
+      : /status=in\.\(applied,reverted\)/.test(url) ? [{ id: 'chg-1', finding_id: 'f1', applied_at: '2026-09-10T00:00:00Z', changeset_id: null, status: 'applied' }]
+        : /id=eq\.chg-1/.test(url) ? [{ id: 'chg-1', tenant_id: 'tn-c' }] : []) : []),
+    watches: [{ target_id: 'chg-1', kind: 'change_verify', status: 'resolved', outcome: 'verified', closed_at: '2026-09-12T00:00:00Z', schedule: null }],
+    users: [{ id: 'u1', tenant_id: 'tn-c' }], google_connections: [{ user_id: 'u1', status: 'valid', scope_level: 'write' }],
+    tenants: [{ business_name: 'Glow', website_url: 'glow.ae', status: 'active', paused_until: null }],
+    reports: [{ id: 'rep-1', type: 'weekly', created_at: '2026-09-07T00:00:00Z', summary: {}, review_status: null }],
+    runs: [{ id: 'run-1', type: 'weekly', status: 'complete', started_at: '2026-09-07T00:00:00Z', finished_at: '2026-09-07T00:20:00Z' }],
+    findings: [], ledger: [], approvals: [], agency_audit_log: [], alerts: [], spend_daily: [], account_targets: [], campaigns: [],
+  });
+  const ag = agencyStore(mkDb(f));
+
+  // Scope: an am's reads carry the assigned-or-unassigned filter; an admin's do not.
+  await ag.portfolio('ag1', { seatId: 's2' });
+  const scoped = f.calls.filter((c) => c.method === 'GET' && /agency_accounts/.test(c.url)).at(-1).url;
+  assert.match(decodeURIComponent(scoped), /or=\(seat_id\.eq\.s2,seat_id\.is\.null\)/);
+  await ag.portfolio('ag1', null);
+  assert.doesNotMatch(f.calls.filter((c) => c.method === 'GET' && /agency_accounts/.test(c.url)).at(-1).url, /seat_id/);
+
+  // Three switches.
+  assert.deepStrictEqual(await ag.updateAccount('ag1', 's1', 'acc-1', { brief_only: true, report_register: 'technical', seat_id: 's2' }), { ok: true, brief_only: true, report_register: 'technical', seat_id: 's2' });
+  assert.deepStrictEqual(await ag.updateAccount('ag1', 's1', 'acc-1', { seat_id: 's-none' }), { ok: false, reason: 'seat' });
+  assert.deepStrictEqual(await ag.updateAccount('ag1', 's1', 'acc-1', { colour: 'red' }), { ok: false, reason: 'nothing' });
+
+  // Approval mirrors: an approvals row on the agency channel and a History line naming the agency.
+  assert.deepStrictEqual(await ag.approveChange('ag1', 's1', 'chg-1'), { ok: true });
+  const appr = f.calls.find((c) => c.method === 'POST' && /approvals/.test(c.url)).body[0];
+  assert.deepStrictEqual([appr.tenant_id, appr.target_id, appr.channel], ['tn-c', 'chg-1', 'agency']);
+  const line = f.calls.filter((c) => c.method === 'POST' && /ledger/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([line.event, line.actor, line.change_id], ['fix_approved', 'seat:s1', 'chg-1']);
+  assert.match(line.summary_text, /^Approved by Northlight\./);
+
+  // The account page.
+  const d = await ag.accountDetail('ag1', 'acc-1');
+  assert.strictEqual(d.connection, 'connected');
+  assert.strictEqual(d.latest_report.url, '/r/rep-1');
+  assert.deepStrictEqual(d.activity.map((a) => [a.change_id, a.state, a.can_undo]), [['chg-1', 'verified', true], ['chg-2', 'applying', false]]);
+  assert.strictEqual(await ag.accountDetail('ag1', 'acc-1', { seatId: 's9' }) === null, false, 'an unassigned account is visible to every am');
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

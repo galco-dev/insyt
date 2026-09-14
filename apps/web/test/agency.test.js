@@ -146,6 +146,30 @@ test('agency plan push 2: resend and request routes, a disabled seat is told so,
   });
 });
 
+test('agency plan push 3: the am scope reaches the store, account detail, settings and undo routes', async () => {
+  const ags = fakeAgencyStore();
+  const scopes = [];
+  ags.portfolio = async (ag, scope) => { scopes.push(scope); return []; };
+  ags.accountDetail = async (ag, id, scope) => (id === 'a1' ? { account: { id: 'a1' }, connection: 'connected', activity: [], history: [], runs: [] } : null);
+  ags.updateAccount = async (ag, seat, id, patch) => (patch.seat_id === 'bad' ? { ok: false, reason: 'seat' } : { ok: true, ...patch });
+  ags.revertChange = async (ag, seat, id, cid) => (cid === 'chg-x' ? { ok: false, reason: 'not_found' } : cid === 'chg-p' ? { ok: false, reason: 'state', error: 'Only applied changes can be undone.' } : { ok: true });
+  await withApp({ store: baseStore(), crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {
+    const post = (tenant, path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { cookie: cookie(tenant), 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+    await fetch(`${base}/api/agency/portfolio`, { headers: { cookie: cookie('tn-am') } });
+    await fetch(`${base}/api/agency/portfolio`, { headers: { cookie: cookie('tn-admin') } });
+    assert.deepStrictEqual(scopes, [{ seatId: 's2' }, null]);
+    assert.strictEqual((await fetch(`${base}/api/agency/accounts/a1`, { headers: { cookie: cookie('tn-ro') } })).status, 200);
+    assert.strictEqual((await fetch(`${base}/api/agency/accounts/a-none`, { headers: { cookie: cookie('tn-ro') } })).status, 404);
+    assert.strictEqual((await post('tn-am', '/api/agency/accounts/a1/settings', { brief_only: true })).status, 403, 'settings are admin-only');
+    assert.strictEqual((await post('tn-admin', '/api/agency/accounts/a1/settings', { brief_only: true })).status, 200);
+    assert.strictEqual((await post('tn-admin', '/api/agency/accounts/a1/settings', { seat_id: 'bad' })).status, 400);
+    assert.strictEqual((await post('tn-am', '/api/agency/accounts/a1/revert/chg-1')).status, 200);
+    assert.strictEqual((await post('tn-am', '/api/agency/accounts/a1/revert/chg-x')).status, 404);
+    assert.strictEqual((await post('tn-am', '/api/agency/accounts/a1/revert/chg-p')).status, 409);
+    assert.strictEqual((await post('tn-ro', '/api/agency/accounts/a1/revert/chg-1')).status, 403);
+  });
+});
+
 test('agency: seat resolution gates access; no seat = 403; reads work', async () => {
   const ags = fakeAgencyStore();
   await withApp({ store: baseStore(), crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {

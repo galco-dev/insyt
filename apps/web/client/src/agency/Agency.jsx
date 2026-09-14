@@ -320,10 +320,15 @@ function Portfolio() {
                 <PerfChip perf={paceById[a.id].performance} />
               </div>
             )}
+            {a.connection && a.connection !== 'connected' && (
+              <div className="rounded bg-warning-tint px-2.5 py-1.5 text-tiny text-strong ring-1 ring-inset ring-warning/25">
+                {a.connection === 'none' ? 'Not connected: approvals wait until the client connects Google.' : 'The client\'s Google connection needs renewing: approvals wait until they reconnect.'}
+              </div>
+            )}
             <div className="flex items-center justify-between border-t border-neutral-200 pt-2.5 text-tiny text-neutral-900">
               <span>Last report {a.last_report_at ? new Date(a.last_report_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ' - '}</span>
-              <Link to={demoHref('/app/agency/triage')} className="inline-flex items-center gap-1 underline underline-offset-2">
-                Triage <ArrowRight size={12} aria-hidden />
+              <Link to={demoHref(`/app/agency/accounts/${a.id}`)} className="inline-flex items-center gap-1 underline underline-offset-2">
+                Open account <ArrowRight size={12} aria-hidden />
               </Link>
             </div>
           </Card>
@@ -1116,7 +1121,7 @@ function AccountRow({ a, onAction }) {
     <Card className="flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-body font-semibold">{a.display_name}</span>
+          <Link to={demoHref(`/app/agency/accounts/${a.id}`)} className="text-body font-semibold underline-offset-2 hover:underline">{a.display_name}</Link>
           <StatusChip st={st} />
         </div>
         <div className="mt-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900">
@@ -1348,7 +1353,7 @@ function Seats() {
   useEffect(() => { if (data) setSeats(data.seats); }, [data]);
   if (error) return <ErrorNote message={error.message} />;
   if (!data || !seats) return <Spinner label="Loading seats" />;
-  const roleLabel = { admin: 'Admin - billing, brand, seats, all accounts', am: 'Account manager - can action every account (per-account assignment is coming)', readonly: 'Read-only - sees everything, changes nothing' };
+  const roleLabel = { admin: 'Admin - billing, brand, seats, all accounts', am: 'Account manager - assigned accounts, plus any nobody is assigned to', readonly: 'Read-only - sees everything, changes nothing' };
   const isAdmin = !me || !me.seat || me.seat.role === 'admin';
   const myId = me && me.seat ? me.seat.id : null;
   async function seatAction(id, kind) {
@@ -1467,6 +1472,174 @@ function Seats() {
   );
 }
 
+// ---------------------------------------------------------------- account page
+// The one new screen (agency plan moves 7 and 8): connection state, the
+// latest report, three switches, and what happened to every change after
+// the seat said yes, read from the client's own ledger and receipts.
+
+const ACT_STATE = {
+  applying: { label: 'applying within the hour', cls: 'bg-info-tint text-info' },
+  waiting: { label: 'waiting on the client\'s Google connection', cls: 'bg-warning-tint text-warning' },
+  watching: { label: 'applied, watching 48 hours', cls: 'bg-info-tint text-info' },
+  verified: { label: 'applied and verified', cls: 'bg-success-tint text-success' },
+  inconclusive: { label: 'applied, not enough data to verify', cls: 'bg-neutral-100 text-neutral-900' },
+  applied: { label: 'applied', cls: 'bg-success-tint text-success' },
+  failed: { label: 'Google refused it', cls: 'bg-critical-tint text-critical' },
+  reverted: { label: 'undone', cls: 'bg-neutral-100 text-neutral-900' },
+};
+
+function ActivityRow({ item, accountId, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [confirm, setConfirm] = useState(false);
+  const [done, setDone] = useState(false);
+  const { readOnly } = useScope();
+  const st = ACT_STATE[done ? 'reverted' : item.state] || ACT_STATE.applied;
+  async function undo() {
+    setBusy(true); setErr(null);
+    try { await api(`/api/agency/accounts/${accountId}/revert/${item.change_id}`, { method: 'POST', body: {} }); setDone(true); setConfirm(false); onChanged(); } catch (e) { setErr(e); }
+    setBusy(false);
+  }
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-body font-medium">{item.title}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-tiny text-neutral-900">
+            <span className={clsx('rounded-full px-2 py-0.5 font-mono', st.cls)}>{st.label}</span>
+            {item.money_monthly_usd ? <span>~${item.money_monthly_usd}/mo</span> : null}
+            <span>approved {new Date(item.approved_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+            {item.applied_at && <span>· applied {new Date(item.applied_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+            {item.verified_at && <span>· verified {new Date(item.verified_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+          </div>
+          {item.line && <p className="mt-1 text-small text-neutral-900">{item.line}</p>}
+        </div>
+        {item.can_undo && !done && !readOnly && (
+          confirm ? (
+            <span className="flex items-center gap-2 text-small">
+              Undo this change on the client&apos;s account?
+              <Button onClick={undo} disabled={busy} className="!px-3 !py-2">Yes, undo</Button>
+              <button type="button" onClick={() => setConfirm(false)} className="underline underline-offset-2">Keep</button>
+            </span>
+          ) : (
+            <Button variant="ghost" onClick={() => setConfirm(true)} disabled={busy} className="!py-2"><Undo2 size={13} aria-hidden /> Undo</Button>
+          )
+        )}
+      </div>
+      <ActionNote error={err} />
+    </Card>
+  );
+}
+
+function AccountPage({ id }) {
+  const [version, setVersion] = useState(0);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const { data: seatsData } = useAgency('/api/agency/seats');
+  const { data: me } = useAgency('/api/agency/me');
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState(null);
+  const [saved, setSaved] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  useEffect(() => { api(`/api/agency/accounts/${id}`).then(setData).catch(setError); }, [id, version]);
+  if (error) return <ErrorNote message={error.status === 404 ? 'This account is not in your portfolio.' : error.message} />;
+  if (!data) return <Spinner label="Loading account" />;
+  const { account, tenant, connection, latest_report: report, runs, activity, history } = data;
+  const isAdmin = !me || !me.seat || me.seat.role === 'admin';
+  const lastRun = (runs || []).find((r) => r.status === 'complete' || r.status === 'degraded');
+  const st = ACC_STATUS[account.status] || ACC_STATUS.active;
+  const connLine = connection === 'connected'
+    ? `Connected${lastRun && lastRun.finished_at ? ` · last check ${new Date(lastRun.finished_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ' · no check yet'}`
+    : connection === 'reconnect' ? 'The client\'s Google connection needs renewing. Approvals wait until they reconnect; we have emailed them a one-tap link.'
+      : `Not connected yet.${account.request_sent_at ? ` Asked ${account.request_email} to connect ${since(account.request_sent_at)}.` : ' Nobody has been asked to connect; use Request access on the Accounts screen.'}`;
+  async function save(patch) {
+    setSaving(true); setSaveErr(null); setSaved(null);
+    try {
+      await api(`/api/agency/accounts/${id}/settings`, { method: 'POST', body: patch });
+      setSaved('Saved.'); setVersion((v) => v + 1);
+    } catch (e) { setSaveErr(e); }
+    setSaving(false);
+  }
+  const field = 'rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)';
+  const seats = ((seatsData && seatsData.seats) || []).filter((x) => x.status === 'active');
+  return (
+    <div>
+      <Link to={demoHref('/app/agency/accounts')} className="font-mono text-tiny uppercase tracking-wide text-neutral-900 underline underline-offset-2">← Accounts</Link>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <h1 className="text-h3 tracking-tight">{account.display_name}</h1>
+        <StatusChip st={st} />
+        {account.brief_only && <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny">brief-only</span>}
+      </div>
+      <p className={clsx('mt-1 max-w-[70ch] text-small', connection === 'connected' ? 'text-neutral-900' : 'text-warning')}>{connLine}</p>
+      <div className="mt-1 font-mono text-tiny uppercase tracking-wide text-neutral-900">
+        {tenant && tenant.website_url ? `${tenant.website_url} · ` : ''}{account.seat ? account.seat.name : 'Unassigned'} · {account.report_register} report · added {new Date(account.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {report ? (
+          <a href={report.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-(--ui-well) px-4 py-2 text-small font-medium">
+            Latest report · {new Date(report.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}{report.review_status === 'pending' ? ' · awaiting your review' : ''}
+          </a>
+        ) : <span className="rounded border border-neutral-300 px-4 py-2 text-small text-neutral-900">No report yet</span>}
+        <Link to={demoHref(`/app/agency/triage?account=${account.id}`)} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-(--ui-well) px-4 py-2 text-small font-medium">Triage for this account <ArrowRight size={13} aria-hidden /></Link>
+      </div>
+
+      {isAdmin && (
+        <Card className="mt-6 p-4">
+          <MonoLabel>Settings</MonoLabel>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <label className="flex items-center gap-2 text-small">
+              <input type="checkbox" checked={!!account.brief_only} onChange={(e) => save({ brief_only: e.target.checked })} disabled={saving} className="size-4 accent-(--ui-cta-a)" />
+              Brief-only: we propose, you apply by hand
+            </label>
+            <label className="flex flex-col gap-1 text-small">
+              <span>Report register</span>
+              <select value={account.report_register} onChange={(e) => save({ report_register: e.target.value })} disabled={saving} className={field}>
+                <option value="simple">Simple - the client&apos;s words</option>
+                <option value="technical">Technical - the working shown</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-small">
+              <span>Assigned seat</span>
+              <select value={account.seat_id || ''} onChange={(e) => save({ seat_id: e.target.value || null })} disabled={saving} className={field}>
+                <option value="">Unassigned - every account manager sees it</option>
+                {seats.map((x) => <option key={x.id} value={x.id}>{x.name || x.email}</option>)}
+              </select>
+            </label>
+          </div>
+          {saved && <p className="mt-2 text-small text-success">{saved}</p>}
+          <ActionNote error={saveErr} />
+        </Card>
+      )}
+
+      <div className="mt-8">
+        <MonoLabel>What happened after yes</MonoLabel>
+        {activity.length === 0 ? (
+          <div className="mt-2"><EmptyState title="Nothing approved yet" body="Every change you approve for this account lands here with what happened next: applied, verified, refused, or waiting." /></div>
+        ) : (
+          <div className="mt-2 flex flex-col gap-2">{activity.map((it) => <ActivityRow key={it.change_id} item={it} accountId={account.id} onChanged={() => setVersion((v) => v + 1)} />)}</div>
+        )}
+      </div>
+
+      <div className="mt-8">
+        <button type="button" onClick={() => setShowHistory((v) => !v)} className="font-mono text-tiny uppercase tracking-wide text-neutral-900 underline underline-offset-2">
+          {showHistory ? 'Hide the client\'s history' : `The client's history (${history.length})`}
+        </button>
+        {showHistory && (
+          <div className="mt-2 overflow-hidden rounded border border-neutral-300 bg-card">
+            {history.map((h, i) => (
+              <div key={i} className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-2.5 text-small last:border-0">
+                <span>{h.text}</span>
+                <span className="shrink-0 font-mono text-tiny text-neutral-900">{new Date(h.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            ))}
+            {history.length === 0 && <div className="px-4 py-3 text-small text-neutral-900">Nothing yet.</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- lenses
 // Portfolio and Pacing are two views of the same accounts; Triage, Alerts
 // and Review are three queues of the same daily work; Brand and Seats are
@@ -1554,6 +1727,10 @@ function AgencyRoutes() {
   if (path === '/app/agency/review') screen = <WorkView queue="review" counts={workCounts} />;
   if (path === '/app/agency/build') screen = <Build />;
   if (path === '/app/agency/accounts') screen = <Accounts />;
+  {
+    const m = /^\/app\/agency\/accounts\/([^/]+)$/.exec(path);
+    if (m) screen = <AccountPage id={m[1]} />;
+  }
   if (path === '/app/agency/settings' || path === '/app/agency/brand') screen = <AgencySettingsView pane="brand" />;
   if (path === '/app/agency/seats') screen = <AgencySettingsView pane="seats" />;
 
@@ -1602,7 +1779,7 @@ function AgencyRoutes() {
         <nav className="mx-auto flex max-w-xl2 gap-1 overflow-x-auto px-3 pb-2" aria-label="Agency">
           {NAV.map((n) => {
             const { to, label, icon: IconEl } = n;
-            const active = n.match ? n.match.includes(path) : path === to;
+            const active = n.match ? n.match.includes(path) : (path === to || path.startsWith(`${to}/`));
             return (
               <Link
                 key={to}

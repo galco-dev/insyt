@@ -128,6 +128,18 @@ const ACCOUNTS = [
   { id: 'a10', display_name: 'Old Town Motors', status: 'paused', report_register: 'simple', brief_only: false, seat: { name: 'Ana Barros' }, created_at: '2026-07-03T09:00:00Z' },
 ];
 
+// What happened after yes (agency plan move 8), per account.
+const ACTIVITY = {
+  a1: [
+    { change_id: 'chg-01', title: 'Budget raised on Brand - Glow Studio, $10 to $14 a day', severity: 'warning', money_monthly_usd: 120, state: 'verified', approved_at: '2026-08-12T09:14:00Z', applied_at: '2026-08-12T09:40:00Z', verified_at: '2026-08-14T10:00:00Z', line: 'Brand impression share up from 61% to 88%; cost per booking flat.', watch_until: null, can_undo: true },
+    { change_id: 'chg-02', title: 'Pause "Generic - Nails" ad group with no conversions in 60 days', severity: 'warning', money_monthly_usd: 210, state: 'watching', approved_at: '2026-08-18T11:02:00Z', applied_at: '2026-08-18T11:30:00Z', verified_at: null, line: null, watch_until: '2026-08-20T11:30:00Z', can_undo: true },
+    { change_id: 'chg-03', title: 'Add call tracking to the booking page', severity: 'info', money_monthly_usd: null, state: 'failed', approved_at: '2026-08-10T08:00:00Z', applied_at: null, verified_at: null, line: 'Google refused it: this login does not have edit access to the container.', watch_until: null, can_undo: false },
+  ],
+  a10: [
+    { change_id: 'chg-04', title: 'Exclude 12 searches from the Storage campaign', severity: 'warning', money_monthly_usd: 90, state: 'waiting', approved_at: '2026-08-19T14:00:00Z', applied_at: null, verified_at: null, line: null, watch_until: null, can_undo: false },
+  ],
+};
+
 const LOG = [
   { event: 'change_approved', detail: { change_id: 'chg-09' }, created_at: '2026-08-19T08:41:00Z', seat: { name: 'Mo Haddad' } },
   { event: 'report_approved', detail: { report_id: 'rep-93' }, created_at: '2026-08-19T08:12:00Z', seat: { name: 'Ana Barros' } },
@@ -155,7 +167,7 @@ function state() {
     S = structuredClone({
       me: ME, portfolio: PORTFOLIO, triage: TRIAGE, drafts: DRAFTS, campaigns: CAMPAIGNS,
       pacing: PACING, alerts: ALERTS, review: REVIEW, brand: BRAND, seats: SEATS,
-      credits: CREDITS, accounts: ACCOUNTS, removedAccounts: [], log: LOG, draftSeq: 3, accountSeq: 11, campaignSeq: 90000001,
+      credits: CREDITS, accounts: ACCOUNTS, removedAccounts: [], activity: ACTIVITY, log: LOG, draftSeq: 3, accountSeq: 11, campaignSeq: 90000001,
     });
     const role = demoRole();
     if (role !== 'admin') S.me.seat = { ...S.me.seat, role, name: role === 'readonly' ? 'Sam Reid' : 'Mo Haddad', email: role === 'readonly' ? 'sam@northlight.ae' : 'mo@northlight.ae' };
@@ -273,6 +285,27 @@ export function agencyDemo(path, method, body) {
     if (p === '/me') return s.me;
     if (p === '/credits') return { balance: s.credits.balance, events: s.credits.events };
     if (p === '/accounts') return { accounts: /all=1/.test(path) ? [...s.accounts, ...s.removedAccounts] : s.accounts };
+    {
+      const m = /^\/accounts\/([^/]+)$/.exec(p);
+      if (m) {
+        const acc = [...s.accounts, ...s.removedAccounts].find((a) => a.id === m[1]);
+        if (!acc) return { status: 404, error: 'This account is not in your portfolio.' };
+        const connection = acc.status === 'pending' ? 'none' : acc.id === 'a10' ? 'reconnect' : 'connected';
+        return {
+          account: { ...acc, tenant_id: `tn-${acc.id}`, seat_id: acc.seat ? (s.seats.find((x) => x.name === acc.seat.name) || {}).id || null : null },
+          tenant: { business_name: acc.display_name, website_url: `${acc.display_name.toLowerCase().replace(/[^a-z]+/g, '')}.ae`, status: acc.status === 'paused' ? 'paused' : 'active' },
+          connection,
+          latest_report: acc.status === 'pending' ? null : { id: `rep-${acc.id}`, type: 'weekly', created_at: '2026-08-17T07:00:00Z', review_status: null, url: '/app/report?demo=1' },
+          runs: acc.status === 'pending' ? [] : [{ id: 'run-1', type: 'weekly', status: 'complete', started_at: '2026-08-17T06:40:00Z', finished_at: '2026-08-17T07:00:00Z' }],
+          activity: s.activity[acc.id] || [],
+          history: acc.status === 'pending' ? [] : [
+            { event: 'report_sent', text: 'Weekly report sent.', at: '2026-08-17T07:01:00Z', change_id: null },
+            { event: 'fix_approved', text: 'Approved by Northlight Digital. Applying within the hour, then watched for 48 hours.', at: '2026-08-12T09:14:00Z', change_id: 'chg-01' },
+            { event: 'connection_changed', text: 'Google connected. Read access granted.', at: '2026-07-02T09:05:00Z', change_id: null },
+          ],
+        };
+      }
+    }
     if (p === '/billing') return billingView(s);
     if (p === '/log') return { entries: s.log };
     return undefined;
@@ -380,6 +413,26 @@ export function agencyDemo(path, method, body) {
     if (body && body.role) { seat.role = body.role; log(s, 'seat_updated', { seat_id: seat.id, role: body.role }); }
     if (body && body.status === 'removed') { s.seats = s.seats.filter((x) => x.id !== seat.id); log(s, 'seat_removed', { seat_id: seat.id }); }
     else if (body && body.status) { seat.status = body.status; log(s, body.status === 'disabled' ? 'seat_disabled' : 'seat_updated', { seat_id: seat.id, status: body.status }); }
+    return { ok: true };
+  }
+  if (/^\/accounts\/[^/]+\/settings$/.test(p)) {
+    const acc = s.accounts.find((a) => a.id === p.split('/')[2]);
+    if (!acc) return { status: 404, error: 'Unknown account.' };
+    if (typeof body.brief_only === 'boolean') acc.brief_only = body.brief_only;
+    if (body.report_register) acc.report_register = body.report_register;
+    if ('seat_id' in body) { const seat = s.seats.find((x) => x.id === body.seat_id); acc.seat = seat ? { name: seat.name } : null; }
+    const row = s.portfolio.find((a) => a.name === acc.display_name);
+    if (row) { row.brief_only = acc.brief_only; row.register = acc.report_register; row.manager = acc.seat ? acc.seat.name : null; }
+    log(s, 'account_updated', { account: acc.display_name, ...body });
+    return { ok: true };
+  }
+  if (/^\/accounts\/[^/]+\/revert\/[^/]+$/.test(p)) {
+    const [, , id, , cid] = p.split('/');
+    const it = (s.activity[id] || []).find((x) => x.change_id === cid);
+    if (!it) return { status: 404, error: 'This item is not on one of your accounts any more. Refresh the queue.', code: 'not_owned' };
+    if (!it.can_undo) return { status: 409, error: 'Only applied changes can be undone.' };
+    it.state = 'reverted'; it.can_undo = false;
+    log(s, 'change_reverted', { change_id: cid, account: id });
     return { ok: true };
   }
   if (/^\/accounts\/[^/]+\/request$/.test(p)) {
