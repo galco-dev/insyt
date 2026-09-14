@@ -1233,6 +1233,8 @@ function AccountRow({ a, onAction }) {
 function Accounts() {
   const [showRemoved, setShowRemoved] = useState(false);
   const { data, error } = useAgency(showRemoved ? '/api/agency/accounts?all=1' : '/api/agency/accounts');
+  const { data: me } = useAgency('/api/agency/me');
+  const isAdmin = !me || !me.seat || me.seat.role === 'admin';
   const [bill, setBill] = useState(null);
   const [name, setName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
@@ -1289,6 +1291,8 @@ function Accounts() {
         </div>
       )}
 
+      {!isAdmin && <p className="mt-4 text-small text-neutral-900">Adding, pausing and removing accounts is for admins. Ask one under Settings, Seats.</p>}
+      {isAdmin && (<>
       <div className="mt-5 flex max-w-m2 overflow-hidden rounded border border-neutral-500 bg-(--ui-well) focus-within:border-(--ui-focus)">
         <input
           value={name}
@@ -1307,12 +1311,13 @@ function Accounts() {
         <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Their website (optional)" aria-label="Client website" className="rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)" />
       </div>
       {addNote && <p className="mt-2 text-tiny text-neutral-900">{addNote}</p>}
+      </>)}
       <p className="mt-2 max-w-[72ch] text-tiny text-neutral-900">
         A new account starts as "awaiting Google connection": when you add the client&apos;s email we ask them to connect, and the first audit runs the day they do. If they already use Insyt, their existing account attaches here the moment they accept. Pause an account any time: paused accounts keep their history but are not checked, not emailed and not billed.
       </p>
 
       <div className="mt-5 flex flex-col gap-2">
-        {rows.map((a) => <AccountRow key={a.id} a={a} onAction={refreshBilling} />)}
+        {rows.map((a) => <AccountRow key={`${a.id}-${a.status}`} a={a} onAction={refreshBilling} />)}
       </div>
       <button type="button" onClick={() => setShowRemoved((v) => !v)} className="mt-3 font-mono text-tiny uppercase tracking-wide text-neutral-900 underline underline-offset-2">
         {showRemoved ? 'Hide removed accounts' : 'Show removed accounts'}
@@ -1559,7 +1564,7 @@ function LogView() {
           <option value="">All accounts</option>
           {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
         </select>
-        <a href={csv} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small font-medium">Export CSV</a>
+        {!isDemo() && <a href={csv} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small font-medium">Export CSV</a>}
       </div>
       {!entries ? <div className="mt-5"><Spinner label="Loading the trail" /></div> : entries.length === 0 ? (
         <div className="mt-5"><EmptyState title="Nothing yet" body="The first approval, dismissal or seat change lands here." /></div>
@@ -1695,36 +1700,36 @@ function AccountPage({ id }) {
       {isAdmin && (
         <Card className="mt-6 p-4">
           <MonoLabel>Settings</MonoLabel>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <label className="flex items-center gap-2 text-small">
+          <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-3">
+            <label className="flex min-w-0 items-start gap-2 text-small">
               <input type="checkbox" checked={!!account.brief_only} onChange={(e) => save({ brief_only: e.target.checked })} disabled={saving} className="size-4 accent-(--ui-cta-a)" />
               Brief-only: we propose, you apply by hand
             </label>
-            <label className="flex items-center gap-2 text-small">
+            <label className="flex min-w-0 items-start gap-2 text-small">
               <input type="checkbox" checked={account.review_reports !== false} onChange={(e) => save({ review_reports: e.target.checked })} disabled={saving} className="size-4 accent-(--ui-cta-a)" />
               Hold reports for a seat&apos;s review before the client sees them
             </label>
-            <label className="flex items-center gap-2 text-small">
+            <label className="flex min-w-0 items-start gap-2 text-small">
               <input type="checkbox" checked={!!account.client_copy} onChange={(e) => save({ client_copy: e.target.checked })} disabled={saving} className="size-4 accent-(--ui-cta-a)" />
               Copy the client on report and alert emails (no approve links)
             </label>
-            <label className="flex flex-col gap-1 text-small">
+            <label className="flex min-w-0 flex-col gap-1 text-small">
               <span>The client&apos;s own app</span>
-              <select value={account.client_mode || 'shared'} onChange={(e) => save({ client_mode: e.target.value })} disabled={saving} className={field}>
+              <select value={account.client_mode || 'shared'} onChange={(e) => save({ client_mode: e.target.value })} disabled={saving} className={clsx(field, 'w-full max-w-full')}>
                 <option value="shared">Shared - they can approve too; every action is logged here</option>
                 <option value="read_only">Read only - approvals and undo stay with you</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-small">
+            <label className="flex min-w-0 flex-col gap-1 text-small">
               <span>Report register</span>
-              <select value={account.report_register} onChange={(e) => save({ report_register: e.target.value })} disabled={saving} className={field}>
+              <select value={account.report_register} onChange={(e) => save({ report_register: e.target.value })} disabled={saving} className={clsx(field, 'w-full max-w-full')}>
                 <option value="simple">Simple - the client&apos;s words</option>
                 <option value="technical">Technical - the working shown</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-small">
+            <label className="flex min-w-0 flex-col gap-1 text-small">
               <span>Assigned seat</span>
-              <select value={account.seat_id || ''} onChange={(e) => save({ seat_id: e.target.value || null })} disabled={saving} className={field}>
+              <select value={account.seat_id || ''} onChange={(e) => save({ seat_id: e.target.value || null })} disabled={saving} className={clsx(field, 'w-full max-w-full')}>
                 <option value="">Unassigned - every account manager sees it</option>
                 {seats.map((x) => <option key={x.id} value={x.id}>{x.name || x.email}</option>)}
               </select>
@@ -1898,7 +1903,7 @@ function AgencyRoutes() {
             ) : me && me.agency && <span className="hidden text-small text-neutral-900 sm:inline">{me.agency.name}</span>}
           </div>
           <div className="flex items-center gap-3">
-            {isDemo() && <MonoLabel>Preview with sample data</MonoLabel>}
+            {isDemo() && <span className="hidden sm:inline"><MonoLabel>Preview with sample data</MonoLabel></span>}
             <ThemeToggle />
           </div>
         </div>

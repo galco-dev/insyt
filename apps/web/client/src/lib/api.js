@@ -47,7 +47,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
-export const demoHref = (path) => (isDemo() ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path);
+export const demoHref = (path) => (isDemo() && !/[?&]demo=1(&|$)/.test(path) ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path);
 
 // §11 telemetry: dashboard interactions. Fire-and-forget; silent in demo
 // mode and on any failure. Names are dotted lowercase (screen.view).
