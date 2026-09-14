@@ -139,6 +139,17 @@ const LOG = [
 // ---------------------------------------------------------------- store
 
 let S = null;
+// The demo fails where production fails (agency plan move 3): ?role=readonly
+// or ?role=am on the demo URL seats you as that role for the session.
+function demoRole() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const r = p.get('role');
+    if (r) sessionStorage.setItem('insyt_demo_role', r);
+    return sessionStorage.getItem('insyt_demo_role') || 'admin';
+  } catch { return 'admin'; }
+}
+
 function state() {
   if (!S) {
     S = structuredClone({
@@ -146,6 +157,8 @@ function state() {
       pacing: PACING, alerts: ALERTS, review: REVIEW, brand: BRAND, seats: SEATS,
       credits: CREDITS, accounts: ACCOUNTS, log: LOG, draftSeq: 3, accountSeq: 11, campaignSeq: 90000001,
     });
+    const role = demoRole();
+    if (role !== 'admin') S.me.seat = { ...S.me.seat, role, name: role === 'readonly' ? 'Sam Reid' : 'Mo Haddad', email: role === 'readonly' ? 'sam@northlight.ae' : 'mo@northlight.ae' };
   }
   return S;
 }
@@ -266,8 +279,17 @@ export function agencyDemo(path, method, body) {
   }
 
   if (method !== 'POST') return undefined;
-
-  if (p.startsWith('/approve/')) { approveOne(s, p.split('/')[2]); return { ok: true }; }
+  // Same gates as the server: a read-only seat is told so; the roster and
+  // seats are admin-only; a brief-only account takes the brief, not an apply.
+  const role = s.me.seat.role;
+  if (role === 'readonly') return { status: 403, error: 'This seat is view only. Ask an admin to change your role under Seats.', code: 'view_only' };
+  if (role !== 'admin' && (p === '/accounts' || p.startsWith('/accounts/') || p === '/seats' || p.startsWith('/seats/'))) return { status: 403, error: 'Admin only.' };
+  if (p.startsWith('/approve/')) {
+    const item = s.triage.find((t) => t.id === p.split('/')[2]);
+    if (!item) return { status: 404, error: 'This item is not on one of your accounts any more. Refresh the queue.', code: 'not_owned' };
+    if (item.brief_only) return { status: 403, error: 'This account is brief-only. Send the brief; do not apply.', code: 'brief_only' };
+    approveOne(s, item.id); return { ok: true };
+  }
   if (p.startsWith('/dismiss/')) {
     const id = p.split('/')[2];
     const i = s.triage.findIndex((t) => t.id === id);
@@ -289,8 +311,15 @@ export function agencyDemo(path, method, body) {
     return { ok: true, until };
   }
   if (p === '/approve-batch') {
-    ((body && body.ids) || []).forEach((id) => approveOne(s, id));
-    return { ok: true };
+    const skipped = [];
+    let approved = 0;
+    ((body && body.ids) || []).forEach((id) => {
+      const item = s.triage.find((t) => t.id === id);
+      if (!item) skipped.push({ id, reason: 'not_found' });
+      else if (item.brief_only) skipped.push({ id, reason: 'brief_only' });
+      else { approveOne(s, id); approved += 1; }
+    });
+    return { ok: true, approved, skipped };
   }
   if (p.startsWith('/targets/')) {
     const accountId = p.split('/')[2];

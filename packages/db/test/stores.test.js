@@ -565,6 +565,39 @@ test('agencyStore (fix plan move 14): an invite mints a join link and emails it;
   assert.deepStrictEqual(await ops.activatePendingAgencyAccounts(), ['acc-1']);
 });
 
+test('agencyStore (agency plan move 1): every write stays home; foreign ids refuse and write nothing; batch drops foreign and brief-only ids', async () => {
+  const { agencyStore } = require('../src/stores');
+  const CHANGES = { 'chg-own': { id: 'chg-own', tenant_id: 'tn-own', finding_id: 'f1' }, 'chg-brief': { id: 'chg-brief', tenant_id: 'tn-brief', finding_id: 'f2' }, 'chg-foreign': { id: 'chg-foreign', tenant_id: 'tn-foreign', finding_id: 'f3' } };
+  const ACCOUNTS = { 'tn-own': { id: 'acc-own', brief_only: false, display_name: 'Glow' }, 'tn-brief': { id: 'acc-brief', brief_only: true, display_name: 'Falcon' } };
+  const f = routedFetch({
+    changes: (url, init) => { if (init.method !== 'GET') return []; const id = /id=eq\.([^&]+)/.exec(url)[1]; return CHANGES[id] ? [CHANGES[id]] : []; },
+    agency_accounts: (url) => { const t = /tenant_id=eq\.([^&]+)/.exec(url)[1]; return /agency_id=eq\.ag1/.test(url) && ACCOUNTS[t] ? [ACCOUNTS[t]] : []; },
+    alerts: (url, init) => (init.method === 'GET' ? [{ id: 'al-foreign', tenant_id: 'tn-foreign' }] : []),
+    reports: (url, init) => (init.method === 'GET' ? [{ id: 'rep-own', tenant_id: 'tn-own' }] : []),
+    findings: [], agency_audit_log: [], dismissals: [], telemetry_heartbeat: [],
+  });
+  const ag = agencyStore(mkDb(f));
+  const patches = () => f.calls.filter((c) => c.method === 'PATCH').map((c) => c.url.replace(/^.*rest\/v1\//, ''));
+
+  assert.deepStrictEqual(await ag.approveChange('ag1', 's1', 'chg-foreign'), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual(await ag.approveChange('ag1', 's1', 'chg-brief'), { ok: false, reason: 'brief_only' });
+  assert.deepStrictEqual(await ag.dismissChange('ag1', 's1', 'chg-foreign', 'x'), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual(await ag.snoozeChange('ag1', 's1', 'chg-foreign', 7, null), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual(await ag.ackAlert('ag1', 's1', 'al-foreign'), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual(await ag.rejectReport('ag2', 's1', 'rep-own', 'x'), { ok: false, reason: 'not_found' }, 'another agency cannot touch this report');
+  assert.deepStrictEqual(patches(), [], 'nothing was written for a foreign or brief-only id');
+  const refused = f.calls.filter((c) => c.method === 'POST' && /agency_audit_log/.test(c.url)).map((c) => c.body[0].event);
+  assert.ok(refused.includes('write_refused'), 'refusals land in the audit trail');
+
+  assert.deepStrictEqual(await ag.approveChange('ag1', 's1', 'chg-own'), { ok: true });
+  assert.match(patches().at(-1), /^changes\?id=eq\.chg-own&tenant_id=eq\.tn-own$/, 'the update carries the tenant as well as the id');
+  assert.deepStrictEqual(await ag.approveReport('ag1', 's1', 'rep-own'), { ok: true });
+  assert.strictEqual(await ag.briefOnlyFor('ag1', 'chg-foreign'), true, 'brief-only fails closed for a foreign change');
+
+  const batch = await ag.approveBatch('ag1', 's1', ['chg-own', 'chg-brief', 'chg-foreign']);
+  assert.deepStrictEqual(batch, { approved: 1, skipped: [{ id: 'chg-brief', reason: 'brief_only' }, { id: 'chg-foreign', reason: 'not_found' }] });
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

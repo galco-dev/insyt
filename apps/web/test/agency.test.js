@@ -13,7 +13,8 @@ const baseStore = () => ({
 
 test('agency door (fix plan move 14): brief-only is enforced on approve; adding an account with an email asks the client to connect', async () => {
   const store = fakeAgencyStore();
-  store.briefOnlyFor = async (ag, id) => id === 'chg-brief';
+  const approve = store.approveChange;
+  store.approveChange = async (ag, seat, id) => (id === 'chg-brief' ? { ok: false, reason: 'brief_only' } : id === 'chg-foreign' ? { ok: false, reason: 'not_found' } : approve(ag, seat, id));
   store.addAccount = async (ag, seat, body, opts) => { store.actions.push(['acc_add', body.display_name, body.email || null, !!(opts && opts.baseUrl)]); return { id: 'a9', display_name: body.display_name, status: 'pending' }; };
   const app = createApp({ store: baseStore(), crawler: okCrawler, agencyStore: store, sessionSecret: 'test-secret' });
   await new Promise((r) => app.listen(0, '127.0.0.1', r));
@@ -25,6 +26,19 @@ test('agency door (fix plan move 14): brief-only is enforced on approve; adding 
     assert.ok(!store.actions.some((a) => a[0] === 'approve'), 'nothing approved on a brief-only account');
     const ok = await fetch(`${base}/api/agency/approve/chg1`, { method: 'POST', headers: { cookie } });
     assert.strictEqual(ok.status, 200);
+    // Every write stays home (agency plan move 1): a change the agency does not own is a 404 with a sentence.
+    const foreign = await fetch(`${base}/api/agency/approve/chg-foreign`, { method: 'POST', headers: { cookie } });
+    assert.strictEqual(foreign.status, 404);
+    assert.strictEqual((await foreign.json()).code, 'not_owned');
+    store.ackAlert = async () => ({ ok: false, reason: 'not_found' });
+    assert.strictEqual((await fetch(`${base}/api/agency/alerts/al-foreign/ack`, { method: 'POST', headers: { cookie } })).status, 404);
+    store.approveReport = async () => ({ ok: false, reason: 'not_found' });
+    assert.strictEqual((await fetch(`${base}/api/agency/report/rep-foreign/approve`, { method: 'POST', headers: { cookie } })).status, 404);
+    // A read-only seat gets the sentence, not a bare status.
+    const ro = cookieFor(issueSession({ tenantId: 'tn-ro', secret: 'test-secret', now: Date.now() })).split(';')[0];
+    const view = await fetch(`${base}/api/agency/approve/chg1`, { method: 'POST', headers: { cookie: ro } });
+    assert.strictEqual(view.status, 403);
+    assert.strictEqual((await view.json()).code, 'view_only');
     const add = await (await fetch(`${base}/api/agency/accounts`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ display_name: 'New Client', email: 'owner@client.ae' }) })).json();
     assert.strictEqual(add.requested, true);
     assert.deepStrictEqual(store.actions.find((a) => a[0] === 'acc_add'), ['acc_add', 'New Client', 'owner@client.ae', true]);

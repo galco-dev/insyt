@@ -30,6 +30,42 @@ const NAV = [
 
 const SEV = { critical: 'critical', warning: 'warning', info: 'info' };
 
+// Errors have a sentence (agency plan move 3). Every write in the console
+// used to swallow its failure; now each card says what happened, and a
+// blocked build lists its steps.
+function describeError(e) {
+  if (!e) return null;
+  const data = (e && e.data) || {};
+  if (data.code === 'view_only') return { text: 'This seat is view only. Ask an admin to change your role under Seats.' };
+  if (data.code === 'brief_only') return { text: 'This account is brief-only: copy the fix brief and apply it by hand.' };
+  if (data.code === 'not_owned' || e.status === 404) return { text: 'This item is not on one of your accounts any more. Refresh the queue.' };
+  if (e.status === 409) return { text: data.error || 'Blocked for now.', steps: Array.isArray(data.steps) ? data.steps : [] };
+  if (e.status === 401) return { text: 'Your sign-in has expired. Sign in again.' };
+  if (e.status === 403) return { text: data.error || 'Not allowed for this seat.' };
+  if (e.status >= 500) return { text: 'Something went wrong on our side. Nothing changed; try again in a minute.' };
+  if (!e.status) return { text: 'Could not reach Insyt. Check your connection and try again.' };
+  return { text: data.error || e.message || 'That did not go through.' };
+}
+
+function ActionNote({ error, className }) {
+  const d = describeError(error);
+  if (!d) return null;
+  return (
+    <div className={clsx('mt-3 rounded bg-warning-tint px-3 py-2 text-small text-strong ring-1 ring-inset ring-warning/25', className)} role="status">
+      <div>{d.text}</div>
+      {d.steps && d.steps.length > 0 && (
+        <ol className="mt-1.5 list-decimal pl-5 text-small text-neutral-900">
+          {d.steps.map((st, i) => <li key={i}>{typeof st === 'string' ? st : st.text || st.title || JSON.stringify(st)}</li>)}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+const ViewOnly = () => (
+  <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-tiny uppercase tracking-wide text-neutral-900" title="This seat can read everything and change nothing">view only</span>
+);
+
 function useAgency(path) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -68,7 +104,7 @@ function useWorkCounts(path) {
 // All accounts - the cross-portfolio stream is the product. Scope rides in
 // the URL so an account view is bookmarkable for the weekly client call.
 
-const ScopeContext = createContext({ scope: { account: null, campaign: null, mine: false }, setScope: () => {}, accounts: [], campaigns: [], mineNames: null, meName: null });
+const ScopeContext = createContext({ scope: { account: null, campaign: null, mine: false }, setScope: () => {}, accounts: [], campaigns: [], mineNames: null, meName: null, readOnly: false });
 const useScope = () => useContext(ScopeContext);
 
 function readScopeFromUrl() {
@@ -300,25 +336,27 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
   const [snoozeReason, setSnoozeReason] = useState('');
   const [snoozedUntil, setSnoozedUntil] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const { readOnly } = useScope();
   const state = forcedState || ownState;
 
   async function act(kind) {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
       await api(`/api/agency/${kind}/${item.id}`, { method: 'POST', body: kind === 'dismiss' ? { reason: 'dismissed from triage' } : {} });
       setState(kind === 'approve' ? 'approved' : 'dismissed');
       onDone();
-    } catch (e) { setState(null); }
+    } catch (e) { setState(null); setErr(e); }
     setBusy(false);
   }
   async function snooze(days) {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
       const r = await api(`/api/agency/snooze/${item.id}`, { method: 'POST', body: { days, reason: snoozeReason.trim() || null } });
       setSnoozedUntil(r.until || new Date(Date.now() + days * 86_400_000).toISOString());
       setState('snoozed');
       onDone();
-    } catch { setState(null); }
+    } catch (e) { setState(null); setErr(e); }
     setBusy(false);
   }
   function copyBrief() {
@@ -337,7 +375,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         {state === 'approved' ? <Check size={15} className="text-success" aria-hidden /> : <X size={15} className="text-neutral-900" aria-hidden />}
-        {item.account}: {state === 'approved' ? 'approved - executor will apply and verify' : 'dismissed with reason'} · logged to the audit trail
+        {item.account}: {state === 'approved' ? 'approved - the executor applies it with the client\'s own Google connection and verifies' : 'dismissed'} · logged to the audit trail
       </Card>
     );
   }
@@ -354,7 +392,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
     <Card accent={SEV[item.severity] || 'info'} className="rise p-4" style={{ '--rise-i': Math.min(index, 8) }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
-          {onSelect && !item.brief_only && (
+          {onSelect && !item.brief_only && !readOnly && (
             <input
               type="checkbox"
               checked={selected}
@@ -380,27 +418,29 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
         <DiffLine label="After" value={item.after} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-3">
-        {item.build_template ? (
+        {readOnly && <ViewOnly />}
+        {!readOnly && item.build_template ? (
           <Link
             to={demoHref(`/app/agency/build?template=${item.build_template}&for=${encodeURIComponent(item.account)}`)}
             className="inline-flex items-center gap-1.5 rounded bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) px-4 py-2 text-small font-medium text-(--ui-cta-ink) ring-1 ring-inset ring-(--ui-cta-edge) shadow-[0_1px_2px_rgba(0,0,0,0.45),inset_0_1px_0_var(--ui-cta-hi)]"
           >
             <Hammer size={13} aria-hidden /> Build it
           </Link>
-        ) : !item.brief_only && (
+        ) : !readOnly && !item.brief_only && (
           <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Apply</Button>
         )}
         <Button variant="secondary" onClick={copyBrief} className="!px-4 !py-2">
           <Copy size={13} aria-hidden /> {state === 'copied' ? 'Copied' : 'Copy fix brief'}
         </Button>
-        <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy} className="!py-2">Dismiss with reason</Button>
-        {state !== 'snoozing' && (
+        {!readOnly && <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy} className="!py-2">Dismiss</Button>}
+        {!readOnly && state !== 'snoozing' && (
           <Button variant="ghost" onClick={() => setState('snoozing')} disabled={busy} className="!py-2">
             <Clock size={13} aria-hidden /> Snooze
           </Button>
         )}
         {item.brief_only && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">brief-only account - Apply disabled</span>}
       </div>
+      <ActionNote error={err} />
       {state === 'snoozing' && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded bg-neutral-50 p-3">
           <input
@@ -426,6 +466,8 @@ function Triage() {
   const [batched, setBatched] = useState(() => new Set());
   const [showSnoozed, setShowSnoozed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [batchErr, setBatchErr] = useState(null);
+  const [batchNote, setBatchNote] = useState(null);
   const { scope, accounts, mineNames } = useScope();
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading triage queue" />;
@@ -443,12 +485,14 @@ function Triage() {
   const selMoney = selIds.reduce((n, id) => n + ((allItems.find((i) => i.id === id) || {}).money_monthly_usd || 0), 0);
 
   async function approveSelected() {
-    setBusy(true);
+    setBusy(true); setBatchErr(null); setBatchNote(null);
     try {
-      await api('/api/agency/approve-batch', { method: 'POST', body: { ids: selIds } });
-      setBatched((b) => new Set([...b, ...selIds]));
+      const r = await api('/api/agency/approve-batch', { method: 'POST', body: { ids: selIds } });
+      const skipped = new Set((r.skipped || []).map((x) => x.id));
+      setBatched((b) => new Set([...b, ...selIds.filter((id) => !skipped.has(id))]));
       setSel({});
-    } catch { /* keep selection */ }
+      if (skipped.size) setBatchNote(`${r.approved} approved. ${skipped.size} skipped: ${(r.skipped || []).some((x) => x.reason === 'brief_only') ? 'brief-only accounts take the brief, not an apply' : 'no longer on one of your accounts'}.`);
+    } catch (e) { setBatchErr(e); }
     setBusy(false);
   }
 
@@ -466,7 +510,7 @@ function Triage() {
       <MonoLabel>Triage</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{scopedTitle}</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        Every change ships both ways: Apply (our executor runs it through the staged workspace → diff → publish → verify path) or Copy fix brief for manual execution. Nothing is ever auto-applied. Tick several and approve them in one go - each still lands individually in the per-seat audit log. Snooze parks an item with a reason; it comes back by itself.
+        Every change ships both ways: Apply (the executor applies it with the client&apos;s own Google connection and verifies it) or Copy fix brief for manual execution. Nothing is ever auto-applied. Tick several and approve them in one go - each still lands individually in the per-seat audit log. Snooze parks an item with a reason; it comes back by itself.
       </p>
       {selIds.length > 0 && (
         <div className="sticky top-[105px] z-20 mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-500 bg-(--ui-well) px-4 py-2.5 shadow-sm">
@@ -475,6 +519,8 @@ function Triage() {
           <button type="button" onClick={() => setSel({})} className="text-small text-neutral-900 underline underline-offset-2">Clear</button>
         </div>
       )}
+      <ActionNote error={batchErr} />
+      {batchNote && <p className="mt-3 text-small text-neutral-900" role="status">{batchNote}</p>}
       {queue.length === 0 ? (
         <div className="mt-5">
           <EmptyState
@@ -674,9 +720,11 @@ function Pacing() {
 function AlertRow({ a, index }) {
   const [acked, setAcked] = useState(!!a.acked_at);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const { readOnly } = useScope();
   async function ack() {
-    setBusy(true);
-    try { await api(`/api/agency/alerts/${a.id}/ack`, { method: 'POST', body: {} }); setAcked(true); } catch { /* keep */ }
+    setBusy(true); setErr(null);
+    try { await api(`/api/agency/alerts/${a.id}/ack`, { method: 'POST', body: {} }); setAcked(true); } catch (e) { setErr(e); }
     setBusy(false);
   }
   return (
@@ -699,10 +747,11 @@ function AlertRow({ a, index }) {
             <Check size={14} className="text-success" aria-hidden />
             Acknowledged{a.acked_seat ? ` by ${a.acked_seat.name}` : ''}
           </span>
-        ) : (
+        ) : readOnly ? <ViewOnly /> : (
           <Button variant="secondary" onClick={ack} disabled={busy} className="!px-4 !py-2">Acknowledge</Button>
         )}
       </div>
+      <ActionNote error={err} />
     </Card>
   );
 }
@@ -720,7 +769,7 @@ function Alerts() {
       <MonoLabel>Alerts</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{open === 0 ? 'Nothing waiting on you' : `${open} unacknowledged`}</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        Breakage and fast movers that can&apos;t wait for the weekly run: tags going dark, spend spikes, disapprovals, conversion flatlines. A daily digest of unacknowledged alerts emails every seat each morning - acknowledging here keeps it out of the digest. Alerts only ever notify; fixes still go through triage.
+        Breakage and fast movers that can&apos;t wait for the weekly run: tags going dark, spend spikes, disapprovals, conversion flatlines. Today the alert email goes to the client&apos;s own inbox; a morning digest for seats is coming. Acknowledging here marks it handled for the whole team. Alerts only ever notify; fixes still go through triage.
       </p>
       {rows.length === 0 ? (
         <div className="mt-5"><EmptyState title="All quiet" body="Alerts land here the moment monitoring spots them." /></div>
@@ -768,14 +817,16 @@ function DraftCard({ d, index }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState(null);
+  const { readOnly } = useScope();
   const spec = d.spec || {};
 
   async function act(action) {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
       const r = await api(`/api/agency/drafts/${d.id}/${action}`, { method: 'POST', body: {} });
       setStatus(r.status || (action === 'approve' ? 'created_paused' : action === 'enable' ? 'enabled' : 'dismissed'));
-    } catch { /* keep */ }
+    } catch (e) { setErr(e); }
     setBusy(false);
   }
   function copyBrief() {
@@ -808,21 +859,23 @@ function DraftCard({ d, index }) {
         <pre className="mt-2 overflow-x-auto rounded bg-neutral-50 p-3 font-mono text-tiny leading-relaxed text-neutral-900">{briefFromSpec(spec)}</pre>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-3">
-        {status === 'draft' && (
+        {readOnly && <ViewOnly />}
+        {!readOnly && status === 'draft' && (
           <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Create in Google Ads - paused</Button>
         )}
-        {status === 'created_paused' && (
+        {!readOnly && status === 'created_paused' && (
           <Button onClick={() => act('enable')} disabled={busy} className="!px-4 !py-2"><Play size={13} aria-hidden /> Enable - starts spending</Button>
         )}
         <Button variant="secondary" onClick={copyBrief} className="!px-4 !py-2">
           <Copy size={13} aria-hidden /> {copied ? 'Copied' : 'Copy build brief'}
         </Button>
-        {status !== 'enabled' && (
+        {!readOnly && status !== 'enabled' && (
           <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy} className="!py-2">Dismiss</Button>
         )}
         {status === 'created_paused' && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">paused - spends nothing until enabled</span>}
-        {status === 'enabled' && <span className="font-mono text-tiny uppercase tracking-wide text-success">live · one-tap pause any time</span>}
+        {status === 'enabled' && <span className="font-mono text-tiny uppercase tracking-wide text-success">live · pause it from Google Ads or ask us</span>}
       </div>
+      <ActionNote error={err} />
     </Card>
   );
 }
@@ -844,13 +897,14 @@ function Build() {
   });
   const [created, setCreated] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
   useEffect(() => { if (prefillAccount && !form.account_id) setForm((f) => ({ ...f, account_id: prefillAccount })); }, [prefillAccount]); // eslint-disable-line react-hooks/exhaustive-deps
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading drafts" />;
 
   async function create() {
     if (!form.account_id) return;
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
       const r = await api('/api/agency/drafts', {
         method: 'POST',
@@ -865,7 +919,7 @@ function Build() {
         },
       });
       if (r.draft) setCreated((xs) => [r.draft, ...xs]);
-    } catch { /* keep form */ }
+    } catch (e) { setErr(e); }
     setBusy(false);
   }
 
@@ -914,6 +968,7 @@ function Build() {
           <Hammer size={14} aria-hidden /> Draft it
         </Button>
       </div>
+      <ActionNote error={err} />
 
       {rows.length === 0 ? (
         <div className="mt-5"><EmptyState title="No drafts yet" body="Draft one above, or hit Build on any coverage-gap finding in Triage - it lands here pre-filled." /></div>
@@ -931,19 +986,21 @@ function Build() {
 function ReviewItem({ r }) {
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const { readOnly } = useScope();
   async function act(kind) {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
       await api(`/api/agency/report/${r.id}/${kind}`, { method: 'POST', body: kind === 'reject' ? { reason: 'needs edits' } : {} });
       setState(kind);
-    } catch { /* keep row */ }
+    } catch (e) { setErr(e); }
     setBusy(false);
   }
   if (state) {
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         {state === 'approve' ? <Check size={15} className="text-success" aria-hidden /> : <X size={15} aria-hidden />}
-        {r.account}: report {state === 'approve' ? 'approved - now visible in the client library' : 'sent back'}
+        {r.account}: report {state === 'approve' ? 'approved' : 'sent back'} · logged
       </Card>
     );
   }
@@ -952,13 +1009,17 @@ function ReviewItem({ r }) {
       <div>
         <div className="text-body font-semibold">{r.account}</div>
         <div className="mt-0.5 text-small text-neutral-900">
-          {r.type === 'deep' ? 'Deep audit' : 'Weekly report'} · rendered {new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · white-labelled PDF + web view
+          {r.type === 'deep' ? 'Deep audit' : 'Weekly report'} · rendered {new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · web view
         </div>
+        <ActionNote error={err} />
       </div>
       <div className="flex shrink-0 gap-2">
-        <a href={demoHref('/app/report')} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-(--ui-well) px-4 py-2 text-small font-medium">Preview</a>
-        <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Approve</Button>
-        <Button variant="ghost" onClick={() => act('reject')} disabled={busy} className="!py-2">Send back</Button>
+        {readOnly ? <ViewOnly /> : (
+          <>
+            <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Approve</Button>
+            <Button variant="ghost" onClick={() => act('reject')} disabled={busy} className="!py-2">Send back</Button>
+          </>
+        )}
       </div>
     </Card>
   );
@@ -976,10 +1037,10 @@ function Review() {
       <MonoLabel>Report review</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{queue.length} awaiting sign-off</h1>
       <p className="mt-1 max-w-[70ch] text-small text-neutral-900">
-        The platform never emails your clients. Reports render into this queue; nothing becomes client-visible until a seat approves it. You distribute however you like.
+        Today a client&apos;s weekly report is emailed to them when the check finishes. A review hold, where nothing reaches the client until a seat approves it here, is coming; until then this queue only shows reports that were held by hand.
       </p>
       {queue.length === 0 ? (
-        <div className="mt-5"><EmptyState title="Nothing waiting" body="Weekly renders land here after each run." /></div>
+        <div className="mt-5"><EmptyState title="Nothing waiting" body="Reports go straight to clients today. Held reports will land here once review holds ship." /></div>
       ) : (
         <div className="mt-5 flex flex-col gap-3">{queue.map((r) => <ReviewItem key={r.id} r={r} />)}</div>
       )}
@@ -992,28 +1053,29 @@ function Review() {
 const ACC_STATUS = {
   active: { label: 'active', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'color-mix(in srgb, var(--ui-success) 22%, transparent)' },
   pending: { label: 'awaiting Google connection', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'color-mix(in srgb, var(--ui-info) 22%, transparent)' },
-  paused: { label: 'paused - not checked, not billed', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
+  paused: { label: 'paused - not billed', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
 };
 
 function AccountRow({ a, onAction }) {
   const [busy, setBusy] = useState(false);
   const [gone, setGone] = useState(false);
   const [status, setStatus] = useState(a.status);
+  const [err, setErr] = useState(null);
   async function act(kind) {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
       await api(`/api/agency/accounts/${a.id}/${kind}`, { method: 'POST', body: {} });
       if (kind === 'remove') setGone(true);
       else setStatus(kind === 'pause' ? 'paused' : 'active');
       onAction();
-    } catch { /* row unchanged */ }
+    } catch (e) { setErr(e); }
     setBusy(false);
   }
   if (gone) {
     return (
       <Card className="flex items-center gap-2 p-4 text-small text-neutral-900">
         <Check size={15} className="text-success" aria-hidden />
-        {a.display_name} removed - billing stops at the end of this cycle; its history and ledger stay readable.
+        {a.display_name} removed from your portfolio - billing stops at the end of this cycle.
       </Card>
     );
   }
@@ -1029,11 +1091,14 @@ function AccountRow({ a, onAction }) {
           {a.seat ? a.seat.name : 'Unassigned'} · {a.report_register}{a.brief_only ? ' · brief-only' : ''} · added {new Date(a.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
         </div>
       </div>
-      <div className="flex shrink-0 gap-2">
-        {status === 'paused'
-          ? <Button variant="secondary" onClick={() => act('resume')} disabled={busy} className="!px-3 !py-2"><Play size={13} aria-hidden /> Resume</Button>
-          : <Button variant="secondary" onClick={() => act('pause')} disabled={busy} className="!px-3 !py-2"><Pause size={13} aria-hidden /> Pause</Button>}
-        <Button variant="ghost" onClick={() => act('remove')} disabled={busy} className="!py-2"><Trash2 size={13} aria-hidden /> Remove</Button>
+      <div className="flex shrink-0 flex-col items-end gap-2">
+        <div className="flex gap-2">
+          {status === 'paused'
+            ? <Button variant="secondary" onClick={() => act('resume')} disabled={busy} className="!px-3 !py-2"><Play size={13} aria-hidden /> Resume</Button>
+            : <Button variant="secondary" onClick={() => act('pause')} disabled={busy} className="!px-3 !py-2"><Pause size={13} aria-hidden /> Pause</Button>}
+          <Button variant="ghost" onClick={() => act('remove')} disabled={busy} className="!py-2"><Trash2 size={13} aria-hidden /> Remove</Button>
+        </div>
+        <ActionNote error={err} className="!mt-0" />
       </div>
     </Card>
   );
@@ -1061,7 +1126,7 @@ function Accounts() {
     try {
       const r = await api('/api/agency/accounts', { method: 'POST', body: { display_name: name.trim(), email: clientEmail.trim() || undefined, website: website.trim() || undefined } });
       setAdded((xs) => [...xs, r.account || { id: `new-${xs.length}`, display_name: name.trim(), status: 'pending', created_at: new Date().toISOString() }]);
-      setAddNote(r.requested ? `Added. We asked ${clientEmail.trim()} to connect Google; the account goes live the moment they do.` : 'Added. Send the client an access request from here once you have their email.');
+      setAddNote(r.requested ? `Added. We asked ${clientEmail.trim()} to connect Google; the account goes live the moment they do.` : 'Added without an email, so nobody has been asked to connect yet. Requesting access later is coming to this row; for now add the client\'s email when you add the account.');
       setName(''); setClientEmail(''); setWebsite('');
       refreshBilling();
     } catch (e) { setAddNote(e.message); }
@@ -1116,7 +1181,7 @@ function Accounts() {
       </div>
       {addNote && <p className="mt-2 text-tiny text-neutral-900">{addNote}</p>}
       <p className="mt-2 max-w-[72ch] text-tiny text-neutral-900">
-        A new account starts as "awaiting Google connection" - connect its Ads/GA4/GTM access (or send the client an access request) and the first audit runs the same day. Pause an account any time: paused accounts keep their full history but are not checked and not billed.
+        A new account starts as "awaiting Google connection": when you add the client&apos;s email we ask them to connect, and the first audit runs the day they do. Pausing stops billing for the account; pausing the client&apos;s own checks and emails arrives with the next release.
       </p>
 
       <div className="mt-5 flex flex-col gap-2">
@@ -1136,17 +1201,18 @@ function Brand() {
   const { data, error } = useAgency('/api/agency/brand');
   const [kit, setKit] = useState(null);
   const [saved, setSaved] = useState(null);
+  const [saveErr, setSaveErr] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data) setKit(data.kit || { display_name: '', color_primary: '#0B1F2A', color_accent: '#E07A3F', footer_text: '' }); }, [data]);
   if (error) return <ErrorNote message={error.message} />;
   if (!kit) return <Spinner label="Loading brand kit" />;
 
   async function save() {
-    setBusy(true); setSaved(null);
+    setBusy(true); setSaved(null); setSaveErr(null);
     try {
       const r = await api('/api/agency/brand', { method: 'POST', body: kit });
       setSaved(r.version ? `Saved as version ${r.version}. Earlier reports keep the version they shipped with.` : 'Saved.');
-    } catch (e) { setSaved(e.message); }
+    } catch (e) { setSaveErr(e); }
     setBusy(false);
   }
   const field = (label, key, type = 'text') => (
@@ -1167,7 +1233,7 @@ function Brand() {
         <MonoLabel>Brand kit {kit.version ? `· v${kit.version}` : ''}</MonoLabel>
         <h1 className="mt-1 text-h3 tracking-tight">Your reports, your name on them</h1>
         <p className="mt-1 text-small text-neutral-900">
-          The kit applies to everything your clients see: the report web view, the PDF, and (Top tier) the portal on your own domain. This console stays Insyt-branded - it&apos;s your back office. Versioned: a rebrand never alters reports already in client hands.
+          The kit is saved and versioned today; applying it to the report web view and the report email your clients receive is coming, and until then reports carry Insyt&apos;s own look. This console stays Insyt-branded - it&apos;s your back office. A rebrand never alters reports already in client hands.
         </p>
         <div className="mt-5 flex flex-col gap-4">
           {field('Report display name', 'display_name')}
@@ -1181,6 +1247,7 @@ function Brand() {
             <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save new version'}</Button>
             {saved && <span className="text-small text-success">{saved}</span>}
           </div>
+          <ActionNote error={saveErr} className="!mt-0" />
         </div>
       </div>
       <div>
@@ -1212,27 +1279,28 @@ function Seats() {
   const [form, setForm] = useState({ email: '', name: '', role: 'am' });
   const [busy, setBusy] = useState(null);
   const [note, setNote] = useState(null);
+  const [err, setErr] = useState(null);
   useEffect(() => { if (data) setSeats(data.seats); }, [data]);
   if (error) return <ErrorNote message={error.message} />;
   if (!data || !seats) return <Spinner label="Loading seats" />;
-  const roleLabel = { admin: 'Admin - billing, brand, seats, all accounts', am: 'Account manager - scoped to assigned accounts', readonly: 'Read-only' };
+  const roleLabel = { admin: 'Admin - billing, brand, seats, all accounts', am: 'Account manager - can action every account (per-account assignment is coming)', readonly: 'Read-only - sees everything, changes nothing' };
   const isAdmin = !me || !me.seat || me.seat.role === 'admin';
   // The door (fix plan move 14): add a seat, and the invite goes out with a
   // seven-day link that signs them in with Google and binds the seat.
   async function add() {
     if (!form.email.includes('@')) return;
-    setBusy('add'); setNote(null);
+    setBusy('add'); setNote(null); setErr(null);
     try {
       const r = await api('/api/agency/seats', { method: 'POST', body: form });
       setSeats((xs) => [...xs, r.seat || { id: `new-${xs.length}`, ...form, status: 'invited' }]);
       setNote(`Invited ${form.email}. The email carries a link that signs them in with Google.`);
       setForm({ email: '', name: '', role: 'am' });
-    } catch (e) { setNote(e.message); }
+    } catch (e) { setErr(e); }
     setBusy(null);
   }
   async function setRole(id, role) {
-    setBusy(id);
-    try { await api(`/api/agency/seats/${id}`, { method: 'POST', body: { role } }); setSeats((xs) => xs.map((s) => (s.id === id ? { ...s, role } : s))); } catch (e) { setNote(e.message); }
+    setBusy(id); setErr(null);
+    try { await api(`/api/agency/seats/${id}`, { method: 'POST', body: { role } }); setSeats((xs) => xs.map((s) => (s.id === id ? { ...s, role } : s))); } catch (e) { setErr(e); }
     setBusy(null);
   }
   const field = 'rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)';
@@ -1240,6 +1308,7 @@ function Seats() {
     <div>
       <MonoLabel>Seats &amp; roles</MonoLabel>
       <h1 className="mt-1 text-h3 tracking-tight">{seats.length} seats</h1>
+      <ActionNote error={err} />
       <div className="mt-5 flex flex-col gap-2">
         {seats.map((s) => (
           <Card key={s.id} className="flex flex-col items-start gap-1 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1280,7 +1349,7 @@ function Seats() {
               </div>
             ))}
           </div>
-          <p className="mt-2 text-tiny text-neutral-900">Every approval, dismissal and report sign-off, by whom, forever. Your record if a client ever asks.</p>
+          <p className="mt-2 text-tiny text-neutral-900">Every approval, dismissal and report sign-off, by whom. The last 100 are shown here; the full trail is kept.</p>
         </div>
       )}
     </div>
@@ -1359,6 +1428,7 @@ function AgencyRoutes() {
       : null;
     return {
       scope, setScope, accounts, meName, mineNames,
+      readOnly: !!(me && me.seat && me.seat.role === 'readonly'),
       campaigns: (campData && campData.campaigns) || [],
     };
   }, [scope, accData, campData, me]);
@@ -1433,7 +1503,7 @@ function AgencyRoutes() {
       <main className="page-fade mx-auto max-w-xl2 px-5 pb-24 pt-8">{screen}</main>
       <footer className="mx-auto max-w-xl2 px-5 pb-10 text-tiny text-neutral-900">
         <Undo2 size={12} className="mr-1 inline" aria-hidden />
-        No auto-apply, ever. Changes land on client accounts under your name - every one waits for a seat&apos;s explicit approval, and every applied change keeps a one-tap rollback.
+        No auto-apply, ever. Changes land on client accounts under your name - every one waits for a seat&apos;s explicit approval, is applied with the client&apos;s own Google connection, and is watched for 48 hours with an undo in the client&apos;s History.
       </footer>
     </div>
     </ScopeContext.Provider>

@@ -19,3 +19,4 @@ deploy request: Fix plan push 6a (switch, join by website, viewers, another busi
 deploy request: Fix plan push 6b (the small things: check again, pages read, own-site limits, suspended accounts, Stripe Tax and the pay link, print this month, campaign groups) - 2026-09-11T20:51:48Z
 deploy request: Fix plan push 7 (accounts behind a manager account, expected until Sunday, colour never alone) - 2026-09-11T20:55:15Z
 deploy request: Fix plan push 8 (the agency door: seat invites that bind a Google identity, client accounts that connect themselves, brief-only enforced, ops creates the first agency) - 2026-09-11T21:01:27Z
+2026-09-14 agency plan push 1: every write stays home, honest copy, errors have a sentence

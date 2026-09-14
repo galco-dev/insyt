@@ -1346,6 +1346,20 @@ function agencyStore(db, deps = {}) {
   const log = async (agencyId, seatId, event, detail) => {
     await db.insert('agency_audit_log', [{ agency_id: agencyId, seat_id: seatId, event, detail: detail || {} }], { returning: false }).catch(() => {});
   };
+  // Every write stays home (agency plan move 1): a change, alert or report is
+  // actionable only when its tenant is one of this agency's active accounts.
+  // Foreign ids resolve to null and the caller refuses; nothing fails open.
+  const ownedAccount = async (agencyId, tenantId) => {
+    if (!tenantId) return null;
+    return db.select('agency_accounts',
+      `agency_id=eq.${q(agencyId)}&tenant_id=eq.${q(tenantId)}&status=eq.active&select=id,brief_only,display_name`, { single: true }).catch(() => null);
+  };
+  const ownedRow = async (agencyId, table, id, extra = '') => {
+    const row = await db.select(table, `id=eq.${q(id)}&select=id,tenant_id${extra}`, { single: true }).catch(() => null);
+    if (!row) return null;
+    const account = await ownedAccount(agencyId, row.tenant_id);
+    return account ? { row, account } : null;
+  };
   return {
     // Resolve the acting seat from the platform session's tenant id.
     seatByTenant: async (tenantId) => db.select('agency_seats',
@@ -1549,44 +1563,60 @@ function agencyStore(db, deps = {}) {
       return rows.map((r) => ({ ...r, account: nameByTenant[r.tenant_id] }));
     },
     ackAlert: async (agencyId, seatId, alertId) => {
-      await db.update('alerts', `id=eq.${q(alertId)}`, { acked_by: seatId, acked_at: new Date().toISOString() });
+      const own = await ownedRow(agencyId, 'alerts', alertId);
+      if (!own) return { ok: false, reason: 'not_found' };
+      await db.update('alerts', `id=eq.${q(alertId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { acked_by: seatId, acked_at: new Date().toISOString() });
       await log(agencyId, seatId, 'alert_acked', { alert_id: alertId });
+      return { ok: true };
     },
 
     // ---- P0: triage snooze + batch approval. Batch logs every id
     // individually — the audit trail never compresses.
     snoozeChange: async (agencyId, seatId, changeId, days, reason) => {
+      const own = await ownedRow(agencyId, 'changes', changeId);
+      if (!own) return { ok: false, reason: 'not_found' };
       const until = new Date(Date.now() + (days || 7) * 86_400_000).toISOString();
-      await db.update('changes', `id=eq.${q(changeId)}`, { snoozed_until: until, snoozed_by: seatId, snooze_reason: reason || null });
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { snoozed_until: until, snoozed_by: seatId, snooze_reason: reason || null });
       await log(agencyId, seatId, 'change_snoozed', { change_id: changeId, days: days || 7, reason: reason || null });
-      return { until };
+      return { ok: true, until };
     },
+    // Batch approve runs the same two checks per id as a single approve
+    // (owned, not brief-only) and reports what it skipped and why.
     approveBatch: async (agencyId, seatId, changeIds) => {
       let n = 0;
+      const skipped = [];
       for (const id of changeIds || []) {
-        await db.update('changes', `id=eq.${q(id)}`, { status: 'approved' });
+        const own = await ownedRow(agencyId, 'changes', id);
+        if (!own) { skipped.push({ id, reason: 'not_found' }); continue; }
+        if (own.account.brief_only) { skipped.push({ id, reason: 'brief_only' }); continue; }
+        await db.update('changes', `id=eq.${q(id)}&tenant_id=eq.${q(own.row.tenant_id)}`, { status: 'approved' });
         await log(agencyId, seatId, 'change_approved', { change_id: id, batch: true });
         n += 1;
       }
-      return { approved: n };
+      if (skipped.length) await log(agencyId, seatId, 'write_refused', { action: 'approve_batch', skipped });
+      return { approved: n, skipped };
     },
 
     approveChange: async (agencyId, seatId, changeId) => {
-      await db.update('changes', `id=eq.${q(changeId)}`, { status: 'approved' });
+      const own = await ownedRow(agencyId, 'changes', changeId);
+      if (!own) { await log(agencyId, seatId, 'write_refused', { action: 'approve', change_id: changeId, reason: 'not_found' }); return { ok: false, reason: 'not_found' }; }
+      if (own.account.brief_only) { await log(agencyId, seatId, 'write_refused', { action: 'approve', change_id: changeId, reason: 'brief_only' }); return { ok: false, reason: 'brief_only' }; }
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { status: 'approved' });
       await log(agencyId, seatId, 'change_approved', { change_id: changeId });
+      return { ok: true };
     },
     dismissChange: async (agencyId, seatId, changeId, reason) => {
-      await db.update('changes', `id=eq.${q(changeId)}`, { status: 'failed' });
-      const ch = await db.select('changes', `id=eq.${q(changeId)}&select=finding_id`, { single: true });
-      if (ch) await db.update('findings', `id=eq.${q(ch.finding_id)}`, { status: 'dismissed' });
+      const own = await ownedRow(agencyId, 'changes', changeId, ',finding_id,finding:findings(rule_id)');
+      if (!own) return { ok: false, reason: 'not_found' };
+      const full = own.row;
+      await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(full.tenant_id)}`, { status: 'failed' });
+      if (full.finding_id) await db.update('findings', `id=eq.${q(full.finding_id)}&tenant_id=eq.${q(full.tenant_id)}`, { status: 'dismissed' });
       await log(agencyId, seatId, 'change_dismissed', { change_id: changeId, reason: reason || null });
-      const full = await db.select('changes', `id=eq.${q(changeId)}&select=tenant_id,finding_id,finding:findings(rule_id)`, { single: true }).catch(() => null);
-      if (full) {
-        await require('../../shared/src/telemetry').createTelemetry({ db }).dismissal({
-          tenantId: full.tenant_id, changeId, findingId: full.finding_id, ruleId: full.finding ? full.finding.rule_id : null,
-          reasonTap: reason, actor: `seat:${seatId}`,
-        });
-      }
+      await require('../../shared/src/telemetry').createTelemetry({ db }).dismissal({
+        tenantId: full.tenant_id, changeId, findingId: full.finding_id, ruleId: full.finding ? full.finding.rule_id : null,
+        reasonTap: reason, actor: `seat:${seatId}`,
+      });
+      return { ok: true };
     },
 
     // Review queue: nothing reaches a client without a seat's approval.
@@ -1601,12 +1631,18 @@ function agencyStore(db, deps = {}) {
       return rows.map((r) => ({ id: r.id, account: nameByTenant[r.tenant_id], type: r.type, created_at: r.created_at }));
     },
     approveReport: async (agencyId, seatId, reportId) => {
-      await db.update('reports', `id=eq.${q(reportId)}`, { review_status: 'approved', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
+      const own = await ownedRow(agencyId, 'reports', reportId);
+      if (!own) return { ok: false, reason: 'not_found' };
+      await db.update('reports', `id=eq.${q(reportId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { review_status: 'approved', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
       await log(agencyId, seatId, 'report_approved', { report_id: reportId });
+      return { ok: true };
     },
     rejectReport: async (agencyId, seatId, reportId, reason) => {
-      await db.update('reports', `id=eq.${q(reportId)}`, { review_status: 'rejected', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
+      const own = await ownedRow(agencyId, 'reports', reportId);
+      if (!own) return { ok: false, reason: 'not_found' };
+      await db.update('reports', `id=eq.${q(reportId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { review_status: 'rejected', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
       await log(agencyId, seatId, 'report_rejected', { report_id: reportId, reason: reason || null });
+      return { ok: true };
     },
 
     brandKit: async (agencyId) => db.select('brand_kits',
@@ -1658,12 +1694,11 @@ function agencyStore(db, deps = {}) {
       await log(seat.agency_id, seatId, 'seat_joined', { email: email || seat.email, invited_as: seat.email });
       return { ok: true, agency_id: seat.agency_id };
     },
-    // Brief-only accounts (fix plan move 14): enforced here, not only hidden on the button.
+    // Brief-only accounts (fix plan move 14). Kept for callers that ask before
+    // acting; a change this agency does not own answers true (fails closed).
     briefOnlyFor: async (agencyId, changeId) => {
-      const ch = await db.select('changes', `id=eq.${q(changeId)}&select=tenant_id`, { single: true }).catch(() => null);
-      if (!ch) return false;
-      const acc = await db.select('agency_accounts', `agency_id=eq.${q(agencyId)}&tenant_id=eq.${q(ch.tenant_id)}&select=brief_only`, { single: true }).catch(() => null);
-      return !!(acc && acc.brief_only);
+      const own = await ownedRow(agencyId, 'changes', changeId);
+      return !own || !!own.account.brief_only;
     },
     updateSeat: async (agencyId, seatId, targetSeatId, patch) => {
       const allowed = {};

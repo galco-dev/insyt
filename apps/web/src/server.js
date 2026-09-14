@@ -645,33 +645,44 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/drafts') return json(res, 200, { drafts: await agencyStore.draftsFor(ag) });
         }
         if (req.method === 'POST') {
-          if (!canWrite) return json(res, 403, { error: 'Read-only seat.' });
+          if (!canWrite) return json(res, 403, { error: 'This seat is view only. Ask an admin to change your role under Seats.', code: 'view_only' });
           let body = '';
           req.on('data', (c) => { body += c; });
           await new Promise((r) => req.on('end', r));
           let parsed; try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
+          // Every write stays home (agency plan move 1): the store answers
+          // { ok: false, reason } for anything outside this agency's active
+          // accounts, and the route turns that into a sentence.
+          const refused = (r) => {
+            if (!r || r.ok !== false) return false;
+            if (r.reason === 'brief_only') json(res, 403, { error: 'This account is brief-only. Send the brief; do not apply.', code: 'brief_only' });
+            else json(res, 404, { error: 'This item is not on one of your accounts any more. Refresh the queue.', code: 'not_owned' });
+            return true;
+          };
 
           if (sub === '/approve-batch') {
             if (!Array.isArray(parsed.ids) || !parsed.ids.length) return json(res, 400, { error: 'ids required' });
             const r = await agencyStore.approveBatch(ag, seat.id, parsed.ids);
-            return json(res, 200, { ok: true, approved: r.approved });
+            return json(res, 200, { ok: true, approved: r.approved, skipped: r.skipped || [] });
           }
           if (sub.startsWith('/approve/')) {
-            // Brief-only is enforced here, not only hidden on the button (fix plan move 14).
-            if (agencyStore.briefOnlyFor && await agencyStore.briefOnlyFor(ag, sub.split('/')[2])) return json(res, 403, { error: 'This account is brief-only. Send the brief; do not apply.' });
-            await agencyStore.approveChange(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true });
+            const r = await agencyStore.approveChange(ag, seat.id, sub.split('/')[2]);
+            if (refused(r)) return undefined; return json(res, 200, { ok: true });
           }
-          if (sub.startsWith('/dismiss/')) { await agencyStore.dismissChange(ag, seat.id, sub.split('/')[2], parsed.reason); return json(res, 200, { ok: true }); }
+          if (sub.startsWith('/dismiss/')) {
+            const r = await agencyStore.dismissChange(ag, seat.id, sub.split('/')[2], parsed.reason);
+            if (refused(r)) return undefined; return json(res, 200, { ok: true });
+          }
           if (sub.startsWith('/snooze/')) {
             const r = await agencyStore.snoozeChange(ag, seat.id, sub.split('/')[2], parsed.days, parsed.reason);
-            return json(res, 200, { ok: true, until: r.until });
+            if (refused(r)) return undefined; return json(res, 200, { ok: true, until: r.until });
           }
           if (sub.startsWith('/targets/')) {
             const row = await agencyStore.setTargets(ag, seat.id, sub.split('/')[2], parsed);
             if (!row) return json(res, 404, { error: 'Unknown account.' });
             return json(res, 200, { ok: true });
           }
-          if (/^\/alerts\/[^/]+\/ack$/.test(sub)) { await agencyStore.ackAlert(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }
+          if (/^\/alerts\/[^/]+\/ack$/.test(sub)) { const r = await agencyStore.ackAlert(ag, seat.id, sub.split('/')[2]); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
           if (sub === '/drafts') {
             if (!parsed.account_id || !parsed.template) return json(res, 400, { error: 'account_id and template required' });
             const row = await agencyStore.createDraft(ag, seat.id, parsed);
@@ -689,8 +700,8 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               return json(res, 200, { ok: true, ...r });
             }
           }
-          if (/^\/report\/[^/]+\/approve$/.test(sub)) { await agencyStore.approveReport(ag, seat.id, sub.split('/')[2]); return json(res, 200, { ok: true }); }
-          if (/^\/report\/[^/]+\/reject$/.test(sub)) { await agencyStore.rejectReport(ag, seat.id, sub.split('/')[2], parsed.reason); return json(res, 200, { ok: true }); }
+          if (/^\/report\/[^/]+\/approve$/.test(sub)) { const r = await agencyStore.approveReport(ag, seat.id, sub.split('/')[2]); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
+          if (/^\/report\/[^/]+\/reject$/.test(sub)) { const r = await agencyStore.rejectReport(ag, seat.id, sub.split('/')[2], parsed.reason); if (refused(r)) return undefined; return json(res, 200, { ok: true }); }
           if (sub === '/brand') { const r = await agencyStore.saveBrandKit(ag, seat.id, parsed); return json(res, 200, { ok: true, version: r.version }); }
           if (sub === '/accounts') {
             if (!isAdmin) return json(res, 403, { error: 'Admin only.' });
