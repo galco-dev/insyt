@@ -307,3 +307,14 @@ test('agency plan move 11: a managed tenant in read-only mode is a viewer, its h
     assert.strictEqual((await fetch(`${base}/api/app/approve/ch1`, { method: 'POST', headers: { cookie: authedCookie() } })).status, 200, 'shared mode keeps the client\'s yes');
   });
 });
+
+test('the web report at /r/:id awaits the store: a real id renders, an unknown or malformed id is a 404', async () => {
+  const store = { ...baseStore(), getReportHtml: async (id) => (id === '11111111-1111-1111-1111-111111111111' ? { html_web: '<h1>Report</h1>' } : null) };
+  await withApp({ store, crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
+    const ok = await fetch(`${base}/r/11111111-1111-1111-1111-111111111111`);
+    assert.strictEqual(ok.status, 200);
+    assert.match(await ok.text(), /<h1>Report<\/h1>/);
+    assert.strictEqual((await fetch(`${base}/r/22222222-2222-2222-2222-222222222222`)).status, 404);
+    assert.strictEqual((await fetch(`${base}/r/not-a-report`)).status, 404);
+  });
+});

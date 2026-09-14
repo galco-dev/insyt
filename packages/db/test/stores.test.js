@@ -833,6 +833,48 @@ test('agency plan push 5 (the small things): snoozed filtered on the server, one
   assert.doesNotThrow(() => renderTemplate('agency_welcome', welcome.payload));
 });
 
+test('adversarial: an am at agency A cannot read, approve, target, draft or undo on an account assigned to another seat or held by agency B', async () => {
+  const { agencyStore } = require('../src/stores');
+  // acc-mine is assigned to s2, acc-other to s3, acc-b belongs to agency B.
+  const ACC = { 'tn-mine': { id: 'acc-mine', agency_id: 'ag1', seat_id: 's2', tenant_id: 'tn-mine', brief_only: false, display_name: 'Mine', status: 'active' }, 'tn-other': { id: 'acc-other', agency_id: 'ag1', seat_id: 's3', tenant_id: 'tn-other', brief_only: false, display_name: 'Other', status: 'active' }, 'tn-b': { id: 'acc-b', agency_id: 'ag2', seat_id: null, tenant_id: 'tn-b', brief_only: false, display_name: 'B', status: 'active' } };
+  const matches = (url, row) => {
+    const u = decodeURIComponent(url);
+    if (/agency_id=eq\.([^&]+)/.test(u) && /agency_id=eq\.([^&]+)/.exec(u)[1] !== row.agency_id) return false;
+    if (/tenant_id=eq\.([^&]+)/.test(u) && /tenant_id=eq\.([^&]+)/.exec(u)[1] !== row.tenant_id) return false;
+    if (/[?&]id=eq\.([^&]+)/.test(u) && /[?&]id=eq\.([^&]+)/.exec(u)[1] !== row.id) return false;
+    const or = /or=\(seat_id\.eq\.([^,]+),seat_id\.is\.null\)/.exec(u);
+    if (or && row.seat_id && row.seat_id !== or[1]) return false;
+    return true;
+  };
+  const f = routedFetch({
+    agency_accounts: (url, init) => (init.method === 'GET' ? Object.values(ACC).filter((r) => matches(url, r)) : []),
+    changes: (url, init) => (init.method === 'GET' ? [{ id: 'chg-other', tenant_id: 'tn-other', finding_id: null }, { id: 'chg-b', tenant_id: 'tn-b', finding_id: null }, { id: 'chg-mine', tenant_id: 'tn-mine', finding_id: null }].filter((c) => new RegExp(`id=eq\\.${c.id}`).test(url)) : []),
+    alerts: (url, init) => (init.method === 'GET' ? [{ id: 'al-other', tenant_id: 'tn-other' }] : []),
+    reports: (url, init) => (init.method === 'GET' ? [{ id: 'rep-b', tenant_id: 'tn-b' }] : []),
+    agencies: [{ name: 'A' }], agency_audit_log: [], approvals: [], ledger: [], findings: [], account_targets: [], tenants: [], users: [], google_connections: [], runs: [], watches: [],
+  });
+  const ag = agencyStore(mkDb(f));
+  const am = { seatId: 's2' };
+  const writes = () => f.calls.filter((c) => c.method === 'PATCH' || (c.method === 'POST' && !/agency_audit_log/.test(c.url))).length;
+  const before = writes();
+  assert.deepStrictEqual(await ag.approveChange('ag1', 's2', 'chg-other', am), { ok: false, reason: 'not_found' }, 'assigned elsewhere');
+  assert.deepStrictEqual(await ag.approveChange('ag1', 's2', 'chg-b', am), { ok: false, reason: 'not_found' }, 'another agency');
+  assert.deepStrictEqual(await ag.dismissChange('ag1', 's2', 'chg-other', 'x', am), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual(await ag.snoozeChange('ag1', 's2', 'chg-b', 7, null, am), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual(await ag.ackAlert('ag1', 's2', 'al-other', am), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual(await ag.approveReport('ag1', 's2', 'rep-b', am), { ok: false, reason: 'not_found' });
+  assert.strictEqual(await ag.setTargets('ag1', 's2', 'acc-other', { monthly_budget_usd: 1 }, am), null);
+  assert.strictEqual(await ag.accountDetail('ag1', 'acc-other', am), null);
+  assert.strictEqual(await ag.accountDetail('ag1', 'acc-b', am), null);
+  assert.deepStrictEqual(await ag.revertChange('ag1', 's2', 'acc-other', 'chg-other', am), { ok: false, reason: 'not_found' });
+  assert.deepStrictEqual((await ag.approveBatch('ag1', 's2', ['chg-other', 'chg-b'], am)).approved, 0);
+  assert.strictEqual(writes(), before, 'nothing was written by any refused call');
+  assert.deepStrictEqual(await ag.approveChange('ag1', 's2', 'chg-mine', am), { ok: true }, 'the assigned account still works');
+  // An admin at agency A still cannot reach agency B.
+  assert.deepStrictEqual(await ag.approveChange('ag1', 's1', 'chg-b', null), { ok: false, reason: 'not_found' });
+  assert.strictEqual(await ag.accountDetail('ag1', 'acc-b', null), null);
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

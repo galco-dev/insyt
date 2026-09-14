@@ -359,3 +359,28 @@ test('subscriptionCheckout: saved customer first, the audit fee as a one-off cou
   assert.match(create2.body, /customer_email=a%40b.c/);
   assert.doesNotMatch(create2.body, /discounts/);
 });
+
+test('adversarial: a forged or malformed join cookie is ignored, not honoured', async () => {
+  const now = () => 5_000_000;
+  const state = issueState({ tenantId: '', step: 'discovery', secret: SECRET, now: now() });
+  const seen = [];
+  const deps = {
+    db: fakeDb({ users: [{ id: 'u1', google_sub: 'sub-new' }], google_connections: [], tenants: [], crawls: [], assets: [] }),
+    config: { clientId: 'cid', clientSecret: 'cs', redirectUri: 'https://app/cb' }, sessionSecret: SECRET, now,
+    fetchUserinfo: async () => ({ sub: 'sub-new', email: 'x@y.z' }),
+    exchangeCode: async () => ({ tokens: { access_token: 'at' }, grantedScopes: ['https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/analytics.readonly', 'https://www.googleapis.com/auth/tagmanager.readonly'] }),
+    listClients: () => ({}), discoverAssets: async () => ({ assets: [], errors: [] }),
+    findOrCreateTenantByGoogle: async () => 'tn-new', issueSession: ({ tenantId }) => `s-${tenantId}`, cookieFor: (s) => `insyt_s=${s}; Path=/`,
+    checkSeat: async (id) => { seen.push(['check', id]); return { ok: true, agency_id: 'ag1' }; },
+    activateSeat: async (id) => { seen.push(['activate', id]); return { ok: true, agency_id: 'ag1' }; },
+    adoptTenant: async (shell) => { seen.push(['adopt', shell]); return { ok: true }; },
+  };
+  const u = new URL(`http://x/auth/google/callback?code=abc&state=${encodeURIComponent(state)}`);
+  for (const cookie of ['insyt_join=seat:../etc', 'insyt_join=owner:tn-victim', 'insyt_join=seat:s1.link.extra', 'insyt_join=account:tn-victim%20', 'insyt_join=seat:' + 'a'.repeat(65)]) {
+    const res = fakeRes();
+    await handleGoogleAuth({ method: 'GET', headers: { cookie } }, res, u, null, deps);
+    assert.strictEqual(res.code, 302, cookie);
+    assert.match(res.headers.location, /^\/app\/confirm/, `${cookie} falls through to the normal sign-in`);
+  }
+  assert.deepStrictEqual(seen, [], 'no seat or account was touched by a malformed cookie');
+});

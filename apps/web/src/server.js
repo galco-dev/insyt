@@ -907,8 +907,12 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       }
 
       if (req.method === 'GET' && path.startsWith('/r/')) {
-        const rep = store.getReportHtml(path.slice(3));
-        if (!rep) return html(res, 404, '<p style="font-family:sans-serif">Report not found.</p>');
+        // The web report by id. The store is async (it was never awaited, so
+        // every /r/ link answered an empty page); a malformed id is a 404, not a 500.
+        const id = path.slice(3);
+        if (!/^[A-Za-z0-9-]{1,64}$/.test(id)) return html(res, 404, '<p style="font-family:sans-serif">Report not found.</p>');
+        const rep = await Promise.resolve().then(() => store.getReportHtml(id)).catch(() => null);
+        if (!rep || !rep.html_web) return html(res, 404, '<p style="font-family:sans-serif">Report not found.</p>');
         return html(res, 200, rep.html_web);
       }
 
