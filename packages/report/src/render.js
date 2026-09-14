@@ -203,7 +203,19 @@ function renderDeepSections(deep, { unlocked, mode, currency }) {
   return out;
 }
 
-function renderReport(envelope, { unlocked = false, healthScore = null, mode = 'web', links = {} } = {}) {
+// The brand kit (agency plan move 12): an agency's name, logo and primary
+// colour head the report a managed client receives; the footer line closes it.
+function brandHeader(brand) {
+  if (!brand || !(brand.name || brand.logo_url)) return '';
+  const bg = /^#[0-9a-f]{6}$/i.test(brand.color_primary || '') ? brand.color_primary : TOKENS.accent;
+  const logo = brand.logo_url && /^https:\/\//i.test(brand.logo_url) ? `<img src="${esc(brand.logo_url)}" alt="" height="28" style="height:28px;max-width:160px;vertical-align:middle;margin-right:10px;">` : '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${bg};"><tr>
+    <td style="padding:14px 16px;font-family:${TOKENS.font};font-size:15px;font-weight:600;color:#ffffff;">${logo}${esc(brand.name || '')}</td>
+    <td align="right" style="padding:14px 16px;font-family:${TOKENS.font};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.75);">${esc(brand.report_label || 'Weekly report')}</td>
+  </tr></table>`;
+}
+
+function renderReport(envelope, { unlocked = false, healthScore = null, mode = 'web', links = {}, brand = null } = {}) {
   const cards = envelope.findings
     .filter((f) => f.status !== 'dismissed' && f.status !== 'resolved')
     .map((f) => findingCard(f, unlocked)).join('\n');
@@ -229,7 +241,7 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
 
   const body = `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center">
-  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;"><tr><td style="padding:16px;">
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;"><tr><td style="padding:0;">${brandHeader(brand)}</td></tr><tr><td style="padding:16px;">
     ${healthScore != null ? healthScoreBlock(healthScore) : ''}
     ${envelope.narrative_slots.exec_summary ? `<div style="font-family:${TOKENS.font};font-size:15px;color:#333;text-align:center;padding:0 8px 16px 8px;">${esc(envelope.narrative_slots.exec_summary)}</div>` : ''}
     ${moneyHeadline(envelope)}
@@ -241,6 +253,7 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
     ${sinceLast}
     ${cumulative}
     <div style="font-family:${TOKENS.font};font-size:12px;color:${TOKENS.neutral900};text-align:center;padding-top:8px;">${esc(COPY.footer_note)}</div>
+    ${brand && brand.footer_text ? `<div style="font-family:${TOKENS.font};font-size:12px;color:${TOKENS.neutral900};text-align:center;padding-top:6px;">${esc(brand.footer_text)}</div>` : ''}
     ${footerLinks}
   </td></tr></table></td></tr></table>`;
 

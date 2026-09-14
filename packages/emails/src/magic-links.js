@@ -36,8 +36,8 @@ function mintLink({ tenantId, purpose, targetId = null, baseUrl, now }, store) {
 async function peekLink(token, now, store) {
   const row = await store.findByHash(sha256(token));
   if (!row) return { ok: false, reason: 'unknown' };
-  if (row.used_at) return { ok: false, reason: 'used' };
-  if (Date.parse(row.expires_at) < now) return { ok: false, reason: 'expired' };
+  if (row.used_at) return { ok: false, reason: 'used', link: row };
+  if (Date.parse(row.expires_at) < now) return { ok: false, reason: 'expired', link: row };
   return { ok: true, link: row };
 }
 

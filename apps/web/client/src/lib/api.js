@@ -30,6 +30,7 @@ export async function api(path, { method = 'GET', body } = {}) {
     const out = structuredClone(hit);
     if (out && out.error && out.status) throw new ApiError(out.status, out.error, out);
     if (out && out.access && typeof accessListener === 'function') accessListener(out.access);
+    if (method === 'POST' && path.startsWith('/api/agency/')) { try { window.dispatchEvent(new Event('insyt:work')); } catch { /* ignore */ } }
     return out;
   }
   const res = await fetch(path, {
@@ -42,6 +43,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   try { data = await res.json(); } catch { /* html/redirect bodies */ }
   if (!res.ok) throw new ApiError(res.status, data.error || `request failed (${res.status})`, data);
   if (data && data.access && typeof accessListener === 'function') accessListener(data.access);
+  if (method === 'POST' && path.startsWith('/api/agency/')) { try { window.dispatchEvent(new Event('insyt:work')); } catch { /* ignore */ } }
   return data;
 }
 

@@ -796,6 +796,43 @@ test('agency plan push 4: a managed tenant routes report and alert emails to the
   assert.deepStrictEqual(await ops.weeklyCadence('tn-c', Date.now()), { cadence: 'weekly', due: true });
 });
 
+test('agency plan push 5 (the small things): snoozed filtered on the server, one counts trip, the trail filters by account, the welcome email, the brand on a managed report, a named expired invite', async () => {
+  const { agencyStore, opsStore, managedBy } = require('../src/stores');
+  const f = routedFetch({
+    agency_accounts: (url, init) => (init.method === 'GET' && /tenant_id=eq\.tn-c/.test(url) ? [{ id: 'acc-1', agency_id: 'ag1', seat_id: null, review_reports: true, client_mode: 'shared', client_copy: false, display_name: 'Glow', agency: { name: 'Northlight' }, seat: null }] : [{ id: 'acc-1', tenant_id: 'tn-c', display_name: 'Glow', brief_only: false }]),
+    changes: [], alerts: [], reports: [], agency_audit_log: [], emails: [],
+    brand_kits: [{ display_name: 'Northlight Digital', logo_light_url: 'https://cdn/logo.png', color_primary: '#0B1F2A', footer_text: 'Prepared by Northlight' }],
+    agency_seats: (url, init) => (init.method === 'GET' && /id=eq\.seat-old/.test(url) ? [{ email: 'mo@northlight.ae', status: 'invited', agency: { name: 'Northlight' } }] : /role=eq\.admin/.test(url) ? [{ email: 'ana@northlight.ae' }] : []),
+    users: [{ email: 'ana@northlight.ae', name: 'Ana', google_sub: 'sub-ana' }],
+    agencies: (url, init) => (init.method === 'POST' ? [{ id: 'ag-new', name: 'Northlight' }] : [{ name: 'Northlight' }]),
+  });
+  const db = mkDb(f);
+  const ag = agencyStore(db);
+  await ag.triage('ag1', null, { now: '2026-09-14T09:00:00Z' });
+  assert.match(decodeURIComponent(f.calls.at(-1).url), /or=\(snoozed_until\.is\.null,snoozed_until\.lt\.2026-09-14T09:00:00Z\)/);
+  await ag.triage('ag1', null, { snoozed: true, now: '2026-09-14T09:00:00Z' });
+  assert.match(decodeURIComponent(f.calls.at(-1).url), /snoozed_until=gt\.2026-09-14T09:00:00Z/);
+  assert.deepStrictEqual(await ag.counts('ag1'), { triage: 0, alerts: 0, review: 0 });
+  await ag.auditLog('ag1', { accountId: 'acc-1', before: '2026-09-01T00:00:00Z', limit: 50 });
+  assert.match(decodeURIComponent(f.calls.at(-1).url), /detail->>account_id=eq\.acc-1&created_at=lt\.2026-09-01T00:00:00Z&select=.*&limit=50$/);
+  assert.deepStrictEqual(await ag.inviteContext('seat-old'), { email: 'mo@northlight.ae', status: 'invited', agency: 'Northlight' });
+
+  const m = await managedBy(db, 'tn-c');
+  assert.deepStrictEqual(m.brand, { name: 'Northlight Digital', logo_url: 'https://cdn/logo.png', color_primary: '#0B1F2A', footer_text: 'Prepared by Northlight' });
+  const { renderReport } = require('../../report/src/render');
+  const envelope = { findings: [], degraded: false, degraded_reasons: [], totals: { waste_monthly_usd: 0, ledger_cumulative: { fixes: 0, waste_removed_usd: 0 } }, narrative_slots: {}, currency_symbol: '$' };
+  const html = renderReport(envelope, { unlocked: true, healthScore: 80, mode: 'email', brand: { ...m.brand, report_label: 'Weekly report' } });
+  assert.ok(html.includes('Northlight Digital') && html.includes('background:#0B1F2A') && html.includes('cdn/logo.png') && html.includes('Prepared by Northlight'), 'the kit heads and closes the report');
+  assert.ok(!renderReport(envelope, { unlocked: true, mode: 'email' }).includes('Northlight'), 'no brand, no header');
+
+  const ops = opsStore(db);
+  assert.deepStrictEqual(await ops.createAgencyForTenant('tn-ana', 'Northlight'), { ok: true, agency_id: 'ag-new' });
+  const welcome = f.calls.filter((c) => c.method === 'POST' && /emails/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([welcome.template_id, welcome.to_email], ['agency_welcome', 'ana@northlight.ae']);
+  const { renderTemplate } = require('../../emails/src/templates');
+  assert.doesNotThrow(() => renderTemplate('agency_welcome', welcome.payload));
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

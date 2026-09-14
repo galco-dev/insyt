@@ -22,9 +22,11 @@ async function managedBy(db, tenantId) {
     const admin = await db.select('agency_seats', `agency_id=eq.${q(acc.agency_id)}&role=eq.admin&status=eq.active&select=email&order=created_at.asc&limit=1`, { single: true }).catch(() => null);
     to = admin ? admin.email : null;
   }
+  const kit = await db.select('brand_kits', `agency_id=eq.${q(acc.agency_id)}&select=display_name,logo_light_url,color_primary,footer_text&order=version.desc&limit=1`, { single: true }).catch(() => null);
   return {
     account_id: acc.id, agency_id: acc.agency_id, display_name: acc.display_name,
     agency_name: (acc.agency && acc.agency.name) || 'Your agency',
+    brand: kit ? { name: kit.display_name || ((acc.agency && acc.agency.name) || null), logo_url: kit.logo_light_url || null, color_primary: kit.color_primary || null, footer_text: kit.footer_text || null } : null,
     timezone: (acc.agency && acc.agency.timezone) || 'Asia/Dubai',
     review_reports: acc.review_reports !== false,
     client_mode: acc.client_mode || 'shared',
@@ -445,6 +447,8 @@ function opsStore(db) {
       if (!owner) return { ok: false, error: 'No owner user on that tenant.' };
       const [agency] = await db.insert('agencies', [{ name: String(name || owner.email).slice(0, 120) }]);
       await db.insert('agency_seats', [{ agency_id: agency.id, email: owner.email, name: owner.name || null, google_sub: owner.google_sub, tenant_id: tenantId, role: 'admin', status: 'active' }], { returning: false });
+      // The welcome (agency plan move 12): the console link, in the inbox, the moment the agency exists.
+      await db.insert('emails', [{ tenant_id: tenantId, template_id: 'agency_welcome', to_email: owner.email, stream: 'transactional', status: 'queued', payload: { agency: agency.name || name, name: owner.name || '', console_url: 'https://app.tryinsyt.com/app/agency' } }], { returning: false }).catch(() => {});
       return { ok: true, agency_id: agency.id };
     },
     // A pending client account becomes active the moment its Google login has linked something.
@@ -1481,8 +1485,9 @@ function agencyStore(db, deps = {}) {
   const { pace, sortPacing, targetStatus } = require('../../pacing/src/pacing');
   const { createDraftService } = require('../../campaigns/src/service');
   const drafts = createDraftService({ db, google: deps.google || null, model: deps.model || null, modelId: deps.modelId || null });
+  // The trail is the product (agency plan move 12): a failed log insert fails the action.
   const log = async (agencyId, seatId, event, detail) => {
-    await db.insert('agency_audit_log', [{ agency_id: agencyId, seat_id: seatId, event, detail: detail || {} }], { returning: false }).catch(() => {});
+    await db.insert('agency_audit_log', [{ agency_id: agencyId, seat_id: seatId, event, detail: detail || {} }], { returning: false });
   };
   // Every write stays home (agency plan move 1): a change, alert or report is
   // actionable only when its tenant is one of this agency's active accounts.
@@ -1615,18 +1620,21 @@ function agencyStore(db, deps = {}) {
 
     // Triage queue: proposed changes across every managed account, one
     // stream, biggest money first.
-    triage: async (agencyId, scope = null) => {
-      const accounts = await accountsFor(agencyId, 'eq.active', 'tenant_id,display_name,brief_only', scope);
+    triage: async (agencyId, scope = null, { snoozed = false, now = new Date().toISOString() } = {}) => {
+      const accounts = await accountsFor(agencyId, 'eq.active', 'id,tenant_id,display_name,brief_only', scope);
       if (!accounts.length) return [];
       const nameByTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      // Snoozed items are filtered here, not in the browser (agency plan move 12).
+      const snoozeFilter = snoozed ? `&snoozed_until=gt.${q(now)}` : `&or=(snoozed_until.is.null,snoozed_until.lt.${q(now)})`;
       const rows = await db.select('changes',
-        `tenant_id=in.(${ids})&status=eq.proposed&select=id,tenant_id,before,after,snoozed_until,snooze_reason,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name,payload)&order=created_at.asc&limit=200`);
+        `tenant_id=in.(${ids})&status=eq.proposed${snoozeFilter}&select=id,tenant_id,before,after,snoozed_until,snooze_reason,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name,payload)&order=created_at.asc&limit=200`);
       return rows.map((r) => ({
         id: r.id,
         snoozed_until: r.snoozed_until || null,
         snooze_reason: r.snooze_reason || null,
         account: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].display_name : r.tenant_id,
+        account_id: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].id : null,
         account_tenant: r.tenant_id,
         brief_only: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].brief_only : false,
         title: r.finding ? r.finding.title : 'Proposed change',
@@ -1774,7 +1782,7 @@ function agencyStore(db, deps = {}) {
       const own = await ownedRow(agencyId, 'alerts', alertId, '', scope);
       if (!own) return { ok: false, reason: 'not_found' };
       await db.update('alerts', `id=eq.${q(alertId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { acked_by: seatId, acked_at: new Date().toISOString() });
-      await log(agencyId, seatId, 'alert_acked', { alert_id: alertId });
+      await log(agencyId, seatId, 'alert_acked', { alert_id: alertId, account_id: own.account.id });
       return { ok: true };
     },
 
@@ -1785,7 +1793,7 @@ function agencyStore(db, deps = {}) {
       if (!own) return { ok: false, reason: 'not_found' };
       const until = new Date(Date.now() + (days || 7) * 86_400_000).toISOString();
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { snoozed_until: until, snoozed_by: seatId, snooze_reason: reason || null });
-      await log(agencyId, seatId, 'change_snoozed', { change_id: changeId, days: days || 7, reason: reason || null });
+      await log(agencyId, seatId, 'change_snoozed', { change_id: changeId, days: days || 7, reason: reason || null, account_id: own.account.id });
       return { ok: true, until };
     },
     // Batch approve runs the same two checks per id as a single approve
@@ -1800,7 +1808,7 @@ function agencyStore(db, deps = {}) {
         if (own.account.brief_only) { skipped.push({ id, reason: 'brief_only' }); continue; }
         await db.update('changes', `id=eq.${q(id)}&tenant_id=eq.${q(own.row.tenant_id)}`, { status: 'approved' });
         await mirrorApproval(own.row.tenant_id, id, seatId, who);
-        await log(agencyId, seatId, 'change_approved', { change_id: id, batch: true });
+        await log(agencyId, seatId, 'change_approved', { change_id: id, batch: true, account_id: own.account.id });
         n += 1;
       }
       if (skipped.length) await log(agencyId, seatId, 'write_refused', { action: 'approve_batch', skipped });
@@ -1813,7 +1821,7 @@ function agencyStore(db, deps = {}) {
       if (own.account.brief_only) { await log(agencyId, seatId, 'write_refused', { action: 'approve', change_id: changeId, reason: 'brief_only' }); return { ok: false, reason: 'brief_only' }; }
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { status: 'approved' });
       await mirrorApproval(own.row.tenant_id, changeId, seatId, await agencyName(agencyId));
-      await log(agencyId, seatId, 'change_approved', { change_id: changeId });
+      await log(agencyId, seatId, 'change_approved', { change_id: changeId, account_id: own.account.id });
       return { ok: true };
     },
     dismissChange: async (agencyId, seatId, changeId, reason, scope = null) => {
@@ -1824,7 +1832,7 @@ function agencyStore(db, deps = {}) {
       await db.update('changes', `id=eq.${q(changeId)}&tenant_id=eq.${q(full.tenant_id)}`, { status: 'dismissed' });
       if (full.finding_id) await db.update('findings', `id=eq.${q(full.finding_id)}&tenant_id=eq.${q(full.tenant_id)}`, { status: 'dismissed' });
       await db.insert('ledger', [{ tenant_id: full.tenant_id, event: 'fix_dismissed', actor: `seat:${seatId}`, change_id: changeId, summary_text: `${await agencyName(agencyId)} decided against this one${reason ? `: ${reason}` : ''}.` }], { returning: false }).catch(() => {});
-      await log(agencyId, seatId, 'change_dismissed', { change_id: changeId, reason: reason || null });
+      await log(agencyId, seatId, 'change_dismissed', { change_id: changeId, reason: reason || null, account_id: own.account.id });
       await require('../../shared/src/telemetry').createTelemetry({ db }).dismissal({
         tenantId: full.tenant_id, changeId, findingId: full.finding_id, ruleId: full.finding ? full.finding.rule_id : null,
         reasonTap: reason, actor: `seat:${seatId}`,
@@ -1846,14 +1854,14 @@ function agencyStore(db, deps = {}) {
       const own = await ownedRow(agencyId, 'reports', reportId, '', scope);
       if (!own) return { ok: false, reason: 'not_found' };
       await db.update('reports', `id=eq.${q(reportId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { review_status: 'approved', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
-      await log(agencyId, seatId, 'report_approved', { report_id: reportId });
+      await log(agencyId, seatId, 'report_approved', { report_id: reportId, account_id: own.account.id });
       return { ok: true };
     },
     rejectReport: async (agencyId, seatId, reportId, reason, scope = null) => {
       const own = await ownedRow(agencyId, 'reports', reportId, '', scope);
       if (!own) return { ok: false, reason: 'not_found' };
       await db.update('reports', `id=eq.${q(reportId)}&tenant_id=eq.${q(own.row.tenant_id)}`, { review_status: 'rejected', reviewed_by: seatId, reviewed_at: new Date().toISOString() });
-      await log(agencyId, seatId, 'report_rejected', { report_id: reportId, reason: reason || null });
+      await log(agencyId, seatId, 'report_rejected', { report_id: reportId, reason: reason || null, account_id: own.account.id });
       return { ok: true };
     },
 
@@ -1964,8 +1972,27 @@ function agencyStore(db, deps = {}) {
       return { balance: bal ? bal.balance : 0, events: events || [] };
     },
 
-    auditLog: async (agencyId) => db.select('agency_audit_log',
-      `agency_id=eq.${q(agencyId)}&select=event,detail,created_at,seat:agency_seats(name,email)&order=created_at.desc&limit=100`),
+    // The work badge in one trip (agency plan move 12).
+    counts: async (agencyId, scope = null, now = new Date().toISOString()) => {
+      const accounts = await accountsFor(agencyId, 'eq.active', 'tenant_id', scope);
+      if (!accounts.length) return { triage: 0, alerts: 0, review: 0 };
+      const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
+      const [t, a, r] = await Promise.all([
+        db.select('changes', `tenant_id=in.(${ids})&status=eq.proposed&or=(snoozed_until.is.null,snoozed_until.lt.${q(now)})&select=id`).catch(() => []),
+        db.select('alerts', `tenant_id=in.(${ids})&acked_at=is.null&select=id`).catch(() => []),
+        db.select('reports', `tenant_id=in.(${ids})&review_status=eq.pending&select=id`).catch(() => []),
+      ]);
+      return { triage: (t || []).length, alerts: (a || []).length, review: (r || []).length };
+    },
+    // The audit trail, its own screen (agency plan move 12): per-account filter, paging, the detail.
+    auditLog: async (agencyId, { accountId = null, before = null, limit = 100 } = {}) => db.select('agency_audit_log',
+      `agency_id=eq.${q(agencyId)}${accountId ? `&detail->>account_id=eq.${q(accountId)}` : ''}${before ? `&created_at=lt.${q(before)}` : ''}&select=id,event,detail,created_at,seat:agency_seats(name,email)&order=created_at.desc&limit=${Math.min(Math.max(Number(limit) || 100, 1), 500)}`),
+    logEvent: (agencyId, seatId, event, detail) => log(agencyId, seatId, event, detail),
+    // Who an invite link belonged to, for the page that says it has expired.
+    inviteContext: async (seatId) => {
+      const seat = await db.select('agency_seats', `id=eq.${q(seatId)}&select=email,status,agency:agencies(name)`, { single: true }).catch(() => null);
+      return seat ? { email: seat.email, status: seat.status, agency: seat.agency ? seat.agency.name : null } : null;
+    },
 
     // ---- account lifecycle + platform billing.
     // Billing principle (binding): we bill the agency for the platform, per

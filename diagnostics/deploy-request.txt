@@ -23,3 +23,4 @@ deploy request: Fix plan push 8 (the agency door: seat invites that bind a Googl
 deploy request: Agency plan push 2 (the invite binds the right person, clients land where they belong, pause means pause; magic links redeemed asynchronously) - 2026-09-14T06:11:02Z
 deploy request: Agency plan push 3 (the account page: three switches, what happened after yes, undo from the seat, am scope on the server) - 2026-09-14T06:17:33Z
 deploy request: Agency plan push 4 (the review gate for real, emails routed to the agency with a morning digest, the client's app knows it is managed) - 2026-09-14T06:25:37Z
+deploy request: Agency plan push 5 (the small things: dismiss reason, brief logged, snoozed on the server, brand kit in reports, one counts trip, build blockers and headline editor, the audit trail screen with CSV, credits hidden, demo gates, welcome email, named 410, demo bands) - 2026-09-14T06:31:27Z

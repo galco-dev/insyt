@@ -170,6 +170,34 @@ test('agency plan push 3: the am scope reaches the store, account detail, settin
   });
 });
 
+test('agency plan push 5: counts in one trip, the log as CSV with filters, a brief copy is logged and open to read-only seats, an expired invite names the agency', async () => {
+  const ags = fakeAgencyStore();
+  const logged = [];
+  ags.counts = async () => ({ triage: 3, alerts: 1, review: 2 });
+  ags.auditLog = async (ag, opts) => { logged.push(['read', opts]); return [{ id: 'l1', created_at: '2026-09-14T09:00:00Z', event: 'change_approved', detail: { change_id: 'c1', account_id: 'a1' }, seat: { name: 'Mo' } }]; };
+  ags.logEvent = async (ag, seat, event, detail) => logged.push([event, seat, detail]);
+  ags.inviteContext = async () => ({ email: 'mo@x', status: 'invited', agency: 'Northlight' });
+  const used = { id: 'l-old', purpose: 'join_agency', target_id: 's4', tenant_id: 'tn-admin', token_hash: 'h', expires_at: '2020-01-01T00:00:00Z', used_at: null };
+  const store = { ...baseStore(), magicLinks: { insertLink: () => {}, findByHash: () => used, markUsed: () => {} } };
+  await withApp({ store, crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {
+    const c = await (await fetch(`${base}/api/agency/counts`, { headers: { cookie: cookie('tn-ro') } })).json();
+    assert.deepStrictEqual(c, { triage: 3, alerts: 1, review: 2 });
+    const csv = await fetch(`${base}/api/agency/log?format=csv&account=a1&limit=20`, { headers: { cookie: cookie('tn-ro') } });
+    assert.match(csv.headers.get('content-type'), /text\/csv/);
+    const text = await csv.text();
+    assert.match(text, /^when,seat,event,detail\n"2026-09-14T09:00:00Z","Mo","change_approved"/);
+    assert.deepStrictEqual(logged[0], ['read', { accountId: 'a1', before: null, limit: '20' }]);
+    assert.strictEqual((await fetch(`${base}/api/agency/brief/chg1`, { method: 'POST', headers: { cookie: cookie('tn-ro') } })).status, 200);
+    assert.deepStrictEqual(logged.at(-1), ['brief_copied', 's3', { change_id: 'chg1' }]);
+    // A refused write is logged too.
+    await fetch(`${base}/api/agency/approve/chg1`, { method: 'POST', headers: { cookie: cookie('tn-ro') } });
+    assert.deepStrictEqual(logged.at(-1), ['write_refused', 's3', { action: '/approve/chg1', reason: 'view_only' }]);
+    const gone = await fetch(`${base}/m/anytoken`);
+    assert.strictEqual(gone.status, 410);
+    assert.match(await gone.text(), /This invite to Northlight has expired\. Ask an admin at Northlight to resend it/);
+  });
+});
+
 test('agency: seat resolution gates access; no seat = 403; reads work', async () => {
   const ags = fakeAgencyStore();
   await withApp({ store: baseStore(), crawler: okCrawler, agencyStore: ags, sessionSecret: SECRET }, async (base) => {

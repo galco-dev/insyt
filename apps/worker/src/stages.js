@@ -320,14 +320,18 @@ function buildStages({ google, crawler, model, store }) {
         // agency with console links, never the client's sign-in links, and the
         // report waits for a seat's review when the account asks for that.
         const managed = store.managedBy ? await store.managedBy(ctx.run.tenant_id).catch(() => null) : null;
+        let htmlWeb = ctx.html_web;
         if (managed && ctx.envelope) {
           try {
             const consoleUrl = `${baseUrl}/app/agency/accounts/${managed.account_id}`;
             links = { view_url: consoleUrl, approve_url: null, settings_url: consoleUrl };
+            const brand = managed.brand ? { ...managed.brand, report_label: type === 'deep' ? 'Deep review' : type === 'signup' ? 'First audit' : 'Weekly report' } : null;
             htmlEmail = renderReport(ctx.envelope, {
-              unlocked: true, healthScore: ctx.health_score, mode: 'email',
+              unlocked: true, healthScore: ctx.health_score, mode: 'email', brand,
               links: { web_url: consoleUrl, unlock_url: consoleUrl, approve_url: null, settings_url: consoleUrl, pending_count: pendingCount },
             });
+            // A managed client's web report is theirs to read in full, under the agency's brand.
+            htmlWeb = renderReport(ctx.envelope, { unlocked: true, healthScore: ctx.health_score, mode: 'web', brand });
           } catch (e) { console.error(`agency report render failed for ${ctx.run.tenant_id}: ${e.message}`); }
         } else if (store.mintReportLinks && ctx.envelope) {
           try {
@@ -349,7 +353,7 @@ function buildStages({ google, crawler, model, store }) {
         const savedId = await store.saveReport(ctx.run.id, {
           id: reportId,
           html_email: htmlEmail,
-          html_web: ctx.html_web,
+          html_web: htmlWeb,
           findings_snapshot: ctx.envelope ? ctx.envelope.findings : ctx.findings,
           tenant_id: ctx.run.tenant_id,
           type,

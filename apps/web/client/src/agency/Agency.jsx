@@ -7,7 +7,7 @@ import React, { useContext, useEffect, useMemo, useState, createContext } from '
 import clsx from 'clsx';
 import {
   LayoutGrid01 as LayoutGrid, CheckDone01 as ListChecks,
-  ArrowRight, FlipBackward as Undo2, Copy01 as Copy, Check, X, Zap,
+  ArrowRight, FlipBackward as Undo2, Copy01 as Copy, Check, X,
   Building02 as Building2, Plus, PauseCircle as Pause, Play, Trash01 as Trash2, SearchMd as Search,
   Clock, Tool02 as Hammer, Settings01 as SettingsIcon,
 } from '@untitledui/icons';
@@ -25,7 +25,7 @@ const NAV = [
   { to: '/app/agency/triage', label: 'Work', icon: ListChecks, badge: true, match: ['/app/agency/work', '/app/agency/triage', '/app/agency/alerts', '/app/agency/review'] },
   { to: '/app/agency/build', label: 'Build', icon: Hammer },
   { to: '/app/agency/accounts', label: 'Accounts', icon: Building2 },
-  { to: '/app/agency/brand', label: 'Settings', icon: SettingsIcon, match: ['/app/agency/settings', '/app/agency/brand', '/app/agency/seats'] },
+  { to: '/app/agency/brand', label: 'Settings', icon: SettingsIcon, match: ['/app/agency/settings', '/app/agency/brand', '/app/agency/seats', '/app/agency/log'] },
 ];
 
 const SEV = { critical: 'critical', warning: 'warning', info: 'info' };
@@ -92,23 +92,18 @@ function useAgency(path) {
 // so it tracks work done anywhere in the console.
 function useWorkCounts(path) {
   const [counts, setCounts] = useState({ triage: 0, alerts: 0, review: 0 });
+  const [tick, setTick] = useState(0);
+  // One counts endpoint (agency plan move 12), refreshed after any write.
+  useEffect(() => {
+    const bump = () => setTick((n) => n + 1);
+    window.addEventListener('insyt:work', bump);
+    return () => window.removeEventListener('insyt:work', bump);
+  }, []);
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      api('/api/agency/triage').catch(() => null),
-      api('/api/agency/alerts').catch(() => null),
-      api('/api/agency/review').catch(() => null),
-    ]).then(([t, a, r]) => {
-      if (!alive) return;
-      const now = Date.now();
-      setCounts({
-        triage: t ? (t.queue || []).filter((i) => !(i.snoozed_until && Date.parse(i.snoozed_until) > now)).length : 0,
-        alerts: a ? (a.alerts || []).filter((x) => !x.acked_at).length : 0,
-        review: r ? (r.queue || []).length : 0,
-      });
-    });
+    api('/api/agency/counts').then((c) => { if (alive && c) setCounts({ triage: c.triage || 0, alerts: c.alerts || 0, review: c.review || 0 }); }).catch(() => {});
     return () => { alive = false; };
-  }, [path]);
+  }, [path, tick]);
   return counts;
 }
 
@@ -264,7 +259,6 @@ function HealthPill({ score }) {
 
 function Portfolio() {
   const { data, error } = useAgency('/api/agency/portfolio');
-  const { data: credits } = useAgency('/api/agency/credits');
   const { data: pacingData } = useAgency('/api/agency/pacing');
   const { scope, accounts: scopeAccounts, mineNames } = useScope();
   if (error) return <ErrorNote message={error.message} />;
@@ -282,13 +276,6 @@ function Portfolio() {
           <MonoLabel>Portfolio</MonoLabel>
           <h1 className="mt-1 text-h3 tracking-tight">{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'} · {attention} {attention === 1 ? 'needs' : 'need'} attention</h1>
         </div>
-        {credits && (
-          <div className="flex items-center gap-2 rounded border border-neutral-300 bg-card px-3 py-2 text-small">
-            <Zap size={14} className="text-info" aria-hidden />
-            <span className="font-semibold">{credits.balance}</span> audit credits
-            <span className="text-neutral-900"> -  run a white-labelled prospect audit to pitch a new client</span>
-          </div>
-        )}
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -351,8 +338,9 @@ function DiffLine({ label, value }) {
 }
 
 function TriageItem({ item, index, onDone, selected = false, onSelect = null, forcedState = null }) {
-  const [ownState, setState] = useState(null); // null | approved | dismissed | snoozing | snoozed | copied
+  const [ownState, setState] = useState(null); // null | approved | dismissed | snoozing | snoozed | copied | dismissing | brief
   const [snoozeReason, setSnoozeReason] = useState('');
+  const [dismissReason, setDismissReason] = useState('');
   const [snoozedUntil, setSnoozedUntil] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -362,7 +350,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
   async function act(kind) {
     setBusy(true); setErr(null);
     try {
-      await api(`/api/agency/${kind}/${item.id}`, { method: 'POST', body: kind === 'dismiss' ? { reason: 'dismissed from triage' } : {} });
+      await api(`/api/agency/${kind}/${item.id}`, { method: 'POST', body: kind === 'dismiss' ? { reason: dismissReason.trim() || null } : {} });
       setState(kind === 'approve' ? 'approved' : 'dismissed');
       onDone();
     } catch (e) { setState(null); setErr(e); }
@@ -378,16 +366,22 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
     } catch (e) { setState(null); setErr(e); }
     setBusy(false);
   }
-  function copyBrief() {
-    const brief = [
-      `${item.account} - ${item.title}`,
-      `Rule ${item.rule_id} (layer ${item.layer}) · ${item.severity}${item.money_monthly_usd ? ` · ~$${item.money_monthly_usd}/mo` : ''}`,
-      '', item.explanation, '',
-      `BEFORE: ${JSON.stringify(item.before)}`, `AFTER:  ${JSON.stringify(item.after)}`,
-    ].join('\n');
-    if (navigator.clipboard) navigator.clipboard.writeText(brief).catch(() => {});
-    setState('copied');
-    setTimeout(() => setState((s) => (s === 'copied' ? null : s)), 1600);
+  const brief = [
+    `${item.account} - ${item.title}`,
+    `Rule ${item.rule_id} (layer ${item.layer}) · ${item.severity}${item.money_monthly_usd ? ` · ~$${item.money_monthly_usd}/mo` : ''}`,
+    '', item.explanation, '',
+    `BEFORE: ${JSON.stringify(item.before)}`, `AFTER:  ${JSON.stringify(item.after)}`,
+  ].join('\n');
+  // Copy fix brief is logged (agency plan move 12); when the clipboard is
+  // unavailable the brief is shown, selectable, instead of failing silently.
+  async function copyBrief() {
+    api(`/api/agency/brief/${item.id}`, { method: 'POST', body: {} }).catch(() => {});
+    try {
+      if (!navigator.clipboard) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(brief);
+      setState('copied');
+      setTimeout(() => setState((s) => (s === 'copied' ? null : s)), 1600);
+    } catch { setState('brief'); }
   }
 
   if (state === 'approved' || state === 'dismissed') {
@@ -451,7 +445,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
         <Button variant="secondary" onClick={copyBrief} className="!px-4 !py-2">
           <Copy size={13} aria-hidden /> {state === 'copied' ? 'Copied' : 'Copy fix brief'}
         </Button>
-        {!readOnly && <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy} className="!py-2">Dismiss</Button>}
+        {!readOnly && state !== 'dismissing' && <Button variant="ghost" onClick={() => setState('dismissing')} disabled={busy} className="!py-2">Dismiss</Button>}
         {!readOnly && state !== 'snoozing' && (
           <Button variant="ghost" onClick={() => setState('snoozing')} disabled={busy} className="!py-2">
             <Clock size={13} aria-hidden /> Snooze
@@ -460,6 +454,27 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
         {item.brief_only && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">brief-only account - Apply disabled</span>}
       </div>
       <ActionNote error={err} />
+      {state === 'brief' && (
+        <div className="mt-3 rounded bg-neutral-50 p-3">
+          <div className="mb-1 text-tiny text-neutral-900">Could not reach the clipboard. Select and copy the brief here.</div>
+          <textarea readOnly value={brief} rows={6} onFocus={(e) => e.target.select()} className="w-full rounded border border-neutral-400 bg-(--ui-well) p-2 font-mono text-tiny" aria-label="Fix brief" />
+          <button type="button" onClick={() => setState(null)} className="mt-1 text-small underline underline-offset-2">Close</button>
+        </div>
+      )}
+      {state === 'dismissing' && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded bg-neutral-50 p-3">
+          <input
+            value={dismissReason}
+            onChange={(e) => setDismissReason(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && act('dismiss')}
+            placeholder="Why? Optional; the client reads it in their history"
+            className="min-w-[220px] flex-1 rounded border border-neutral-400 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)"
+            aria-label="Dismiss reason"
+          />
+          <Button variant="secondary" onClick={() => act('dismiss')} disabled={busy} className="!px-3 !py-2">Dismiss</Button>
+          <Button variant="ghost" onClick={() => { setState(null); setDismissReason(''); }} className="!py-2">Cancel</Button>
+        </div>
+      )}
       {state === 'snoozing' && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded bg-neutral-50 p-3">
           <input
@@ -484,17 +499,18 @@ function Triage() {
   const [sel, setSel] = useState({});
   const [batched, setBatched] = useState(() => new Set());
   const [showSnoozed, setShowSnoozed] = useState(false);
+  const [snoozedData, setSnoozedData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [batchErr, setBatchErr] = useState(null);
   const [batchNote, setBatchNote] = useState(null);
   const { scope, accounts, mineNames } = useScope();
+  // Snoozed items come from the server on request (agency plan move 12).
+  useEffect(() => { if (showSnoozed && !snoozedData) api('/api/agency/triage?snoozed=1').then((d) => setSnoozedData(d.queue || [])).catch(() => setSnoozedData([])); }, [showSnoozed, snoozedData]);
   if (error) return <ErrorNote message={error.message} />;
   if (!data) return <Spinner label="Loading triage queue" />;
 
-  const nowMs = Date.now();
-  const isSnoozed = (i) => i.snoozed_until && Date.parse(i.snoozed_until) > nowMs;
-  const scoped = applyScope((data.queue || []).filter((i) => !isSnoozed(i)), scope, accounts, mineNames);
-  const snoozed = applyScope((data.queue || []).filter(isSnoozed), scope, accounts, mineNames);
+  const scoped = applyScope(data.queue || [], scope, accounts, mineNames);
+  const snoozed = applyScope(snoozedData || [], scope, accounts, mineNames);
   const snoozedAll = [...snoozed.items, ...(snoozed.accountWide || [])];
   const { items: queue, accountWide } = scoped;
 
@@ -563,11 +579,12 @@ function Triage() {
           </div>
         </div>
       )}
-      {snoozedAll.length > 0 && (
+      {(
         <div className="mt-8 border-t border-neutral-200 pt-4">
           <button type="button" onClick={() => setShowSnoozed((s) => !s)} className="flex items-center gap-2 font-mono text-tiny uppercase tracking-wide text-neutral-900">
-            <Clock size={13} aria-hidden /> Snoozed ({snoozedAll.length}) {showSnoozed ? ' -  hide' : ' -  show'}
+            <Clock size={13} aria-hidden /> Snoozed{snoozedData ? ` (${snoozedAll.length})` : ''} {showSnoozed ? ' -  hide' : ' -  show'}
           </button>
+          {showSnoozed && snoozedData && snoozedAll.length === 0 && <p className="mt-2 text-small text-neutral-900">Nothing snoozed.</p>}
           {showSnoozed && (
             <div className="mt-3 flex flex-col gap-2">
               {snoozedAll.map((item) => (
@@ -827,6 +844,7 @@ function briefFromSpec(spec) {
 
 const DRAFT_STATUS = {
   draft: { label: 'draft', cls: 'bg-neutral-100 text-neutral-900', dot: 'bg-neutral-800', halo: 'var(--ui-ring-strong)' },
+  staged: { label: 'staged - blocked until the account is ready', cls: 'bg-warning-tint text-warning', dot: 'bg-warning', halo: 'color-mix(in srgb, var(--ui-warning) 22%, transparent)' },
   created_paused: { label: 'created - paused', cls: 'bg-info-tint text-info', dot: 'bg-info', halo: 'color-mix(in srgb, var(--ui-info) 22%, transparent)' },
   enabled: { label: 'enabled', cls: 'bg-success-tint text-success', dot: 'bg-success', halo: 'color-mix(in srgb, var(--ui-success) 22%, transparent)' },
 };
@@ -837,14 +855,31 @@ function DraftCard({ d, index }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [headlines, setHeadlines] = useState(() => ((d.spec && d.spec.ad_groups) || []).map((g) => ((g.rsa && g.rsa.headlines) || []).join('\n')));
+  const [spec, setSpec] = useState(d.spec || {});
   const { readOnly } = useScope();
-  const spec = d.spec || {};
+  // A placeholder campaign (no Google credentials yet) exists nowhere in Google Ads; it cannot be enabled.
+  const provisional = String(d.google_campaign_id || '').startsWith('draft-') || String(d.google_campaign_id || '').startsWith('demo-provisional');
+  const gates = spec.gates || null;
 
   async function act(action) {
     setBusy(true); setErr(null);
     try {
       const r = await api(`/api/agency/drafts/${d.id}/${action}`, { method: 'POST', body: {} });
       setStatus(r.status || (action === 'approve' ? 'created_paused' : action === 'enable' ? 'enabled' : 'dismissed'));
+      if (r.status === 'staged' && r.steps) setSpec((s) => ({ ...s, gates: { ok: false, blockers: r.blockers || [], steps: r.steps } }));
+    } catch (e) { setErr(e); }
+    setBusy(false);
+  }
+  // A one-field headline editor (agency plan move 12) on the existing edit route.
+  async function saveHeadlines() {
+    setBusy(true); setErr(null);
+    try {
+      const groups = (spec.ad_groups || []).map((g, i) => ({ ...g, rsa: { ...(g.rsa || {}), headlines: headlines[i].split('\n').map((h) => h.trim()).filter(Boolean).slice(0, 15) } }));
+      await api(`/api/agency/drafts/${d.id}/edit`, { method: 'POST', body: { ad_groups: groups } });
+      setSpec((s) => ({ ...s, ad_groups: groups }));
+      setEditing(false);
     } catch (e) { setErr(e); }
     setBusy(false);
   }
@@ -859,6 +894,7 @@ function DraftCard({ d, index }) {
   }
   const st = DRAFT_STATUS[status] || DRAFT_STATUS.draft;
   const groups = spec.ad_groups || [];
+  const blocked = status === 'staged' || (gates && gates.ok === false && status === 'draft');
   return (
     <Card accent={status === 'created_paused' ? 'info' : undefined} className="rise p-4" style={{ '--rise-i': Math.min(index, 8) }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -879,21 +915,45 @@ function DraftCard({ d, index }) {
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-3">
         {readOnly && <ViewOnly />}
-        {!readOnly && status === 'draft' && (
-          <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">Create in Google Ads - paused</Button>
+        {!readOnly && (status === 'draft' || status === 'staged') && (
+          <Button onClick={() => act('approve')} disabled={busy} className="!px-4 !py-2">{status === 'staged' ? 'Try again' : 'Create in Google Ads - paused'}</Button>
         )}
-        {!readOnly && status === 'created_paused' && (
+        {!readOnly && status === 'draft' && !editing && (
+          <Button variant="secondary" onClick={() => setEditing(true)} disabled={busy} className="!px-4 !py-2">Edit headlines</Button>
+        )}
+        {!readOnly && status === 'created_paused' && !provisional && (
           <Button onClick={() => act('enable')} disabled={busy} className="!px-4 !py-2"><Play size={13} aria-hidden /> Enable - starts spending</Button>
         )}
+        {status === 'created_paused' && provisional && <span className="font-mono text-tiny uppercase tracking-wide text-warning">placeholder only - nothing exists in Google Ads yet, so it cannot be enabled</span>}
         <Button variant="secondary" onClick={copyBrief} className="!px-4 !py-2">
           <Copy size={13} aria-hidden /> {copied ? 'Copied' : 'Copy build brief'}
         </Button>
         {!readOnly && status !== 'enabled' && (
           <Button variant="ghost" onClick={() => act('dismiss')} disabled={busy} className="!py-2">Dismiss</Button>
         )}
-        {status === 'created_paused' && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">paused - spends nothing until enabled</span>}
+        {status === 'created_paused' && !provisional && <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">paused - spends nothing until enabled</span>}
         {status === 'enabled' && <span className="font-mono text-tiny uppercase tracking-wide text-success">live · pause it from Google Ads or ask us</span>}
       </div>
+      {blocked && gates && (
+        <div className="mt-3 rounded bg-warning-tint px-3 py-2 text-small text-strong ring-1 ring-inset ring-warning/25">
+          <div>Blocked until the account is ready{gates.blockers && gates.blockers.length ? `: ${gates.blockers.join('; ')}` : ''}.</div>
+          {gates.steps && gates.steps.length > 0 && <ol className="mt-1.5 list-decimal pl-5 text-neutral-900">{gates.steps.map((s, i) => <li key={i}>{typeof s === 'string' ? s : s.text || s.title || JSON.stringify(s)}</li>)}</ol>}
+        </div>
+      )}
+      {editing && (
+        <div className="mt-3 flex flex-col gap-2 rounded bg-neutral-50 p-3">
+          {groups.map((g, i) => (
+            <label key={g.name || i} className="flex flex-col gap-1 text-small">
+              <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">{g.name} · one headline per line, 30 characters each</span>
+              <textarea value={headlines[i] || ''} onChange={(e) => setHeadlines((hs) => hs.map((h, j) => (j === i ? e.target.value : h)))} rows={5} className="rounded border border-neutral-400 bg-(--ui-well) p-2 font-mono text-tiny" />
+            </label>
+          ))}
+          <div className="flex gap-2">
+            <Button onClick={saveHeadlines} disabled={busy} className="!px-3 !py-2">Save headlines</Button>
+            <Button variant="ghost" onClick={() => setEditing(false)} className="!py-2">Cancel</Button>
+          </div>
+        </div>
+      )}
       <ActionNote error={err} />
     </Card>
   );
@@ -1303,7 +1363,7 @@ function Brand() {
         <MonoLabel>Brand kit {kit.version ? `· v${kit.version}` : ''}</MonoLabel>
         <h1 className="mt-1 text-h3 tracking-tight">Your reports, your name on them</h1>
         <p className="mt-1 text-small text-neutral-900">
-          The kit is saved and versioned today; applying it to the report web view and the report email your clients receive is coming, and until then reports carry Insyt&apos;s own look. This console stays Insyt-branded - it&apos;s your back office. A rebrand never alters reports already in client hands.
+          Your name, logo and primary colour head every report a managed client receives, in the email and the web view, with your footer line at the end. This console stays Insyt-branded - it&apos;s your back office. Versioned: a rebrand never alters reports already in client hands.
         </p>
         <div className="mt-5 flex flex-col gap-4">
           {field('Report display name', 'display_name')}
@@ -1343,7 +1403,6 @@ function Brand() {
 
 function Seats() {
   const { data, error } = useAgency('/api/agency/seats');
-  const { data: log } = useAgency('/api/agency/log');
   const { data: me } = useAgency('/api/agency/me');
   const [seats, setSeats] = useState(null);
   const [form, setForm] = useState({ email: '', name: '', role: 'am' });
@@ -1455,20 +1514,69 @@ function Seats() {
           {note && <p className="mt-2 text-tiny text-neutral-900">{note}</p>}
         </Card>
       )}
-      {log && (
-        <div className="mt-8">
-          <MonoLabel>Per-seat audit trail</MonoLabel>
-          <div className="mt-2 overflow-hidden rounded border border-neutral-300 bg-card">
-            {log.entries.map((e, i) => (
-              <div key={i} className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-2.5 text-small last:border-0">
-                <span><strong>{e.seat ? e.seat.name : 'system'}</strong> · {e.event.replace(/_/g, ' ')}{e.detail && e.detail.reason ? ` - “${e.detail.reason}”` : ''}</span>
-                <span className="shrink-0 font-mono text-tiny text-neutral-900">{new Date(e.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-            ))}
-          </div>
-          <p className="mt-2 text-tiny text-neutral-900">Every approval, dismissal and report sign-off, by whom. The last 100 are shown here; the full trail is kept.</p>
+      <p className="mt-6 text-tiny text-neutral-900">Every approval, dismissal, sign-off and refusal, by whom, lives under <Link to={demoHref('/app/agency/log')} className="underline underline-offset-2">Settings, Log</Link>: filter by account, page back as far as you like, export a CSV.</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- audit trail
+// Its own screen (agency plan move 12): per-account filter, paging past the
+// first hundred, a CSV export, and the detail of each entry rendered.
+
+function detailLine(detail) {
+  if (!detail || typeof detail !== 'object') return '';
+  const skip = new Set(['account_id', 'change_id', 'draft_id', 'report_id', 'alert_id', 'seat_id', 'batch']);
+  return Object.entries(detail).filter(([k, v]) => !skip.has(k) && v != null && v !== '' && typeof v !== 'object').map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · ');
+}
+
+function LogView() {
+  const { accounts } = useScope();
+  const [account, setAccount] = useState('');
+  const [entries, setEntries] = useState(null);
+  const [error, setError] = useState(null);
+  const [more, setMore] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const load = (before) => {
+    setBusy(true);
+    const qs = new URLSearchParams(); if (account) qs.set('account', account); if (before) qs.set('before', before);
+    return api(`/api/agency/log${qs.toString() ? `?${qs}` : ''}`).then((d) => {
+      const rows = d.entries || [];
+      setEntries((xs) => (before ? [...(xs || []), ...rows] : rows));
+      setMore(rows.length >= 100);
+    }).catch(setError).finally(() => setBusy(false));
+  };
+  useEffect(() => { setEntries(null); load(null); }, [account]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (error) return <ErrorNote message={error.message} />;
+  const field = 'rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small outline-none focus:border-(--ui-focus)';
+  const csv = `/api/agency/log?format=csv${account ? `&account=${encodeURIComponent(account)}` : ''}`;
+  return (
+    <div>
+      <MonoLabel>Audit trail</MonoLabel>
+      <h1 className="mt-1 text-h3 tracking-tight">Every action, by whom</h1>
+      <p className="mt-1 max-w-[70ch] text-small text-neutral-900">Approvals, dismissals, snoozes, sign-offs, seat and account changes, brief copies, refused writes, and anything a client did on a shared account. Kept for as long as the agency exists.</p>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <select value={account} onChange={(e) => setAccount(e.target.value)} className={field} aria-label="Filter by account">
+          <option value="">All accounts</option>
+          {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
+        </select>
+        <a href={csv} className="inline-flex items-center gap-1.5 rounded border border-neutral-500 bg-(--ui-well) px-3 py-2 text-small font-medium">Export CSV</a>
+      </div>
+      {!entries ? <div className="mt-5"><Spinner label="Loading the trail" /></div> : entries.length === 0 ? (
+        <div className="mt-5"><EmptyState title="Nothing yet" body="The first approval, dismissal or seat change lands here." /></div>
+      ) : (
+        <div className="mt-4 overflow-hidden rounded border border-neutral-300 bg-card">
+          {entries.map((e) => (
+            <div key={e.id || e.created_at + e.event} className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-2.5 text-small last:border-0">
+              <span>
+                <strong>{e.seat ? (e.seat.name || e.seat.email) : (e.detail && e.detail.by === 'client' ? 'the client' : 'system')}</strong> · {e.event.replace(/_/g, ' ')}
+                {detailLine(e.detail) && <span className="text-neutral-900"> - {detailLine(e.detail)}</span>}
+              </span>
+              <span className="shrink-0 font-mono text-tiny text-neutral-900">{new Date(e.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          ))}
         </div>
       )}
+      {entries && more && <Button variant="secondary" onClick={() => load(entries[entries.length - 1].created_at)} disabled={busy} className="mt-3 !px-4 !py-2">Load earlier</Button>}
     </div>
   );
 }
@@ -1701,9 +1809,10 @@ function AgencySettingsView({ pane }) {
         items={[
           { label: 'Brand', to: demoHref('/app/agency/brand'), active: pane !== 'seats' },
           { label: 'Seats', to: demoHref('/app/agency/seats'), active: pane === 'seats' },
+          { label: 'Log', to: demoHref('/app/agency/log'), active: pane === 'log' },
         ]}
       />
-      {pane === 'seats' ? <Seats /> : <Brand />}
+      {pane === 'seats' ? <Seats /> : pane === 'log' ? <LogView /> : <Brand />}
     </div>
   );
 }
@@ -1749,6 +1858,7 @@ function AgencyRoutes() {
   }
   if (path === '/app/agency/settings' || path === '/app/agency/brand') screen = <AgencySettingsView pane="brand" />;
   if (path === '/app/agency/seats') screen = <AgencySettingsView pane="seats" />;
+  if (path === '/app/agency/log') screen = <AgencySettingsView pane="log" />;
 
   if (error && error.status === 401 && !isDemo()) {
     return (

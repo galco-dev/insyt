@@ -292,7 +292,15 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         const token = path.slice(3);
         const r = await peekLink(token, now(), store.magicLinks);
         if (!r.ok) {
-          const msg = r.reason === 'expired' ? 'This link has expired. If it was an invite, ask the person who sent it to resend it; otherwise request a fresh one from your latest email.'
+          // An invite that expired names the agency and says who can resend it (agency plan move 12).
+          if (r.link && r.link.purpose === 'join_agency' && agencyStore && agencyStore.inviteContext) {
+            const ctx = await agencyStore.inviteContext(r.link.target_id).catch(() => null);
+            const who = ctx && ctx.agency ? ctx.agency : 'your agency';
+            const msg = ctx && ctx.status === 'active' ? `You have already joined ${who}. <a href="/app/agency">Open the console</a>.`
+              : `This invite to ${who} has ${r.reason === 'used' ? 'already been used' : 'expired'}. Ask an admin at ${who} to resend it from Settings, Seats.`;
+            return html(res, 410, `<p style="font-family:sans-serif">${msg}</p>`);
+          }
+          const msg = r.reason === 'expired' ? 'This link has expired. Request a fresh one from your latest email.'
             : r.reason === 'used' ? 'This link was already used. Open your dashboard instead.'
               : 'This link is not valid.';
           return html(res, 410, `<p style="font-family:sans-serif">${msg}</p>`);
@@ -656,12 +664,22 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         if (req.method === 'GET') {
           if (sub === '/me') return json(res, 200, { seat, agency: await agencyStore.agency(ag), agencies: (allSeats || [seat]).filter((x) => !x.status || x.status === 'active').map((x) => ({ id: x.agency_id, name: x.agency ? x.agency.name : null, role: x.role })) });
           if (sub === '/portfolio') return json(res, 200, { accounts: await agencyStore.portfolio(ag, scope) });
-          if (sub === '/triage') return json(res, 200, { queue: await agencyStore.triage(ag, scope) });
+          if (sub === '/triage') return json(res, 200, { queue: await agencyStore.triage(ag, scope, { snoozed: u.searchParams.get('snoozed') === '1', now: new Date(now()).toISOString() }) });
+          if (sub === '/counts' && agencyStore.counts) return json(res, 200, await agencyStore.counts(ag, scope, new Date(now()).toISOString()));
           if (sub === '/review') return json(res, 200, { queue: await agencyStore.reviewQueue(ag, scope) });
           if (sub === '/brand') return json(res, 200, { kit: (await agencyStore.brandKit(ag)) || null });
           if (sub === '/seats') return json(res, 200, { seats: await agencyStore.seats(ag) });
           if (sub === '/credits') return json(res, 200, await agencyStore.credits(ag));
-          if (sub === '/log') return json(res, 200, { entries: await agencyStore.auditLog(ag) });
+          if (sub === '/log') {
+            const entries = await agencyStore.auditLog(ag, { accountId: u.searchParams.get('account') || null, before: u.searchParams.get('before') || null, limit: u.searchParams.get('limit') || 100 });
+            if (u.searchParams.get('format') === 'csv') {
+              const cell = (v) => `"${String(v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : v).replace(/"/g, '""')}"`;
+              const lines = ['when,seat,event,detail', ...entries.map((e) => [e.created_at, e.seat ? (e.seat.name || e.seat.email) : 'system', e.event, e.detail].map(cell).join(','))];
+              res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="insyt-agency-log.csv"' });
+              return res.end(lines.join('\n'));
+            }
+            return json(res, 200, { entries });
+          }
           if (sub === '/accounts') return json(res, 200, { accounts: await agencyStore.accountsList(ag, { includeRemoved: u.searchParams.get('all') === '1' }, scope) });
           if (sub === '/billing') return json(res, 200, await agencyStore.billing(ag, new Date(now()).toISOString()));
           if (sub === '/campaigns') return json(res, 200, { campaigns: await agencyStore.campaignsFor(ag, scope) });
@@ -677,6 +695,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             }
           }
         }
+        // Copying a brief is a read, logged (agency plan move 12): read-only seats do it too.
+        if (req.method === 'POST' && /^\/brief\/[^/]+$/.test(sub)) {
+          if (agencyStore.logEvent) await agencyStore.logEvent(ag, seat.id, 'brief_copied', { change_id: sub.split('/')[2] }).catch(() => {});
+          return json(res, 200, { ok: true });
+        }
         if (req.method === 'POST' && sub === '/switch') {
           let body = '';
           req.on('data', (c) => { body += c; });
@@ -688,7 +711,10 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           return res.end(JSON.stringify({ ok: true }));
         }
         if (req.method === 'POST') {
-          if (!canWrite) return json(res, 403, { error: 'This seat is view only. Ask an admin to change your role under Seats.', code: 'view_only' });
+          if (!canWrite) {
+            if (agencyStore.logEvent) await agencyStore.logEvent(ag, seat.id, 'write_refused', { action: sub, reason: 'view_only' }).catch(() => {});
+            return json(res, 403, { error: 'This seat is view only. Ask an admin to change your role under Seats.', code: 'view_only' });
+          }
           let body = '';
           req.on('data', (c) => { body += c; });
           await new Promise((r) => req.on('end', r));

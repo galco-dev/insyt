@@ -189,7 +189,7 @@ function portfolioView(s) {
 
 function billingView(s) {
   const count = s.accounts.filter((a) => a.status === 'active').length;
-  const rate = count > 30 ? 35 : 45;
+  const rate = count > 30 ? 35 : count > 10 ? 39 : 45;
   const band = count <= 10 ? '1–10' : count <= 30 ? '11–30' : '31+';
   return {
     accounts: count, rate, band, accountsSum: rate * count, platformFee: 249, total: 249 + rate * count, tier: 'mid',
@@ -274,7 +274,8 @@ export function agencyDemo(path, method, body) {
   if (method === 'GET') {
     if (p === '/me') return { seat: s.me.seat, agency: s.me.agency, agencies: [{ id: s.me.agency.id, name: s.me.agency.name, role: s.me.seat.role }] };
     if (p === '/portfolio') return { accounts: portfolioView(s) };
-    if (p === '/triage') return { queue: s.triage };
+    if (p === '/triage') { const nowMs = Date.now(); const sn = (t) => t.snoozed_until && Date.parse(t.snoozed_until) > nowMs; return { queue: s.triage.filter((t) => (/snoozed=1/.test(path) ? sn(t) : !sn(t))) }; }
+    if (p === '/counts') { const nowMs = Date.now(); return { triage: s.triage.filter((t) => !(t.snoozed_until && Date.parse(t.snoozed_until) > nowMs)).length, alerts: s.alerts.filter((a) => !a.acked_at).length, review: s.review.length }; }
     if (p === '/drafts') return { drafts: s.drafts };
     if (p === '/campaigns') return { campaigns: s.campaigns };
     if (p === '/pacing') return { accounts: s.pacing };
@@ -307,7 +308,11 @@ export function agencyDemo(path, method, body) {
       }
     }
     if (p === '/billing') return billingView(s);
-    if (p === '/log') return { entries: s.log };
+    if (p === '/log') {
+      const acc = (path.split('?')[1] || '').split('&').map((kv) => kv.split('=')).find(([k]) => k === 'account');
+      const name = acc ? (s.accounts.find((a) => a.id === decodeURIComponent(acc[1])) || {}).display_name : null;
+      return { entries: name ? s.log.filter((e) => e.detail && (e.detail.account === name || e.detail.display_name === name)) : s.log };
+    }
     return undefined;
   }
 
@@ -317,6 +322,7 @@ export function agencyDemo(path, method, body) {
   const role = s.me.seat.role;
   if (role === 'readonly') return { status: 403, error: 'This seat is view only. Ask an admin to change your role under Seats.', code: 'view_only' };
   if (role !== 'admin' && (p === '/accounts' || p.startsWith('/accounts/') || p === '/seats' || p.startsWith('/seats/'))) return { status: 403, error: 'Admin only.' };
+  if (/^\/brief\/[^/]+$/.test(p)) { log(s, 'brief_copied', { change_id: p.split('/')[2] }); return { ok: true }; }
   if (p.startsWith('/approve/')) {
     const item = s.triage.find((t) => t.id === p.split('/')[2]);
     if (!item) return { status: 404, error: 'This item is not on one of your accounts any more. Refresh the queue.', code: 'not_owned' };
@@ -450,11 +456,22 @@ export function agencyDemo(path, method, body) {
     const [, , id, action] = p.split('/');
     const d = s.drafts.find((x) => x.id === id);
     if (!d) return { ok: true, status: 'dismissed' };
+    if ((action === 'approve' || action === 'apply') && d.account === 'Marina Dental') {
+      // The demo fails where production fails: a build onto broken measurement is blocked with steps.
+      d.status = 'staged';
+      d.spec.gates = { ok: false, blockers: ['GA4 purchase events stopped firing yesterday'], steps: ['Fix the booking tag in Triage (Marina Dental: key event never observed)', 'Wait for the next check to confirm events are flowing', 'Try again here'] };
+      log(s, 'draft_staged', { draft_id: d.id, account: d.account });
+      return { status: 409, error: 'Blocked: this account is counting wrong, so a new campaign would optimise to bad data.', steps: d.spec.gates.steps };
+    }
     if (action === 'approve' || action === 'apply') {
       d.status = 'created_paused';
       d.google_campaign_id = `demo-${s.campaignSeq++}`;
       s.campaigns.unshift({ account_id: d.account_id, account: d.account, google_campaign_id: d.google_campaign_id, name: d.spec.name, status: 'paused', channel: d.spec.channel, budget_daily_usd: d.spec.budget_daily_usd, bidding: d.spec.bidding });
       log(s, 'campaign_created_paused', { draft_id: d.id, account: d.account });
+    } else if (action === 'edit') {
+      if (body && Array.isArray(body.ad_groups)) d.spec.ad_groups = body.ad_groups;
+      log(s, 'draft_edited', { draft_id: d.id, groups: (body && body.ad_groups || []).map((g) => g.name) });
+      return { ok: true };
     } else if (action === 'enable') {
       d.status = 'enabled';
       const c = s.campaigns.find((x) => x.google_campaign_id === d.google_campaign_id);

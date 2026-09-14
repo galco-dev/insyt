@@ -26,7 +26,7 @@ test('magic links: token never stored, single-use, expiring, purpose TTLs', asyn
   assert.strictEqual(first.ok, true);
   assert.strictEqual(first.link.purpose, 'view_report');
   const second = await redeemLink(token, NOW + 2000, store);
-  assert.deepStrictEqual(second, { ok: false, reason: 'used' }, 'single-use');
+  assert.deepStrictEqual([second.ok, second.reason], [false, 'used'], 'single-use');
 
   const store2 = mkStore();
   const { token: t2 } = mintLink({ tenantId: 'tn1', purpose: 'view_report', baseUrl: 'x', now: NOW }, store2);
@@ -82,4 +82,14 @@ test('drain (agency plan move 9): a report held for review stays queued, a rejec
   assert.deepStrictEqual(r, { sent: 1, failed: 0 });
   assert.deepStrictEqual(sentTo, ['Weekly']);
   assert.deepStrictEqual(updates, [['id=eq.e2', 'suppressed'], ['id=eq.e3', 'sent']]);
+});
+
+test('peekLink keeps the row on a used or expired link so the page can say whose invite it was', async () => {
+  const { peekLink } = require('../src/magic-links');
+  const store = mkStore();
+  const { token } = mintLink({ tenantId: 'tn1', purpose: 'join_agency', targetId: 'seat-1', baseUrl: 'x', now: NOW }, store);
+  const fresh = await peekLink(token, NOW + 1000, store);
+  assert.strictEqual(fresh.ok, true);
+  const stale = await peekLink(token, NOW + 200 * 3600 * 1000, store);
+  assert.deepStrictEqual([stale.ok, stale.reason, stale.link.target_id], [false, 'expired', 'seat-1']);
 });

@@ -70,6 +70,14 @@ const TEMPLATES = [
     ],
     (v) => ({ label: 'Pay and start the plan', url: v.pay_url || 'https://app.tryinsyt.com/app/plan' })),
 
+  T('agency_welcome', 'transactional',
+    (v) => `${v.agency || 'Your agency'} is set up on Insyt`,
+    (v) => [
+      `Hello${v.name ? ` ${v.name}` : ''}. ${v.agency || 'Your agency'} now has an Insyt console: add your client accounts, invite your team, and every check, alert and approval across the portfolio lands in one place.`,
+      'Start with one account. Add the client\'s email and we ask them to connect; the first audit runs the day they do.',
+    ],
+    (v) => ({ label: 'Open the console', url: v.console_url || 'https://app.tryinsyt.com/app/agency' })),
+
   T('report_ready_copy', 'report',
     (v) => `${v.agency || 'Your agency'} has this week's check for ${v.site || 'your website'}`,
     (v) => [
