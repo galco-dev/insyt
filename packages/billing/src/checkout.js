@@ -97,6 +97,7 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
         payment_intent_data: { metadata: { tenant_id: tenantId, kind } },
         success_url: successUrl,
         cancel_url: cancelUrl,
+        allow_promotion_codes: true, // promotion-code box on Checkout (internal test codes, later offers)
       });
       return { id: session.id, url: session.url };
     },
@@ -106,6 +107,8 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
      * customerId (from the $20 unlock) puts the saved card first; creditUsd
      * takes the audit fee off the first invoice as a one-off coupon (spec §5);
      * changeId rides in metadata so the webhook can approve the tapped fix.
+     * Stripe refuses discounts and allow_promotion_codes on the same session,
+     * so the promotion-code box only appears when no audit credit is applied.
      */
     subscriptionCheckout: async ({ tenantId, tier, band, cadence = 'monthly', customerEmail, customerId, creditUsd = 0, changeId = null, successUrl, cancelUrl }) => {
       const base = {
@@ -113,7 +116,9 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
         line_items: [{ price: await priceIdByKey(`insyt_${tier}_${band}_${cadence}`), quantity: 1 }],
         client_reference_id: tenantId,
         ...(customerId ? { customer: customerId } : { customer_email: customerEmail || undefined }),
-        ...(creditUsd > 0 ? { discounts: [{ coupon: await creditCouponId(creditUsd) }] } : {}),
+        ...(creditUsd > 0
+          ? { discounts: [{ coupon: await creditCouponId(creditUsd) }] }
+          : { allow_promotion_codes: true }),
         metadata: { tenant_id: tenantId, kind: 'subscription', tier, band, ...(changeId ? { change_id: changeId } : {}) },
         subscription_data: { metadata: { tenant_id: tenantId, tier, band } },
         success_url: successUrl,
