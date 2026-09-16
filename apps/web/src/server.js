@@ -163,8 +163,15 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         const expected = require('crypto').createHmac('sha256', billing.webhookSecret)
           .update(`${parts.t}.${raw}`).digest('hex');
         if (!parts.v1 || parts.v1 !== expected) return json(res, 400, { error: 'bad signature' });
-        const result = await billing.handleWebhook(JSON.parse(raw), billing.store);
-        return json(res, 200, { received: true, handled: result.handled });
+        // A failure here must be loud: Stripe retries on 500, and the log line is the only way to know why.
+        let event; try { event = JSON.parse(raw); } catch { return json(res, 400, { error: 'bad payload' }); }
+        try {
+          const result = await billing.handleWebhook(event, billing.store);
+          return json(res, 200, { received: true, handled: result.handled });
+        } catch (e) {
+          console.error(`stripe webhook ${event.type} ${event.id || ''} failed: ${e && e.message}`);
+          return json(res, 500, { error: 'webhook failed' });
+        }
       }
 
       if (req.method === 'POST' && path === '/api/crawl') {

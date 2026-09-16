@@ -31,11 +31,15 @@ async function handleWebhook(event, store) {
       if (!tenantId) return { handled: false, reason: 'no tenant' };
       if (obj.mode === 'payment') {
         const kind = obj.metadata && obj.metadata.kind; // audit_unlock | large_audit | setup_bundle
+        // A $0 order (100% promotion code) has no PaymentIntent: the session id is the key.
+        const promo = Array.isArray(obj.discounts) && obj.discounts[0] ? (obj.discounts[0].promotion_code || obj.discounts[0].coupon || null) : null;
         await store.recordPayment({
           tenant_id: tenantId,
           kind: kind || 'audit_unlock',
-          stripe_payment_intent: obj.payment_intent,
+          stripe_payment_intent: obj.payment_intent || null,
+          stripe_session_id: obj.id || null,
           amount_usd: (obj.amount_total || 0) / 100,
+          ...(promo ? { promotion_code: typeof promo === 'string' ? promo : promo.id || null } : {}),
           // The customer the unlock created: the plan checkout offers its saved card.
           ...(obj.customer ? { stripe_customer_id: obj.customer } : {}),
         });

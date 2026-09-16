@@ -76,3 +76,12 @@ test('webhooks: subscription mirror, payment record, grace ladder degrades never
   const unknown = await handleWebhook({ type: 'weird.event', data: { object: {} } }, store);
   assert.strictEqual(unknown.handled, false);
 });
+
+test('webhook: a $0 checkout (100% promotion code) has no PaymentIntent and still unlocks; the session id is the key', async () => {
+  const { handleWebhook } = require('../src/webhooks');
+  const rows = [];
+  const store = { recordPayment: async (r) => rows.push(r), audit: async () => {}, ledger: async () => {}, tenantIdByCustomer: async () => null };
+  const r = await handleWebhook({ type: 'checkout.session.completed', data: { object: { id: 'cs_live_1', mode: 'payment', payment_intent: null, amount_total: 0, customer: 'cus_1', metadata: { tenant_id: 't1', kind: 'audit_unlock' }, discounts: [{ coupon: 'co_1', promotion_code: 'promo_1' }] } } }, store);
+  assert.deepStrictEqual(r, { handled: true });
+  assert.deepStrictEqual(rows[0], { tenant_id: 't1', kind: 'audit_unlock', stripe_payment_intent: null, stripe_session_id: 'cs_live_1', amount_usd: 0, promotion_code: 'promo_1', stripe_customer_id: 'cus_1' });
+});

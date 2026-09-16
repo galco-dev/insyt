@@ -392,7 +392,8 @@ function billingStore(db) {
       await db.update('subscriptions', `stripe_subscription_id=eq.${q(stripeSubId)}`, patch);
     },
     recordPayment: async (row) => {
-      await db.insert('payments', [row], { returning: false });
+      // Stripe retries: a second delivery of the same session is not an error.
+      try { await db.insert('payments', [row], { returning: false }); } catch (e) { if (!/duplicate|23505|409/.test(String(e && e.message))) throw e; }
       // The $20 (or large-account) audit fee unlocks every report the tenant
       // has and will have: reports are rendered locked, the flag opens them.
       if (['audit_unlock', 'large_audit', 'setup_bundle'].includes(row.kind)) {
