@@ -25,7 +25,7 @@ Insyt audits and fixes Google Ads, GA4 and Tag Manager for small businesses, wit
 
 ## Accounts and safety
 - The Nail DXB Google Ads account (591-194-9946) is a real live client: read-only, never approve, apply or trigger changes there. Test on JobPeak (642-459-6144) or the reviewer tenant.
-- Stripe is the sandbox account until launch; test with card 4242 4242 4242 4242.
+- Stripe is LIVE (switched 16 Sep 2026). The 4242 test card is declined; never use a real card to test. Test purchases go through the 100% promotion code, which is internal only. Every test still creates a real customer, payment record and subscription in Stripe and in our tables; clear them when clearing test tenants. The sandbox account still exists for local work.
 - Never paste keys, tokens or the Supabase service role key into code, commits or chat.
 
 ## Where things are decided
