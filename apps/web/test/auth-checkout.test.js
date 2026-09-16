@@ -278,6 +278,7 @@ test('auditCheckout finds price by metadata key and stamps tenant', async () => 
   const create = requests.find((x) => x.url.includes('/checkout/sessions'));
   assert.match(create.body, /metadata%5Btenant_id%5D=t9/);
   assert.match(create.body, /price%5D=price_1/);
+  assert.match(create.body, /allow_promotion_codes=true/, 'the $20 page shows the promotion code field');
 });
 
 // ---------------------------------------------------------------- webhook tenant fallback
@@ -351,6 +352,7 @@ test('subscriptionCheckout: saved customer first, the audit fee as a one-off cou
   assert.match(create.body, /(^|&)customer=cus_9(&|$)/);
   assert.doesNotMatch(create.body, /customer_email/);
   assert.match(create.body, /discounts%5B0%5D%5Bcoupon%5D=insyt_audit_credit_20/);
+  assert.doesNotMatch(create.body, /allow_promotion_codes/, 'Stripe refuses a discount and a code field together: the credit wins');
   assert.match(create.body, /metadata%5Bchange_id%5D=ch1/);
   // no credit, no customer: email path, no discounts
   const r2 = await stripe.subscriptionCheckout({ tenantId: 't9', tier: 'core', band: '4k', customerEmail: 'a@b.c', successUrl: 'https://a/s', cancelUrl: 'https://a/c' });
@@ -358,6 +360,7 @@ test('subscriptionCheckout: saved customer first, the audit fee as a one-off cou
   const create2 = requests.filter((x) => x.url.includes('/checkout/sessions')).at(-1);
   assert.match(create2.body, /customer_email=a%40b.c/);
   assert.doesNotMatch(create2.body, /discounts/);
+  assert.match(create2.body, /allow_promotion_codes=true/, 'without a credit, the plan page shows the promotion code field');
 });
 
 test('adversarial: a forged or malformed join cookie is ignored, not honoured', async () => {
