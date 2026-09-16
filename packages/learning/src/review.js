@@ -1,4 +1,4 @@
-// The monthly review artefact — engine-spec §11.9: "Max's monthly review =
+// The monthly review artefact - engine-spec §11.9: "Max's monthly review =
 // reading diffs with receipts". Markdown, PR-body ready. Internal register
 // (backend-only layer): technical vocabulary is fine here.
 
@@ -22,12 +22,12 @@ function proposalBlock(p, i) {
 
 function renderReview({ month, pooledTenants, totalTenants, loops, chosen = [], carried = [], backlog = [], rejected = [], heartbeat }) {
   const L = [];
-  L.push(`# Insyt learning review — ${month}`);
+  L.push(`# Insyt learning review - ${month}`);
   L.push('');
   L.push(`Pooled learning from **${pooledTenants}** consenting accounts of ${totalTenants}. Min-N 20 applies to every cross-account pattern. Nothing below is applied by this job; each accepted proposal becomes a config PR, opens its own 30-day tuning watch, and is reverted through the same pipeline if it regresses (§11.8).`);
   L.push('');
   L.push(`## Instrumentation health`);
-  L.push(heartbeat && heartbeat.ok ? 'All telemetry streams alive.' : `**Incidents:** ${(heartbeat.incidents || []).map((i) => `${i.stream} (${i.why})`).join('; ')} — learning from partial data while believing it complete is worse than not learning.`);
+  L.push(heartbeat && heartbeat.ok ? 'All telemetry streams alive.' : `**Incidents:** ${(heartbeat.incidents || []).map((i) => `${i.stream} (${i.why})`).join('; ')} - learning from partial data while believing it complete is worse than not learning.`);
   L.push('');
   L.push(`## Proposed tunings this cycle (${chosen.length} of max 5)`);
   L.push(chosen.length ? chosen.map(proposalBlock).join('\n') : '_No tuning cleared the evidence bar this cycle._\n');
@@ -36,17 +36,17 @@ function renderReview({ month, pooledTenants, totalTenants, loops, chosen = [], 
   L.push(`## Backlog the customers wrote (${backlog.length})`);
   L.push(backlog.length ? backlog.map((p) => `- (${p.evidence.n}×) ${p.rationale}`).join('\n') : '_Nothing clustered above the floor._');
   L.push('');
-  L.push('## Loop 1 — intervention outcomes');
+  L.push('## Loop 1 - intervention outcomes');
   L.push(table(loops.l1.metrics, [{ key: 'kind', label: 'kind' }, { key: 'n', label: 'n' }, { key: 'tenants', label: 'accounts' }, { key: 'verified_pct', label: 'verified %' }, { key: 'inconclusive_pct', label: 'inconclusive %' }, { key: 'regressed_pct', label: 'regressed %' }, { key: 'median_conversions_delta_pct', label: 'median conv Δ%' }, { key: 'median_spend_delta_pct', label: 'median spend Δ%' }]));
-  L.push('## Loop 2 — human judgment');
+  L.push('## Loop 2 - human judgment');
   L.push(table(loops.l2.metrics, [{ key: 'rule_id', label: 'rule' }, { key: 'proposed', label: 'proposed' }, { key: 'approved', label: 'approved' }, { key: 'dismissal_pct', label: 'dismissed %' }, { key: 'expanded_first_pct', label: 'opened first %' }, { key: 'reasons', label: 'reasons' }]));
-  L.push('## Loop 3 — creative');
+  L.push('## Loop 3 - creative');
   L.push(table(loops.l3.metrics.patterns, [{ key: 'pattern', label: 'pattern' }, { key: 'n', label: 'n' }, { key: 'tenants', label: 'accounts' }, { key: 'best_pct', label: 'BEST %' }, { key: 'low_pct', label: 'LOW %' }]));
   L.push(`Edited model drafts: ${loops.l3.metrics.edits.edited}`);
   L.push('');
-  L.push('## Loop 4 — unanswered requests');
+  L.push('## Loop 4 - unanswered requests');
   L.push(table(loops.l4.metrics.clusters.slice(0, 10), [{ key: 'cluster', label: 'cluster' }, { key: 'n', label: 'n' }, { key: 'sources', label: 'sources' }, { label: 'example', get: (r) => r.examples[0] }]));
-  L.push('## Loop 5 — funnel and onboarding');
+  L.push('## Loop 5 - funnel and onboarding');
   L.push(`Events: \`${JSON.stringify(loops.l5.metrics.events)}\``);
   L.push(`Stalls by gate: \`${JSON.stringify(loops.l5.metrics.stalls)}\``);
   L.push(table(loops.l5.metrics.guides, [{ key: 'platform', label: 'guide' }, { key: 'issued', label: 'issued' }, { key: 'verified', label: 'verified' }, { key: 'success_pct', label: 'success %' }]));

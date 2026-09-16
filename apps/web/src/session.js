@@ -1,6 +1,6 @@
 // Minimal signed-cookie session: HMAC(tenant_id.expiry) with SESSION_SECRET.
 // Set at magic-link redemption; Supabase Auth (Google) replaces/augments this
-// for full sign-in — the cookie is how one-tap email links stay one-tap.
+// for full sign-in - the cookie is how one-tap email links stay one-tap.
 
 const crypto = require('crypto');
 

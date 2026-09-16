@@ -85,3 +85,22 @@ test('webhook: a $0 checkout (100% promotion code) has no PaymentIntent and stil
   assert.deepStrictEqual(r, { handled: true });
   assert.deepStrictEqual(rows[0], { tenant_id: 't1', kind: 'audit_unlock', stripe_payment_intent: null, stripe_session_id: 'cs_live_1', amount_usd: 0, promotion_code: 'promo_1', stripe_customer_id: 'cus_1' });
 });
+
+test('credit is what was paid, capped at $20: a 100% code paid nothing, so no credit and no sentence', () => {
+  const { accessFrom } = require('../src/access');
+  const base = { sub: null, tenant: { size_band: '4k' }, pricing: null, report: null, pending: [], ads: null };
+  const free = accessFrom({ ...base, paid: { kind: 'audit_unlock', amount_usd: 0 } });
+  assert.deepStrictEqual([free.level, free.credit_usd, free.credit_applies], ['unlocked', 0, false]);
+  const half = accessFrom({ ...base, paid: { kind: 'audit_unlock', amount_usd: 10 } });
+  assert.deepStrictEqual([half.credit_usd, half.credit_applies], [10, true]);
+  const full = accessFrom({ ...base, paid: { kind: 'audit_unlock' } });
+  assert.deepStrictEqual([full.credit_usd, full.credit_applies], [20, true], 'older rows without an amount keep the $20');
+});
+
+test('webhook: a completed unlock writes the receipt (History line and email) when the store offers it', async () => {
+  const { handleWebhook } = require('../src/webhooks');
+  const receipts = [];
+  const store = { recordPayment: async () => {}, audit: async () => {}, ledger: async () => {}, tenantIdByCustomer: async () => null, unlockReceipt: async (t, o) => receipts.push([t, o]) };
+  await handleWebhook({ type: 'checkout.session.completed', data: { object: { id: 'cs_1', mode: 'payment', payment_intent: 'pi_1', amount_total: 2000, metadata: { tenant_id: 't1', kind: 'audit_unlock' }, customer_details: { email: 'o@x.ae' } } } }, store);
+  assert.deepStrictEqual(receipts, [['t1', { amountUsd: 20, kind: 'audit_unlock', email: 'o@x.ae' }]]);
+});

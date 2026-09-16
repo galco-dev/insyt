@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Idempotent DNS-as-code for tryinsyt.com — runs in GitHub Actions with a
+// Idempotent DNS-as-code for tryinsyt.com - runs in GitHub Actions with a
 // zone-scoped CLOUDFLARE_API_TOKEN (Edit zone DNS on tryinsyt.com only).
 // Ensures the §17 Resend sending records exist; never deletes anything.
 // Re-run safe: existing records with the same type+name are left untouched
@@ -17,7 +17,7 @@ const RECORDS = [
   { type: 'TXT', name: `resend._domainkey.mail.${ZONE_NAME}`, content: 'p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDUfYCPvpwNIGfhORBNEc9T2Il/rPO+aF3rj69abHZZkZfCSPwdlixFea4idcB2XK4usfP7iJsWMEVkbPJcF3L+vHiIdBYZWH0rjbcBRZ8jDqPdDs+2K8NggPa+9RzcJQVUi7IGVRVEmXlSVk0nldYJJIzOFbzDmq7Qkv6x6B7tdQIDAQAB' },
   { type: 'MX', name: `send.mail.${ZONE_NAME}`, content: 'feedback-smtp.eu-west-1.amazonses.com', priority: 10 },
   { type: 'TXT', name: `send.mail.${ZONE_NAME}`, content: 'v=spf1 include:amazonses.com ~all' },
-  // DMARC for the org domain — monitoring policy to start (§17 requires DMARC
+  // DMARC for the org domain - monitoring policy to start (§17 requires DMARC
   // before first send; p=none observes without breaking anything).
   { type: 'TXT', name: `_dmarc.${ZONE_NAME}`, content: 'v=DMARC1; p=none; rua=mailto:galledarim@gmail.com' },
 ];
@@ -42,7 +42,7 @@ async function cf(method, path, body) {
 async function main() {
   if (!process.env.CLOUDFLARE_API_TOKEN) { console.error('CLOUDFLARE_API_TOKEN required'); process.exit(1); }
   const zones = await cf('GET', `/zones?name=${ZONE_NAME}`);
-  if (!zones.length) throw new Error(`zone ${ZONE_NAME} not visible to this token — scope it to the zone`);
+  if (!zones.length) throw new Error(`zone ${ZONE_NAME} not visible to this token - scope it to the zone`);
   const zoneId = zones[0].id;
   console.log(`zone ${ZONE_NAME}: ${zoneId}`);
 

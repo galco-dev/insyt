@@ -27,7 +27,7 @@ test('unsupported CMS closes build journeys politely, pre-payment', () => {
   const r = routeJourney({ confirmed: [], cmsFingerprint: 'unsupported' });
   assert.strictEqual(r.close, true);
   assert.strictEqual(r.close_reason, 'unsupported_cms');
-  // Journey A needs no build — unsupported CMS does NOT close it.
+  // Journey A needs no build - unsupported CMS does NOT close it.
   assert.strictEqual(routeJourney({ confirmed: [ads, ga4, gtm], cmsFingerprint: 'unsupported' }).close, false);
 });
 

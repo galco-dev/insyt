@@ -1,4 +1,4 @@
-// Rules engine core — build-doc §2–3.
+// Rules engine core - build-doc §2–3.
 // Deterministic: every number engine-computed; Sonnet later writes title and
 // explanation ONLY (narration stage receives findings minus payload).
 // Severity and thresholds come from rule_config rows, never from code paths,
@@ -78,7 +78,7 @@ function runRules({ rules, ruleConfig, ctx, priorFindings = [], runId, tenantId 
 }
 
 /**
- * Health score — build-doc §13. 0–100, deterministic, same formula everywhere.
+ * Health score - build-doc §13. 0–100, deterministic, same formula everywhere.
  * 100 − Σ severity penalties (critical 15, warning 5, penalties capped at 85)
  * + data-quality modifier, clamped to [0, 100]. Stored on the run.
  */

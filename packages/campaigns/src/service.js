@@ -1,4 +1,4 @@
-// Campaign draft service — one implementation behind both surfaces
+// Campaign draft service - one implementation behind both surfaces
 // (agency Build door, consumer "your ad" cards). engine-spec §5 + §5.1.
 //
 //   createDraftService({ db, google, model, modelId })
@@ -39,7 +39,7 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     const goalBroken = (open || []).some((f) => ['ads.no_conversion_tracking', 'ads.conversion_silent', 'ga4.no_key_events'].includes(f.rule_id));
     const gates = (journey && journey.gates) || { tag: true, billing: true, approval: true };
     const health = { conversionGoalHealthy: !goalBroken, billingAttached: gates.billing !== false, openCriticalTracking: critTracking };
-    // §5.1 setup checklist — what Insyt does for a first-timer, in order.
+    // §5.1 setup checklist - what Insyt does for a first-timer, in order.
     const steps = [];
     if (!kinds.has('ga4_property')) steps.push({ key: 'ga4', label: 'Set up visit tracking', detail: 'We create it for you in one tap on Google\'s permission screen.', done: false, insyt_does_it: true });
     else steps.push({ key: 'ga4', label: 'Visit tracking', done: true });
@@ -133,7 +133,7 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     const gates = await gatesFor(tenantId);
     const v = validateSpec(d.spec, gates.health);
     if (!v.ok) {
-      // §5.1: never a dead end — the draft is STAGED behind the checklist.
+      // §5.1: never a dead end - the draft is STAGED behind the checklist.
       await patch(draftId, { spec: { ...d.spec, gates: { ok: false, blockers: v.blockers, steps: gates.steps, staged_at: new Date().toISOString() } } });
       return { status: 'staged', blockers: v.blockers, steps: gates.steps };
     }

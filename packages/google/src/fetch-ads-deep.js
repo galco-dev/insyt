@@ -1,4 +1,4 @@
-// Google Ads deep fetcher — produces the ctx.adsDeep contract documented in
+// Google Ads deep fetcher - produces the ctx.adsDeep contract documented in
 // packages/rules/src/layer6-deep.js from REAL segment data, so every rule
 // that used to run on modelled distributions now runs on measured ones
 // (engine-spec §3.2). Rule logic does not change; this adapter does.

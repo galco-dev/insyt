@@ -87,7 +87,7 @@ test('wasted_terms: measured monthly money, term list locked in payload', () => 
   ads.search_terms = [
     { term: 'free nail course', campaign_id: 'c2', spend_90d_usd: 410, clicks_90d: 380, conversions_90d: 0 },
     { term: 'diy nails at home', campaign_id: 'c2', spend_90d_usd: 250, clicks_90d: 200, conversions_90d: 0 },
-    { term: 'nail salon dubai', campaign_id: 'c2', spend_90d_usd: 900, clicks_90d: 400, conversions_90d: 22 }, // converts — excluded
+    { term: 'nail salon dubai', campaign_id: 'c2', spend_90d_usd: 900, clicks_90d: 400, conversions_90d: 22 }, // converts - excluded
     { term: 'cheap gel x', campaign_id: 'c3', spend_90d_usd: 2, clicks_90d: 4, conversions_90d: 0 },           // under floor
   ];
   const hits = byId['ads.wasted_terms'].run({ ads, thresholds: {} });
@@ -107,7 +107,7 @@ test('budget_constrained_winner: cheap CPA + lost impression share → opportuni
   assert.strictEqual(hits.length, 1);
   assert.strictEqual(hits[0].money.direction, 'opportunity');
   assert.strictEqual(hits[0].money.impact_monthly_usd, 225);
-  ads.campaigns[2].budget_lost_is_pct = 25; // CPA 90 > median — expensive, not a winner
+  ads.campaigns[2].budget_lost_is_pct = 25; // CPA 90 > median - expensive, not a winner
   assert.strictEqual(byId['ads.budget_constrained_winner'].run({ ads, thresholds: {} }).length, 1);
 });
 

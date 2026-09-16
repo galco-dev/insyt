@@ -1,4 +1,4 @@
-// Asset discovery — build-doc §7, first half.
+// Asset discovery - build-doc §7, first half.
 // After scope step 2, enumerate everything the identity can reach and
 // normalise into `assets`-row shape. API clients are injected so this
 // unit-tests offline and swaps between real/stub implementations.
@@ -8,7 +8,7 @@
 //   listGa4Tree()      -> [{ account, properties: [{ propertyId, displayName, currencyCode,
 //                           dataStreams: [{ streamId, measurementId, displayName }] }] }]
 //   listGtmContainers()-> [{ accountId, containers: [{ containerId, publicId, name }] }]
-// Each may throw { code: 'PERMISSION_DENIED' | ... } — §7 insufficient-role
+// Each may throw { code: 'PERMISSION_DENIED' | ... } - §7 insufficient-role
 // edge case; we capture per-source errors instead of failing discovery whole.
 
 async function discoverAssets(clients) {
@@ -61,7 +61,7 @@ async function discoverAssets(clients) {
       for (const c of acct.containers || []) {
         out.assets.push({
           kind: 'gtm_container',
-          external_id: c.publicId, // GTM-XXXX — what the crawler sees on-page
+          external_id: c.publicId, // GTM-XXXX - what the crawler sees on-page
           display_name: c.name || null,
           currency: null,
           metadata: { account_id: String(acct.accountId), container_id: String(c.containerId) },

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Post-deploy smoke — launch-audit-spec §10. Read-only against the live app:
+// Post-deploy smoke - launch-audit-spec §10. Read-only against the live app:
 //   node scripts/smoke.js [https://app.tryinsyt.com]
 // Exit 1 on any failure. No secrets needed; nothing is written except one
 // free check against a fixed domain (subject to the normal per-domain limits).

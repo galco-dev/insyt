@@ -1,7 +1,7 @@
-// The learning layer's five loops — engine-spec §11.1–11.5. Pure analysis
+// The learning layer's five loops - engine-spec §11.1–11.5. Pure analysis
 // over rows the job already fetched: each loop returns { metrics, proposals }.
 // Proposals are CONFIG changes (rule thresholds, watch durations, money
-// priors, copy/ranking flags, brief guidance, backlog items) — never code,
+// priors, copy/ranking flags, brief guidance, backlog items) - never code,
 // never anything on the never-tune list (governance.js rejects those).
 //
 // Statistical honesty (§11.7) is built in: min-N before any pattern is
@@ -18,7 +18,7 @@ function inAnomaly(dateIso, tenantId, anomalies = []) {
   return anomalies.some((a) => (a.tenant_id == null || a.tenant_id === tenantId) && d >= a.starts_on && d <= a.ends_on);
 }
 
-/** Loop 1 — intervention outcomes (the moat). watches: closed change_verify rows with baseline.tool_id / change_key / kind, outcome, effect, tenant_id, closed_at. */
+/** Loop 1 - intervention outcomes (the moat). watches: closed change_verify rows with baseline.tool_id / change_key / kind, outcome, effect, tenant_id, closed_at. */
 function interventionOutcomes({ watches = [], anomalies = [], minN = MIN_N } = {}) {
   const usable = watches.filter((w) => w.outcome && !inAnomaly(w.closed_at, w.tenant_id, anomalies));
   const byKind = new Map();
@@ -38,10 +38,10 @@ function interventionOutcomes({ watches = [], anomalies = [], minN = MIN_N } = {
   for (const m of metrics) {
     if (m.n < minN || m.tenants < minN) continue; // pooled learning needs ≥ minN accounts (§11.6)
     if (m.inconclusive_pct >= 50) {
-      proposals.push({ target: 'watch_duration', key: m.kind, from: null, to: '+7 days', rationale: `${m.inconclusive_pct}% of ${m.kind} watches close inconclusive (n=${m.n}) — the window is too short to judge.`, evidence: m, loop: 1 });
+      proposals.push({ target: 'watch_duration', key: m.kind, from: null, to: '+7 days', rationale: `${m.inconclusive_pct}% of ${m.kind} watches close inconclusive (n=${m.n}) - the window is too short to judge.`, evidence: m, loop: 1 });
     }
     if (m.regressed_pct >= 20) {
-      proposals.push({ target: 'rule_threshold', key: m.kind, from: null, to: 'tighten', rationale: `${m.regressed_pct}% of ${m.kind} changes regressed (n=${m.n}) — the rule proposes too eagerly; raise its entry threshold.`, evidence: m, loop: 1 });
+      proposals.push({ target: 'rule_threshold', key: m.kind, from: null, to: 'tighten', rationale: `${m.regressed_pct}% of ${m.kind} changes regressed (n=${m.n}) - the rule proposes too eagerly; raise its entry threshold.`, evidence: m, loop: 1 });
     }
     if (m.kind === 'negatives' && m.median_spend_delta_pct != null && m.verified_pct >= 60) {
       proposals.push({ target: 'money_prior', key: 'negatives', from: 'spend_90d/3', to: `measured median spend delta ${m.median_spend_delta_pct}%`, rationale: `Measured effect of exclusions across ${m.n} watches; modelled savings should track the measured median.`, evidence: m, loop: 1 });
@@ -50,7 +50,7 @@ function interventionOutcomes({ watches = [], anomalies = [], minN = MIN_N } = {
   return { metrics, proposals };
 }
 
-/** Loop 2 — human judgment. dismissals: { rule_id, reason_tap, expanded_first }; changes: { rule_id?, status } via finding join; exceptions: { change_key }. */
+/** Loop 2 - human judgment. dismissals: { rule_id, reason_tap, expanded_first }; changes: { rule_id?, status } via finding join; exceptions: { change_key }. */
 function humanJudgment({ dismissals = [], changes = [], exceptions = [], minN = MIN_N } = {}) {
   const byRule = new Map();
   for (const c of changes) {
@@ -78,9 +78,9 @@ function humanJudgment({ dismissals = [], changes = [], exceptions = [], minN = 
     if (m.dismissal_pct >= 60) {
       const wrong = (m.reasons.wrong || 0) >= (m.reasons.not_now || 0);
       if (m.expanded_first_pct != null && m.expanded_first_pct >= 60 && wrong) {
-        proposals.push({ target: 'rule_threshold', key: m.rule_id, from: null, to: 'raise', rationale: `${m.dismissal_pct}% dismissed after opening the detail, mostly "wrong" — the finding itself misfires; raise the threshold.`, evidence: m, loop: 2 });
+        proposals.push({ target: 'rule_threshold', key: m.rule_id, from: null, to: 'raise', rationale: `${m.dismissal_pct}% dismissed after opening the detail, mostly "wrong" - the finding itself misfires; raise the threshold.`, evidence: m, loop: 2 });
       } else {
-        proposals.push({ target: 'finding_copy', key: m.rule_id, from: null, to: 'rewrite', rationale: `${m.dismissal_pct}% dismissed without opening the detail — the explanation is failing, not the finding.`, evidence: m, loop: 2 });
+        proposals.push({ target: 'finding_copy', key: m.rule_id, from: null, to: 'rewrite', rationale: `${m.dismissal_pct}% dismissed without opening the detail - the explanation is failing, not the finding.`, evidence: m, loop: 2 });
       }
       proposals.push({ target: 'surfacing', key: m.rule_id, from: 'always', to: 'suppress until threshold review', rationale: 'A finding that cries wolf trains skimming (§11.2).', evidence: m, loop: 2 });
     }
@@ -89,7 +89,7 @@ function humanJudgment({ dismissals = [], changes = [], exceptions = [], minN = 
   const byShape = new Map();
   for (const e of exceptions) { const shape = String(e.change_key || '').split(':')[0]; byShape.set(shape, (byShape.get(shape) || 0) + 1); }
   for (const [shape, n] of byShape) {
-    if (n >= minN) proposals.push({ target: 'rule_review', key: shape, from: null, to: 'review', rationale: `${n} accounts told us never to re-apply ${shape} changes — the rule behind it is miscalibrated.`, evidence: { shape, exceptions: n }, loop: 2 });
+    if (n >= minN) proposals.push({ target: 'rule_review', key: shape, from: null, to: 'review', rationale: `${n} accounts told us never to re-apply ${shape} changes - the rule behind it is miscalibrated.`, evidence: { shape, exceptions: n }, loop: 2 });
   }
   return { metrics, proposals };
 }
@@ -102,7 +102,7 @@ const PATTERNS = [
   { key: 'booking', re: /\b(book|booking|appointment|quote|call)\b/i },
 ];
 
-/** Loop 3 — creative. snapshots: asset_perf_snapshots rows; edits: draft_edits rows. */
+/** Loop 3 - creative. snapshots: asset_perf_snapshots rows; edits: draft_edits rows. */
 function creative({ snapshots = [], edits = [], minN = MIN_N } = {}) {
   const byPattern = {};
   for (const s of snapshots) {
@@ -127,7 +127,7 @@ function creative({ snapshots = [], edits = [], minN = MIN_N } = {}) {
   return { metrics: { patterns: metrics, edits: editRate }, proposals };
 }
 
-/** Loop 4 — assistant self-reporting. unanswered: unanswered_log rows. */
+/** Loop 4 - assistant self-reporting. unanswered: unanswered_log rows. */
 function assistantSelfReport({ unanswered = [], minCluster = 3 } = {}) {
   const STOP = new Set(['the', 'a', 'an', 'my', 'me', 'i', 'to', 'for', 'of', 'and', 'can', 'you', 'please', 'do', 'it', 'is', 'on', 'in', 'this', 'that', 'we', 'our', 'with', 'be', 'want', 'like']);
   const clusters = new Map();
@@ -143,7 +143,7 @@ function assistantSelfReport({ unanswered = [], minCluster = 3 } = {}) {
   return { metrics: { clusters: ranked.slice(0, 20), total: unanswered.length }, proposals };
 }
 
-/** Loop 5 — funnel, UX, onboarding. events: events rows; journeys: journey_state rows with tag_install. */
+/** Loop 5 - funnel, UX, onboarding. events: events rows; journeys: journey_state rows with tag_install. */
 function funnel({ events = [], journeys = [], minN = MIN_N } = {}) {
   const screens = {};
   const counts = {};

@@ -1,4 +1,4 @@
-// RSA copy — engine-spec §5 "RSA copy (Fable)". Claude writes, code decides:
+// RSA copy - engine-spec §5 "RSA copy (Fable)". Claude writes, code decides:
 // the model drafts headlines/descriptions from crawled site language, the
 // offer and witnessed prices; validateCopy() hard-validates every line and
 // the deterministic builder copy is the fallback when the model is absent,
@@ -27,7 +27,7 @@ const POLICY = [
 ];
 const PRICE_RE = /(?:AED|USD|GBP|EUR|\$|€|£)\s?(\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?)|(\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?)\s?(?:AED|USD|GBP|EUR|dirhams?|dollars?|pounds?)/gi;
 
-const normalise = (s) => String(s || '').replace(/\s*[—–]\s*/g, ' - ').replace(/\s+/g, ' ').trim();
+const normalise = (s) => String(s || '').replace(/\s*[\u2014\u2013]\s*/g, ' - ').replace(/\s+/g, ' ').trim(); // em and en dashes become ' - '
 
 function pricesIn(text) {
   const out = [];
@@ -77,7 +77,7 @@ function brief({ business, service, location, offers = [], prices = [], siteLine
     'Return ONLY a JSON object: {"headlines": [12 strings, each 30 characters or fewer], "descriptions": [4 strings, each 90 characters or fewer]}.',
     'Rules: plain, specific, no exclamation marks, no superlatives (best, #1), no guarantees, no "click here", no advertising jargon, no em dashes.',
     'Include the business name in at least two headlines and the service in at least three. Mention a price ONLY from this list, verbatim, or not at all:',
-    prices.length ? prices.map((p) => `${p.currency || ''} ${p.amount}${p.label ? ` (${p.label})` : ''}`.trim()).join('; ') : '(no prices known — do not mention prices)',
+    prices.length ? prices.map((p) => `${p.currency || ''} ${p.amount}${p.label ? ` (${p.label})` : ''}`.trim()).join('; ') : '(no prices known - do not mention prices)',
     offers.length ? `Offers you may mention: ${offers.join('; ')}` : '',
     siteLines.length ? `Language from their website to echo: ${siteLines.slice(0, 8).join(' | ')}` : '',
   ].filter(Boolean).join('\n');
@@ -108,7 +108,7 @@ async function draftCopy({ business, service, location, offers, prices, siteLine
     }
   }
   // Builder copy is deterministic but a long business name can overflow a
-  // headline — drop over-length lines rather than ship something Google rejects.
+  // headline - drop over-length lines rather than ship something Google rejects.
   const safe = {
     headlines: ((fallback && fallback.headlines) || []).map(normalise).filter((h) => h.length <= LIMITS.headline),
     descriptions: ((fallback && fallback.descriptions) || []).map(normalise).filter((d) => d.length <= LIMITS.description),

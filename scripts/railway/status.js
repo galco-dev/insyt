@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Railway status + logs diagnostic — project-wide view. Read-only.
+// Railway status + logs diagnostic - project-wide view. Read-only.
 // Prints: environments, per-service instance config (start/build commands),
 // ALL recent deployments in the project (any environment/service), and logs
 // for the latest deployment of each service.
@@ -50,7 +50,7 @@ async function main() {
     }
   }
 
-  // Project-wide deployments — no service/environment filter.
+  // Project-wide deployments - no service/environment filter.
   const all = await gqlRaw(
     'query($input: DeploymentListInput!) { deployments(input: $input, first: 20) { edges { node { id status createdAt serviceId environmentId staticUrl } } } }',
     { input: { projectId: project.id } },
@@ -59,7 +59,7 @@ async function main() {
   if (!all.ok) console.log(`query failed: ${JSON.stringify(all.body.errors).slice(0, 300)}`);
   else {
     const nodes = all.body.data.deployments.edges.map((e) => e.node);
-    if (!nodes.length) console.log('NONE — nothing has ever deployed in this project except what shows below per-service.');
+    if (!nodes.length) console.log('NONE - nothing has ever deployed in this project except what shows below per-service.');
     const svcName = new Map(services.map((s) => [s.id, s.name]));
     const envName = new Map(environments.map((e) => [e.id, e.name]));
     for (const d of nodes) {

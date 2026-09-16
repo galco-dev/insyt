@@ -1,4 +1,4 @@
-// Agency platform pricing — master §13, config not code.
+// Agency platform pricing - master §13, config not code.
 //
 // Model (binding):
 // - The agency pays: platform fee (tier) + N × band rate, where N is the
@@ -28,7 +28,7 @@ function bandRate(n) {
 }
 
 function bandLabel(n) {
-  if (n <= 0) return '—';
+  if (n <= 0) return ' - ';
   if (n <= 10) return '1–10';
   if (n <= 30) return '11–30';
   return '31+';

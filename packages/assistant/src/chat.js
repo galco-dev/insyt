@@ -1,4 +1,4 @@
-// The assistant — engine-spec §7. A conversational client of the same
+// The assistant - engine-spec §7. A conversational client of the same
 // pipeline: it reads stored data (tools.js), drafts cards (interpret.js),
 // and never executes anything. Chat is never the system of record (§7.4.1):
 // transcripts could vanish with zero account-state loss.

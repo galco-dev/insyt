@@ -1,18 +1,18 @@
-// Audit pipeline stage runner — build-doc §8.
+// Audit pipeline stage runner - build-doc §8.
 // One job per run; stages as checkpointed steps (master §3.5):
 //   fetch_gtm → fetch_ga4_config → fetch_ga4_data → fetch_ads → live_witness
 //   → rules_pass → money_math → narration → render → deliver
 //
 // Guarantees, all enforced here:
-//   - checkpoint written to runs.checkpoint after every stage → re-entry skips
+//  - checkpoint written to runs.checkpoint after every stage → re-entry skips
 //     completed stages (idempotent resume after a crash or deploy)
-//   - per-stage timeout; failure → retry ×2 → stage marked failed → run
+//  - per-stage timeout; failure → retry ×2 → stage marked failed → run
 //     CONTINUES degraded with degraded_reasons[] (live-witness failure never
 //     blocks config layers)
-//   - real progress events per stage (SSE consumers get actual stage names
-//     and counts — never fake progress)
+//  - real progress events per stage (SSE consumers get actual stage names
+//     and counts - never fake progress)
 //
-// Stages are injected as { name, required?, run(runCtx) -> patch } — the §8
+// Stages are injected as { name, required?, run(runCtx) -> patch } - the §8
 // stage implementations live in stages.js and wire the existing packages.
 
 const STAGE_RETRIES = 2;
@@ -29,10 +29,10 @@ function withTimeout(promise, ms, label) {
 /**
  * Run (or resume) a pipeline.
  * @param {object} p
- *   p.run        { id, tenant_id, type, checkpoint }  — checkpoint may hold prior progress
+ *   p.run        { id, tenant_id, type, checkpoint } - checkpoint may hold prior progress
  *   p.stages     ordered stage list
  *   p.store      { saveCheckpoint(runId, checkpoint), finishRun(runId, patch) }
- *   p.emit       (event) => void — progress events for the SSE bridge
+ *   p.emit       (event) => void - progress events for the SSE bridge
  *   p.timeoutMs  per-stage timeout override
  * @returns {{ status: 'complete'|'degraded'|'failed', degraded_reasons: [], ctx }}
  */

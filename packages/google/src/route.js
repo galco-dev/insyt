@@ -1,16 +1,16 @@
-// Journey routing — master §6 table + build-doc §7 additions.
+// Journey routing - master §6 table + build-doc §7 additions.
 //
 // | Discovery finds        | Journey                                  | First payment |
-// | Ads + GA4 + GTM        | A  — audit                               | $20 unlock    |
-// | Ads only (± legacy)    | C  — audit → build inside subscription   | $20 unlock    |
-// | Nothing                | B  — builder                             | $199 bundle   |
+// | Ads + GA4 + GTM        | A - audit                               | $20 unlock    |
+// | Ads only (± legacy)    | C - audit → build inside subscription   | $20 unlock    |
+// | Nothing                | B - builder                             | $199 bundle   |
 // | GA4/GTM, no Ads        | B variant (Launch Plan + tracking audit) | bundle        |
 // | Unsupported CMS (B/C build cases) → polite close, pre-payment
 // Build-doc addition: Ads account with $0 spend in 90d → dormant variant
 // (reactivation-framed report).
 // Size gate: ≤10k search-term rows AND ≤$8k/30d spend → $20 standard audit;
 // above → large-account audit $49/$79 + higher band flag. Fees mirror
-// pricing_config.audit_fees — thresholds here are the launch defaults.
+// pricing_config.audit_fees - thresholds here are the launch defaults.
 
 const SIZE_GATE = {
   standardMaxTermRows90d: 10_000,
@@ -50,7 +50,7 @@ function routeJourney({ confirmed, cmsFingerprint, adsActivity }) {
   const hasGa4 = kinds.has('ga4_property') || kinds.has('ga4_stream');
   const hasGtm = kinds.has('gtm_container');
 
-  // Build journeys need us to place a tag — unsupported CMS closes politely
+  // Build journeys need us to place a tag - unsupported CMS closes politely
   // BEFORE any payment (master §6/§9).
   const needsBuild = !hasAds || !(hasGa4 && hasGtm);
   if (needsBuild && cmsFingerprint === 'unsupported' && !(hasAds && (hasGa4 || hasGtm))) {

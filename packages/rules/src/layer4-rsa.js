@@ -1,4 +1,4 @@
-// Layer 4b — RSA (responsive search ad) coverage and quality, plus
+// Layer 4b - RSA (responsive search ad) coverage and quality, plus
 // campaign-build gap rules (agency-specialist audit P1). Same ctx.ads input
 // as layer4-ads, extended at the fetch stage with per-ad-group RSA data:
 //
@@ -6,7 +6,7 @@
 //   rsas: [{ ad_id, strength ('EXCELLENT'|'GOOD'|'AVERAGE'|'POOR'|null),
 //            headline_count, description_count, pinned_headlines, pinned_descriptions }] }]
 // ctx.ads.has_brand_campaign / has_remarketing (assembled booleans) may be
-// absent — build-gap rules then derive from campaign names.
+// absent - build-gap rules then derive from campaign names.
 //
 // All thresholds from rule_config (15 seed).
 
@@ -32,7 +32,7 @@ const rules = [
           entities: [{ kind: 'ad_group', value: g.name }],
           campaign_ref: String(g.campaign_id),
           campaign_name: campaignById(ads, g.campaign_id).name || null,
-          fix_detail: `Ad group "${g.name}" has no responsive search ad at all — its keywords can't serve. Draft an RSA (we generate one from the keywords) or pause the group.`,
+          fix_detail: `Ad group "${g.name}" has no responsive search ad at all - its keywords can't serve. Draft an RSA (we generate one from the keywords) or pause the group.`,
         },
         icon: 'file-x',
       }));
@@ -97,7 +97,7 @@ const rules = [
               entities: [{ kind: 'ad_group', value: g.name }],
               campaign_ref: String(g.campaign_id),
               campaign_name: campaignById(ads, g.campaign_id).name || null,
-              fix_detail: `RSA in "${g.name}" pins ${pins} assets — Google can barely rotate combinations, which suppresses serving. Unpin all but the compliance-critical ones.`,
+              fix_detail: `RSA in "${g.name}" pins ${pins} assets - Google can barely rotate combinations, which suppresses serving. Unpin all but the compliance-critical ones.`,
             },
             icon: 'pin',
           });
@@ -127,7 +127,7 @@ const rules = [
               entities: [{ kind: 'ad_group', value: g.name }],
               campaign_ref: String(g.campaign_id),
               campaign_name: campaignById(ads, g.campaign_id).name || null,
-              fix_detail: `Google rates the RSA in "${g.name}" as Poor — usually duplicate-ish headlines or missing keyword relevance. We can draft replacement assets from the ad group's keywords.`,
+              fix_detail: `Google rates the RSA in "${g.name}" as Poor - usually duplicate-ish headlines or missing keyword relevance. We can draft replacement assets from the ad group's keywords.`,
             },
             icon: 'trending-down',
           });
@@ -159,7 +159,7 @@ const rules = [
           locked: true,
           entities: [{ kind: 'account', value: String(ads.customer_id) }],
           build_template: 'brand',
-          fix_detail: 'No brand campaign: people searching this business by name see competitors bidding on it. Brand clicks are the cheapest in the account. Draft ready — one ad group, exact+phrase brand terms, created paused.',
+          fix_detail: 'No brand campaign: people searching this business by name see competitors bidding on it. Brand clicks are the cheapest in the account. Draft ready - one ad group, exact+phrase brand terms, created paused.',
         },
         icon: 'plus-circle',
       }];
@@ -184,7 +184,7 @@ const rules = [
           locked: true,
           entities: [{ kind: 'account', value: String(ads.customer_id) }],
           build_template: 'remarketing',
-          fix_detail: 'Paid visitors who didn\'t convert are gone for good — no remarketing campaign exists. Draft ready: 30-day site visitors, created paused.',
+          fix_detail: 'Paid visitors who didn\'t convert are gone for good - no remarketing campaign exists. Draft ready: 30-day site visitors, created paused.',
         },
         icon: 'plus-circle',
       }];

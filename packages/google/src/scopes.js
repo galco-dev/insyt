@@ -1,9 +1,9 @@
-// OAuth scope ladder — build-doc §6.
+// OAuth scope ladder - build-doc §6.
 // Identity login ≠ data scopes. Four steps, each requested only at its moment:
-//   1 signin     — openid/email/profile (Supabase Auth handles this one)
-//   2 discovery  — read-only Ads/GA4/GTM, asked immediately after sign-in
-//   3 write      — asked at the first-fix ceremony, never earlier
-//   4 create     — Journey B provisioning, asked at the pay-then-build moment
+//   1 signin    - openid/email/profile (Supabase Auth handles this one)
+//   2 discovery - read-only Ads/GA4/GTM, asked immediately after sign-in
+//   3 write     - asked at the first-fix ceremony, never earlier
+//   4 create    - Journey B provisioning, asked at the pay-then-build moment
 // scope_level on google_connections derives from what was actually granted.
 
 const SCOPES = {
@@ -18,7 +18,7 @@ const SCOPES = {
   TAGMANAGER_PUBLISH: 'https://www.googleapis.com/auth/tagmanager.publish',
 };
 
-// What each ladder step ASKS for (incremental — previous grants carry over
+// What each ladder step ASKS for (incremental - previous grants carry over
 // via include_granted_scopes, so each step lists only its additions).
 const LADDER = {
   signin: [SCOPES.OPENID, SCOPES.EMAIL, SCOPES.PROFILE],
@@ -27,7 +27,7 @@ const LADDER = {
   discovery: [SCOPES.OPENID, SCOPES.EMAIL, SCOPES.ADWORDS, SCOPES.ANALYTICS_RO, SCOPES.TAGMANAGER_RO],
   write: [SCOPES.ANALYTICS_EDIT, SCOPES.TAGMANAGER_EDIT, SCOPES.TAGMANAGER_PUBLISH],
   // Journey B create: GA4 provisioning rides on analytics.edit; Ads
-  // CreateCustomerClient rides on adwords under our MCC — no new scopes,
+  // CreateCustomerClient rides on adwords under our MCC - no new scopes,
   // but the step exists so consent copy and audit trail mark the moment.
   create: [],
 };
@@ -57,7 +57,7 @@ function scopeLevel(granted) {
 
 /**
  * Scopes missing for a requested level. Non-empty result on a connection that
- * should have that level means `partial` — runs degrade honestly (§6).
+ * should have that level means `partial` - runs degrade honestly (§6).
  */
 function missingScopes(granted, level) {
   const have = new Set(granted || []);

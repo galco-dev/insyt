@@ -1,4 +1,4 @@
-// Deep-report section assembler — turns the deep data blocks (ctx.adsDeep +
+// Deep-report section assembler - turns the deep data blocks (ctx.adsDeep +
 // witness + findings + the change ledger) into the envelope's `deep` object:
 // chart-ready series, tables, the execution register, and the "not yet
 // examined" honesty list. Numbers are summed HERE, in code; the renderer and

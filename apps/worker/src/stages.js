@@ -12,11 +12,11 @@
 //   model:   { generate({system, prompt}) }                (Anthropic client)
 //   store:   { ruleConfig(), priorFindings(tenantId), ledgerCumulative(tenantId),
 //              saveFindings(runId, findings), saveReport(runId, {html_email, html_web, findings}),
-//              saveSnapshots?(tenantId, ads) — campaigns + spend_daily + asset labels,
-//              draftState?(tenantId) + saveDrafts?(runId, tenantId, drafts, skipped)   — §6.1 draft_pass
-//              dueChangeWatches?(tenantId) + closeChangeWatch?({...})                  — §6.1 watch_close
-//              openFindings?(tenantId) + applyDiff?(tenantId, runId, {supersede, resolved}) + hasPriorRun?  — §6.1 diff_pass }
-//   google.fetchWindow?(tenantId, { since, campaignIds, terms })  — watch measurement (§4.4)
+//              saveSnapshots?(tenantId, ads) - campaigns + spend_daily + asset labels,
+//              draftState?(tenantId) + saveDrafts?(runId, tenantId, drafts, skipped)  - §6.1 draft_pass
+//              dueChangeWatches?(tenantId) + closeChangeWatch?({...})                 - §6.1 watch_close
+//              openFindings?(tenantId) + applyDiff?(tenantId, runId, {supersede, resolved}) + hasPriorRun? - §6.1 diff_pass }
+//   google.fetchWindow?(tenantId, { since, campaignIds, terms }) - watch measurement (§4.4)
 
 const { runRules, healthScore } = require('../../../packages/rules/src/engine');
 const l1 = require('../../../packages/rules/src/layer1-gtm');
@@ -86,7 +86,7 @@ function buildStages({ google, crawler, model, store }) {
       },
     },
     {
-      name: 'live_witness', // failure never blocks config layers — not required
+      name: 'live_witness', // failure never blocks config layers - not required
       run: async (ctx) => ({ witness: await crawler.verificationCrawl(ctx.run.website_url) }),
     },
     {
@@ -126,7 +126,7 @@ function buildStages({ google, crawler, model, store }) {
     },
     {
       // §6.1 diff_pass: dedupe vs open findings (first_seen carried), close
-      // the ones that no longer fire ("fixed itself / you fixed it — we
+      // the ones that no longer fire ("fixed itself / you fixed it - we
       // noticed"), and compute the deterministic since-last-week numbers.
       name: 'diff_pass',
       run: async (ctx) => {
@@ -210,7 +210,7 @@ function buildStages({ google, crawler, model, store }) {
             const { title, explanation } = await narrateFinding(f, generate);
             return { ...f, title, explanation };
           } catch {
-            // Grounding failed twice — fall back to the payload-free fix_detail-less engine framing.
+            // Grounding failed twice - fall back to the payload-free fix_detail-less engine framing.
             return { ...f, title: f.rule_id.replace(/[._]/g, ' '), explanation: '' };
           }
         };
@@ -249,7 +249,7 @@ function buildStages({ google, crawler, model, store }) {
           ledgerCumulative: await store.ledgerCumulative(ctx.run.tenant_id),
           narrativeSlots: ctx.narrativeSlots,
           deep,
-          // "Against your goals" section — present only when the (agency)
+          // "Against your goals" section - present only when the (agency)
           // account has targets set; store.performanceFor is optional.
           performance: store.performanceFor
             ? await store.performanceFor(ctx.run.tenant_id).catch(() => null)
@@ -321,6 +321,9 @@ function buildStages({ google, crawler, model, store }) {
         // report waits for a seat's review when the account asks for that.
         const managed = store.managedBy ? await store.managedBy(ctx.run.tenant_id).catch(() => null) : null;
         let htmlWeb = ctx.html_web;
+        const paidTenant = !managed && store.tenantPaid ? await store.tenantPaid(ctx.run.tenant_id).catch(() => false) : false;
+        // A paid tenant's web report (the "view online" link, /r/) is theirs in full.
+        if (paidTenant && ctx.envelope) { try { htmlWeb = renderReport(ctx.envelope, { unlocked: true, healthScore: ctx.health_score, mode: 'web' }); } catch { /* keep the locked render */ } }
         if (managed && ctx.envelope) {
           try {
             const consoleUrl = `${baseUrl}/app/agency/accounts/${managed.account_id}`;
@@ -335,7 +338,7 @@ function buildStages({ google, crawler, model, store }) {
           } catch (e) { console.error(`agency report render failed for ${ctx.run.tenant_id}: ${e.message}`); }
         } else if (store.mintReportLinks && ctx.envelope) {
           try {
-            const paid = store.tenantPaid ? await store.tenantPaid(ctx.run.tenant_id) : false;
+            const paid = paidTenant;
             links = await store.mintReportLinks(ctx.run.tenant_id, reportId, { baseUrl, pendingCount });
             htmlEmail = renderReport(ctx.envelope, {
               unlocked: paid, healthScore: ctx.health_score, mode: 'email',

@@ -18,7 +18,7 @@ test('scaling journey: 1 test account → 10 → 20 → 35, mid tier', () => {
   assert.deepStrictEqual(monthlyCharge(1, 'mid'), {
     accounts: 1, rate: 45, band: '1–10', accountsSum: 45, platformFee: 249, total: 294,
   });
-  // Adds up to 10 — still band one.
+  // Adds up to 10 - still band one.
   assert.strictEqual(monthlyCharge(10, 'mid').total, 10 * 45 + 249);
   // The 11th account drops EVERY account to $39 (total goes 699 → 678).
   assert.strictEqual(monthlyCharge(10, 'mid').total, 699);

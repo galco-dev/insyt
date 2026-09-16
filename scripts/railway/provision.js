@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Provision the Insyt Railway project — build-doc §15 topology.
+// Provision the Insyt Railway project - build-doc §15 topology.
 // Runs inside GitHub Actions (the Cowork sandbox cannot reach Railway's API).
 // Idempotent: safe to re-run; it finds-or-creates everything by name.
 // Works with BOTH personal account tokens (me.projects) and workspace/team
@@ -10,7 +10,7 @@
 // Creates: project "insyt" → services web/worker/poller/cron (+ redis from
 // image, with volume) → start/build commands → env vars. Secrets are passed
 // through from the environment when present (see PASSTHROUGH below) and
-// reported as MISSING otherwise — deploys still go out; services that need a
+// reported as MISSING otherwise - deploys still go out; services that need a
 // missing secret exit loudly at boot, which is the §15-honest failure mode.
 
 const crypto = require('crypto');
@@ -48,13 +48,13 @@ async function gql(query, variables = {}) {
 async function main() {
   if (!process.env.RAILWAY_TOKEN) { console.error('RAILWAY_TOKEN required'); process.exit(1); }
 
-  // 1. Project (find or create) — dual token mode.
+  // 1. Project (find or create) - dual token mode.
   let projectList = null;
   let teamId = null;
   const meRes = await gqlRaw('query { me { name email projects { edges { node { id name } } } } }');
   if (meRes.ok && meRes.body.data && meRes.body.data.me) {
     const me = meRes.body.data.me;
-    console.log(`token ok — account mode: ${me.email || me.name}`);
+    console.log(`token ok - account mode: ${me.email || me.name}`);
     projectList = me.projects.edges.map((e) => e.node);
   } else {
     const pr = await gqlRaw('query { projects { edges { node { id name } } } }');
@@ -66,12 +66,12 @@ async function main() {
     if (teams.ok && teams.body.data && teams.body.data.teams && teams.body.data.teams.edges[0]) {
       teamId = teams.body.data.teams.edges[0].node.id;
     }
-    console.log(`token ok — workspace mode${teamId ? ` (team ${teamId})` : ''}; ${projectList.length} project(s) visible`);
+    console.log(`token ok - workspace mode${teamId ? ` (team ${teamId})` : ''}; ${projectList.length} project(s) visible`);
   }
 
   let project = projectList.find((p) => p.name === 'insyt');
   if (!project) {
-    const input = { name: 'insyt', description: 'Insyt — build-doc §15 services', ...(teamId ? { teamId } : {}) };
+    const input = { name: 'insyt', description: 'Insyt - build-doc §15 services', ...(teamId ? { teamId } : {}) };
     project = (await gql('mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { id name } }', { input })).projectCreate;
     console.log(`created project ${project.id}`);
   } else {
@@ -87,7 +87,7 @@ async function main() {
 
   const results = { created: [], updated: [], missing_secrets: [] };
 
-  // 3. Redis — image service with a volume; app services reach it over
+  // 3. Redis - image service with a volume; app services reach it over
   // private networking at redis.railway.internal. The password is STABLE:
   // reuse whatever the existing instance's start command carries, so app
   // REDIS_URLs always match the running server; generate only on creation.
@@ -112,7 +112,7 @@ async function main() {
     const cmd = inst.ok && inst.body.data.serviceInstance ? inst.body.data.serviceInstance.startCommand : null;
     const m = cmd && /--requirepass\s+(\S+)/.exec(cmd);
     redisPassword = m ? m[1] : crypto.randomBytes(24).toString('hex');
-    if (!m) console.log('redis: no existing password found — generated a new one (redis will be redeployed)');
+    if (!m) console.log('redis: no existing password found - generated a new one (redis will be redeployed)');
   }
   const desiredRedisCmd = `redis-server --requirepass ${redisPassword} --appendonly yes --dir /data`;
   await gql('mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input) }',
@@ -167,7 +167,7 @@ async function main() {
 
   console.log('\n=== PROVISION SUMMARY ===');
   console.log(`created: ${results.created.join(', ') || 'nothing (all existed)'}`);
-  console.log(`updated: ${results.updated.join(', ') || '—'}`);
+  console.log(`updated: ${results.updated.join(', ') || ' - '}`);
   console.log(`missing secrets (add as GitHub repo secrets and re-run): ${results.missing_secrets.join(', ') || 'none'}`);
   console.log('service ids:', JSON.stringify(Object.fromEntries([...existing].map(([n, s]) => [n, s.id]))));
 }

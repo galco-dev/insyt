@@ -1,6 +1,6 @@
-// Daily light pass pump — engine-spec §6.2. Once a day per linked account:
+// Daily light pass pump - engine-spec §6.2. Once a day per linked account:
 // fetch the pulse, judge it, write alerts (one per kind per day), email the
-// owner (alerts are ALWAYS emailed — the promise stands), and enqueue a
+// owner (alerts are ALWAYS emailed - the promise stands), and enqueue a
 // triggered run when the anomaly warrants a proper look.
 //
 // pumpDailyPulse({ db, google, queue, now, limit })

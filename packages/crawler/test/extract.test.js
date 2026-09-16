@@ -1,4 +1,4 @@
-// Unit tests for the extraction layer — no browser needed.
+// Unit tests for the extraction layer - no browser needed.
 const assert = require('node:assert');
 const { test } = require('node:test');
 const {

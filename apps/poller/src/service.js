@@ -1,4 +1,4 @@
-// Railway `poller` service — build-doc §15.
+// Railway `poller` service - build-doc §15.
 // Drains due `watches` rows: tag-alive heartbeats, post-changeset 48h
 // verification, first-click/first-conversion watches, and journey tag-install
 // polls. Each watch kind has a handler; the poller is only the pump.

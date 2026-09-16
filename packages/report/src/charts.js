@@ -1,4 +1,4 @@
-// Deep-report chart layer — pure SVG string generators, zero dependencies.
+// Deep-report chart layer - pure SVG string generators, zero dependencies.
 // One renderer discipline: these serve the WEB report HTML (email mode gets
 // stat-row fallbacks; SVG dies in Gmail). Light mono palette + severity hues
 // as STATUS colors only; series identity is grayscale steps with mandatory
@@ -110,7 +110,7 @@ function lineChart({ w = 660, h = 240, xLabels, series, band, annotate = [], yFm
 
 /**
  * Horizontal stacked bars. rows: [{ label, segments: [{ label, value, kind }] }]
- * kind: 'recovered'|'calendar'|'active' — validated order green|neutral|red.
+ * kind: 'recovered'|'calendar'|'active' - validated order green|neutral|red.
  */
 const STACK_COLOR = { recovered: C.success, calendar: C.gray, active: C.critical };
 function stackedBarsH({ w = 660, rows, unit = '' }) {
@@ -162,7 +162,7 @@ function histogram({ w = 660, h = 210, bins, note }) {
 }
 
 /**
- * Hour profile — TWO ALIGNED PANELS sharing the hour axis (never dual-axis):
+ * Hour profile - TWO ALIGNED PANELS sharing the hour axis (never dual-axis):
  * spend bars above, cost-per-result line below. flagged hours marked red.
  */
 function hourProfile({ w = 660, hours, flagged = [], currency = '$' }) {

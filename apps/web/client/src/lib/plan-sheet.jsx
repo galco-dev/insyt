@@ -174,7 +174,7 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
             ))}
           </ul>
           {access.credit_applies && (
-            <p className="mt-4 rounded border border-neutral-300 bg-neutral-50 px-3 py-2 text-small">Your $20 audit is taken off the first month.</p>
+            <p className="mt-4 rounded border border-neutral-300 bg-neutral-50 px-3 py-2 text-small">Your ${access.credit_usd || 20} audit is taken off the first month.</p>
           )}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Button onClick={() => subscribe(primaryTier)} disabled={!!busy} className="!px-6 !py-3">

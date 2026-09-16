@@ -1,17 +1,17 @@
-// Layer 5 — live witness (build-doc §3, §5 verification crawl).
+// Layer 5 - live witness (build-doc §3, §5 verification crawl).
 // The crawler renders the real site and watches what actually loads and
 // fires. This layer closes the loop the config layers can't: a pristine
 // GTM setup means nothing if the site never loads it.
 //
-// Input: ctx.witness — verification-crawl output (§5, crawler package):
+// Input: ctx.witness - verification-crawl output (§5, crawler package):
 // {
 //   pages: [{ url, is_homepage, ok,
 //             gtm_containers_seen: ['GTM-XXXX'],
 //             collect_measurement_ids: ['G-...'] }],   // GA4 collect requests captured
 // }
-// ctx.gtm — Layer 1 snapshot (container_public_id = what SHOULD be there)
-// ctx.linkedMeasurementIds — G-IDs of the linked property's streams
-// ctx.previouslyVerified — bool: tag was seen alive on a prior run (heartbeat)
+// ctx.gtm - Layer 1 snapshot (container_public_id = what SHOULD be there)
+// ctx.linkedMeasurementIds - G-IDs of the linked property's streams
+// ctx.previouslyVerified - bool: tag was seen alive on a prior run (heartbeat)
 
 const okPages = (w) => (w.pages || []).filter((p) => p.ok);
 
@@ -36,7 +36,7 @@ const rules = [
         payload: {
           locked: true,
           entities: [{ kind: 'gtm_container', value: expected }],
-          fix_detail: 'Your tracking setup exists at Google but your website never loads it — nothing is being recorded at all. Reinstalling it on the site fixes everything downstream.',
+          fix_detail: 'Your tracking setup exists at Google but your website never loads it - nothing is being recorded at all. Reinstalling it on the site fixes everything downstream.',
         },
         icon: 'zap-off', // §9 reinstall flow, not a one-tap tool fix
       }];
@@ -46,7 +46,7 @@ const rules = [
   {
     rule_id: 'live.collect_wrong_id',
     layer: 5,
-    // Data IS flowing — to the wrong place.
+    // Data IS flowing - to the wrong place.
     run({ witness, linkedMeasurementIds }) {
       const linked = new Set(linkedMeasurementIds || []);
       if (linked.size === 0) return [];
@@ -68,7 +68,7 @@ const rules = [
         payload: {
           locked: true,
           entities: [...wrong].map((id) => ({ kind: 'measurement_id', value: id })),
-          fix_detail: 'Your site is sending visit data to a tracking setup that is not the one connected here — the numbers you look at are missing it.',
+          fix_detail: 'Your site is sending visit data to a tracking setup that is not the one connected here - the numbers you look at are missing it.',
         },
         fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'change' },
         icon: 'crosshair',
@@ -98,7 +98,7 @@ const rules = [
         payload: {
           locked: true,
           entities: gaps.map((p) => ({ kind: 'page', value: p.url })),
-          fix_detail: `Tracking runs on your homepage but not on ${gaps.length} important page(s) — visits that land there are invisible. Usually one platform setting ("apply to all pages") fixes it.`,
+          fix_detail: `Tracking runs on your homepage but not on ${gaps.length} important page(s) - visits that land there are invisible. Usually one platform setting ("apply to all pages") fixes it.`,
         },
         icon: 'layout-grid', // platform-specific corrective guide, §9
       }];
@@ -125,7 +125,7 @@ const rules = [
         payload: {
           locked: false, // breakage alerts are never paywalled
           entities: [{ kind: 'gtm_container', value: expected }],
-          fix_detail: 'Your tracking was working and has now disappeared from your site — this usually happens after a site edit or theme change. One tap starts the reinstall flow.',
+          fix_detail: 'Your tracking was working and has now disappeared from your site - this usually happens after a site edit or theme change. One tap starts the reinstall flow.',
         },
         icon: 'heart-off', // alert email + §9 reinstall flow
       }];

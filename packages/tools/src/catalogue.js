@@ -1,4 +1,4 @@
-// The constrained tool catalogue — build-doc §4, master §3.1.
+// The constrained tool catalogue - build-doc §4, master §3.1.
 // THE ONLY write surface in the system. Every tool: typed params, guardrails
 // in CODE (not prompts, not config), before/after diff, idempotency key,
 // ledger entry. No free-form API composition anywhere.
@@ -32,9 +32,9 @@ const TOOLS = [
       if (!p.campaign_id || !Array.isArray(p.terms) || p.terms.length === 0) return 'campaign_id and terms[] required';
       if (p.terms.length > 200) return 'guardrail: more than 200 negative terms in one run';
       const badMatch = p.terms.find((t) => !['exact', 'phrase'].includes(t.match_type));
-      if (badMatch) return `guardrail: match type "${badMatch.match_type}" not allowed — exact and phrase only`;
+      if (badMatch) return `guardrail: match type "${badMatch.match_type}" not allowed - exact and phrase only`;
       const converting = p.terms.find((t) => ctx.convertingTerms && ctx.convertingTerms.has(t.text));
-      if (converting) return `guardrail: "${converting.text}" has conversions — refusing to negative a converting term`;
+      if (converting) return `guardrail: "${converting.text}" has conversions - refusing to negative a converting term`;
       return null;
     },
   },
@@ -100,7 +100,7 @@ const TOOLS = [
     guard: (p) => (p.ad_group_id && p.criterion_id ? null : 'ad_group_id and criterion_id required'),
   },
   {
-    // Rollback of pause_keyword — only for keywords the ledger says WE paused.
+    // Rollback of pause_keyword - only for keywords the ledger says WE paused.
     tool_id: 'ads.enable_keyword',
     entities: () => 1,
     guard(p, ctx) {
@@ -182,12 +182,12 @@ const TOOLS = [
   {
     tool_id: 'gtm.create_tag',
     entities: () => 1,
-    guard: (p) => (p.container_id && p.workspace_id && p.spec ? null : 'guardrail: staged workspace required — never live edit'),
+    guard: (p) => (p.container_id && p.workspace_id && p.spec ? null : 'guardrail: staged workspace required - never live edit'),
   },
   {
     tool_id: 'gtm.update_tag_config',
     entities: () => 1,
-    guard: (p) => (p.container_id && p.workspace_id && p.tag_id ? null : 'guardrail: staged workspace required — never live edit'),
+    guard: (p) => (p.container_id && p.workspace_id && p.tag_id ? null : 'guardrail: staged workspace required - never live edit'),
   },
   {
     tool_id: 'gtm.pause_tag',
@@ -205,7 +205,7 @@ const TOOLS = [
     guard(p, ctx) {
       if (!p.workspace_id) return 'workspace_id required';
       const approved = (ctx.approvals || []).some((a) => a.scope === 'changeset' && String(a.target_id) === String(p.changeset_id));
-      if (!approved) return 'guardrail: publish is its own approval scope — no publish approval found';
+      if (!approved) return 'guardrail: publish is its own approval scope - no publish approval found';
       return null;
     },
   },

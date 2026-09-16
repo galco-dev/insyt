@@ -1,4 +1,4 @@
-// End-to-end crawl against a local fixture site — proves the full Playwright
+// End-to-end crawl against a local fixture site - proves the full Playwright
 // path (render, request capture, robots, key-page walk) without external network.
 // Run: node --test packages/crawler/test/e2e.local.test.js
 // Needs chromium; pass INSYT_CHROMIUM=/path/to/chromium if not using default install.
@@ -13,7 +13,7 @@ test('e2e: crawls fixture site and extracts everything', async () => {
   try {
     const result = await discoveryCrawl(`http://127.0.0.1:${port}/`, {
       executablePath: process.env.INSYT_CHROMIUM,
-      proxy: null, // localhost — never proxy
+      proxy: null, // localhost - never proxy
     });
 
     assert.strictEqual(result.status, 'complete');

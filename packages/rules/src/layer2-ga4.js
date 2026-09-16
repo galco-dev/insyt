@@ -1,4 +1,4 @@
-// Layer 2 — GA4 config rules (build-doc §3).
+// Layer 2 - GA4 config rules (build-doc §3).
 // Input: a normalised GA4 property snapshot from the Admin API, fetched at
 // the fetch_ga4_config pipeline stage (§8). Shape:
 //
@@ -10,15 +10,15 @@
 //   enhanced_measurement: { enabled, events: ['page_view','scroll','click',...] },
 //   attribution: { model, is_default, changed_at | null },
 // }
-// ctx.gtm — the Layer 1 container snapshot (for enhanced_double_fire we need
+// ctx.gtm - the Layer 1 container snapshot (for enhanced_double_fire we need
 //   GA4 event tags: tags with type 'gaawe' and their event_name)
-// ctx.linkedAdsCustomerIds — confirmed ads_account external_ids for the tenant
-// ctx.conversionWindowDays — account conversion window (default 30)
-// ctx.now — ms epoch, injected
+// ctx.linkedAdsCustomerIds - confirmed ads_account external_ids for the tenant
+// ctx.conversionWindowDays - account conversion window (default 30)
+// ctx.now - ms epoch, injected
 //
 // Severity comes from rule_config (06 seed); partial findings only here.
 
-// Events that exist on every GA4 property automatically — marking one as a
+// Events that exist on every GA4 property automatically - marking one as a
 // key event means "conversions" that are really just visits.
 const NON_BUSINESS_EVENTS = new Set([
   'page_view', 'session_start', 'first_visit', 'scroll', 'user_engagement', 'view_search_results',
@@ -37,7 +37,7 @@ const rules = [
         payload: {
           locked: true,
           entities: [],
-          fix_detail: 'Nothing on your site is being counted as a customer action — Google has no idea which clicks turn into business.',
+          fix_detail: 'Nothing on your site is being counted as a customer action - Google has no idea which clicks turn into business.',
         },
         fix: { params_ref: 'changes.params', risk: 'low', reversible: true, approval_scope: 'change' },
         icon: 'target',
@@ -59,7 +59,7 @@ const rules = [
           payload: {
             locked: true,
             entities: [{ kind: 'key_event', value: k.event_name }],
-            fix_detail: `"${k.event_name}" counts as a customer action, but it fires on every visit — your conversion numbers are inflated and Google optimises toward the wrong thing.`,
+            fix_detail: `"${k.event_name}" counts as a customer action, but it fires on every visit - your conversion numbers are inflated and Google optimises toward the wrong thing.`,
           },
           fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'change' },
           icon: 'crosshair',
@@ -70,9 +70,9 @@ const rules = [
   {
     rule_id: 'ga4.ads_link_missing',
     layer: 2,
-    // No Google Ads link — Ads can't see conversions at all.
+    // No Google Ads link - Ads can't see conversions at all.
     run({ ga4, linkedAdsCustomerIds }) {
-      if ((linkedAdsCustomerIds || []).length === 0) return []; // no Ads account confirmed — Journey B/C ground
+      if ((linkedAdsCustomerIds || []).length === 0) return []; // no Ads account confirmed - Journey B/C ground
       if ((ga4.ads_links || []).length > 0) return [];
       return [{
         category: 'broken_tracking',
@@ -81,7 +81,7 @@ const rules = [
         payload: {
           locked: true,
           entities: [],
-          fix_detail: 'Your visit tracking and your ads account are not connected — what happens after the click never reaches Google Ads.',
+          fix_detail: 'Your visit tracking and your ads account are not connected - what happens after the click never reaches Google Ads.',
         },
         fix: { params_ref: 'changes.params', risk: 'low', reversible: true, approval_scope: 'change' },
         icon: 'unlink',
@@ -92,7 +92,7 @@ const rules = [
   {
     rule_id: 'ga4.ads_link_recent',
     layer: 2,
-    // Link created < conversion window ago — explains missing history, info only.
+    // Link created < conversion window ago - explains missing history, info only.
     run({ ga4, conversionWindowDays = 30, now }) {
       return (ga4.ads_links || [])
         .filter((l) => l.create_time && (now - Date.parse(l.create_time)) / 86_400_000 < conversionWindowDays)
@@ -105,9 +105,9 @@ const rules = [
             queries: ['ga4/rules/ads_link_recent@v1'],
           },
           payload: {
-            locked: false, // pure context — nothing to sell here
+            locked: false, // pure context - nothing to sell here
             entities: [{ kind: 'ads_link', value: l.customer_id }],
-            fix_detail: 'The connection between tracking and ads is new — conversion history before it simply does not exist. Expect numbers to look thin for a few weeks.',
+            fix_detail: 'The connection between tracking and ads is new - conversion history before it simply does not exist. Expect numbers to look thin for a few weeks.',
           },
           icon: 'clock',
         }));
@@ -127,7 +127,7 @@ const rules = [
         payload: {
           locked: true,
           entities: [],
-          fix_detail: `Your visitor history is deleted after ${ga4.retention_months} months — one setting keeps 14 months instead, for free.`,
+          fix_detail: `Your visitor history is deleted after ${ga4.retention_months} months - one setting keeps 14 months instead, for free.`,
         },
         fix: { params_ref: 'changes.params', risk: 'low', reversible: true, approval_scope: 'change' },
         icon: 'database',
@@ -156,7 +156,7 @@ const rules = [
         payload: {
           locked: true,
           entities: dupes.map((t) => ({ kind: 'event', value: t.event_name, tag: t.name })),
-          fix_detail: `${dupes.length} event(s) are recorded twice — once automatically, once by your tag setup. Your numbers are inflated.`,
+          fix_detail: `${dupes.length} event(s) are recorded twice - once automatically, once by your tag setup. Your numbers are inflated.`,
         },
         fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'change' },
         icon: 'copy',
@@ -173,7 +173,7 @@ const rules = [
       if (!attr || attr.is_default) return [];
       const recentDays = thresholds.recent_change_days ?? 90;
       const changedRecently = attr.changed_at && (now - Date.parse(attr.changed_at)) / 86_400_000 <= recentDays;
-      if (changedRecently) return []; // deliberate recent choice — leave it alone
+      if (changedRecently) return []; // deliberate recent choice - leave it alone
       return [{
         category: 'context',
         entity_key: `${ga4.property_id}:attribution`,
@@ -181,7 +181,7 @@ const rules = [
         payload: {
           locked: false,
           entities: [{ kind: 'attribution_model', value: attr.model }],
-          fix_detail: 'Credit for conversions is being split in a non-standard way — worth knowing when comparing your numbers to anything else.',
+          fix_detail: 'Credit for conversions is being split in a non-standard way - worth knowing when comparing your numbers to anything else.',
         },
         icon: 'git-branch',
       }];

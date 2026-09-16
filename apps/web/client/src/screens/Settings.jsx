@@ -419,7 +419,7 @@ export default function Settings() {
   // Plan card copy per level, in their numbers.
   const price = access ? access.price_usd : 129;
   const planLine = level === 'active' || !access ? settings.plan_line
-    : level === 'unlocked' ? `No plan yet. Core is $${price}/month${access.credit_applies ? ', your $20 comes off the first month' : ''}.`
+    : level === 'unlocked' ? `No plan yet. Core is $${price}/month${access.credit_applies ? `, your $${access.credit_usd || 20} comes off the first month` : ''}.`
       : `Free check. Your full report is $20; plans start at $${price}/month.`;
 
   const mail = (subject) => `mailto:hello@tryinsyt.com?subject=${encodeURIComponent(subject)}`;

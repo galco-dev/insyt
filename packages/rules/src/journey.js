@@ -1,4 +1,4 @@
-// Journey rules — engine-spec §3.3 / §5.1. The Journey B/C setup checklist
+// Journey rules - engine-spec §3.3 / §5.1. The Journey B/C setup checklist
 // as findings, not a separate system: a first-time advertiser sees "what is
 // left before your ads can run", each step with who does it (mostly us).
 //

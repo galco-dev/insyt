@@ -1,8 +1,8 @@
 // Performance-led report section (agency-specialist audit P0/P1): the page
-// clients actually flip to first — "did we hit what we aimed for?". Renders
+// clients actually flip to first - "did we hit what we aimed for?". Renders
 // only when the agency has set targets for the account (account_targets) and
 // spend snapshots exist. Language stays plain: the numbers carry the
-// authority, not the vocabulary. Client fees never appear here — targets are
+// authority, not the vocabulary. Client fees never appear here - targets are
 // the agency's operating targets for the work.
 //
 // input: {
@@ -29,8 +29,8 @@ function rowsFor(perf) {
       actual: `${money(perf.spend_usd)} so far${p.projected ? ` · heading for ${money(p.projected)}` : ''}`,
       target: `${money(t.monthly_budget_usd)} for the month`,
       ok,
-      note: p.status === 'over' ? 'Running hot — we are adjusting before it overshoots.'
-        : p.status === 'under' ? 'Room left in the plan — spending less than budgeted.'
+      note: p.status === 'over' ? 'Running hot - we are adjusting before it overshoots.'
+        : p.status === 'under' ? 'Room left in the plan - spending less than budgeted.'
           : 'On plan.',
     });
   }
@@ -41,7 +41,7 @@ function rowsFor(perf) {
       actual: cpa != null ? money(cpa) : 'no results yet',
       target: `${money(t.cpa_target_usd)} or better`,
       ok,
-      note: ok ? 'Hitting the goal.' : cpa == null ? 'Nothing to measure yet this month.' : 'Above the goal — the fixes below are aimed at exactly this.',
+      note: ok ? 'Hitting the goal.' : cpa == null ? 'Nothing to measure yet this month.' : 'Above the goal - the fixes below are aimed at exactly this.',
     });
   }
   if (t.roas_target != null) {
@@ -51,7 +51,7 @@ function rowsFor(perf) {
       actual: roas != null ? `${roas.toFixed(1)}× back` : 'no sales recorded yet',
       target: `${Number(t.roas_target).toFixed(1)}× or better`,
       ok,
-      note: ok ? 'Hitting the goal.' : 'Below the goal — see the fixes below.',
+      note: ok ? 'Hitting the goal.' : 'Below the goal - see the fixes below.',
     });
   }
   return rows;
@@ -77,7 +77,7 @@ function renderPerformanceSection(perf, TOKENS) {
   }).join('');
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;border:1px solid ${TOKENS.neutral400};border-radius:${TOKENS.radius};">
     <tr><td style="padding:14px 16px 6px 16px;">
-      <div style="font-family:${TOKENS.font};font-size:11px;font-weight:500;color:${TOKENS.neutral900};text-transform:uppercase;letter-spacing:.06em;">Against your goals${perf.month_label ? ` — ${esc(perf.month_label)}` : ''}</div>
+      <div style="font-family:${TOKENS.font};font-size:11px;font-weight:500;color:${TOKENS.neutral900};text-transform:uppercase;letter-spacing:.06em;">Against your goals${perf.month_label ? ` - ${esc(perf.month_label)}` : ''}</div>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px;">${cells}</table>
     </td></tr></table>`;
 }

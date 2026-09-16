@@ -1,4 +1,4 @@
-// Daily light pass judgement — engine-spec §6.2. Not a full audit: four
+// Daily light pass judgement - engine-spec §6.2. Not a full audit: four
 // checks on a small pulse fetch, each producing at most one alert per day.
 // Pure; the poller supplies the pulse and persists/emails the alerts.
 //

@@ -1,4 +1,4 @@
-// Model policy config — engine-spec §1. One env var picks the model; prices
+// Model policy config - engine-spec §1. One env var picks the model; prices
 // are config too so the §9.9 metering can cost every call. Defaults are the
 // current Fable list prices (per million tokens); override in Railway when
 // they change. Auto-upgrade is a gated config flip, never a silent switch.

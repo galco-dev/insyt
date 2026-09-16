@@ -1,4 +1,4 @@
-// google_connections status state machine — build-doc §6.
+// google_connections status state machine - build-doc §6.
 //   valid --(refresh fail: invalid_grant)--> expired --(reconnect)--> valid
 //   valid --(scope missing)--> partial --(re-consent)--> valid
 //   any --(user revoked at Google, seen on validation)--> revoked --(reconnect)--> valid
@@ -14,11 +14,11 @@ const TRANSITIONS = {
   revoked: { reconnected: 'valid' },
 };
 
-// Customer-facing summary line per §4 register — no jargon, one action.
+// Customer-facing summary line per §4 register - no jargon, one action.
 const CUSTOMER_COPY = {
-  expired: 'Your Google connection needs a quick refresh — one tap to reconnect.',
-  partial: "We can see some of your Google setup but not all of it — reconnect to let us check everything.",
-  revoked: 'Your Google connection was switched off — one tap to reconnect.',
+  expired: 'Your Google connection needs a quick refresh - one tap to reconnect.',
+  partial: "We can see some of your Google setup but not all of it - reconnect to let us check everything.",
+  revoked: 'Your Google connection was switched off - one tap to reconnect.',
   valid: 'Google connection healthy.',
 };
 
@@ -51,7 +51,7 @@ function classifyTokenError(errBody) {
   const code = (errBody && (errBody.error || errBody.code)) || '';
   if (code === 'invalid_grant') return 'refresh_failed';
   if (code === 'invalid_scope' || code === 'insufficient_scope') return 'scope_missing';
-  return null; // transient — retry, do not transition
+  return null; // transient - retry, do not transition
 }
 
 /** Connections due for the weekly proactive validation sweep (§6, master §11). */

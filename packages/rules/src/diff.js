@@ -1,6 +1,6 @@
-// diff_pass — engine-spec §6.1. Compares this run's findings with the
+// diff_pass - engine-spec §6.1. Compares this run's findings with the
 // findings still open from earlier runs, so the report can say what is new,
-// what is still open (and since when), and what went away — and so the
+// what is still open (and since when), and what went away - and so the
 // database never carries two open rows for the same thing.
 //
 // diffFindings({ findings, prior, now }) ->

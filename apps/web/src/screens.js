@@ -1,4 +1,4 @@
-// Authed dashboard screens — build-doc §11 screens 2, 5–12, server-rendered
+// Authed dashboard screens - build-doc §11 screens 2, 5–12, server-rendered
 // on the §18 tokens. Every screen: one clear action; empty states sell the
 // next step, never a blank. The React/shadcn port replaces these renderers;
 // the routes and dashStore contract stay.
@@ -54,7 +54,7 @@ function homeScreen({ health, pending, cumulative, latestReportId }) {
     ? `<div class="card"><b>${pending.length} fix${pending.length === 1 ? '' : 'es'} waiting for your approval</b>
        <p class="sub">${esc(pending[0].title)}${pending.length > 1 ? ` and ${pending.length - 1} more` : ''}</p>
        <a href="/app/approvals"><button>Review and approve</button></a></div>`
-    : empty('Nothing needs you right now — the next check runs Sunday night.', latestReportId ? 'Read the latest report' : null, latestReportId ? `/r/${latestReportId}` : null)}
+    : empty('Nothing needs you right now - the next check runs Sunday night.', latestReportId ? 'Read the latest report' : null, latestReportId ? `/r/${latestReportId}` : null)}
   ${cumulative && cumulative.fixes ? `<p class="sub" style="text-align:center;">${cumulative.fixes} fixes applied since day one · about $${cumulative.waste_removed_usd} of waste removed</p>` : ''}`);
 }
 
@@ -67,7 +67,7 @@ function approvalsScreen({ pending }) {
     <form method="post" action="/app/dismiss/${esc(p.id)}" style="display:inline;margin-left:8px;"><button class="ghost">Not this one</button></form>
   </div>`).join('');
   return shell('Approvals', '/app/approvals',
-    pending.length ? cards : empty('All caught up — approvals from your weekly email land here too.', null, null));
+    pending.length ? cards : empty('All caught up - approvals from your weekly email land here too.', null, null));
 }
 
 // ---- screen 9: change ledger
@@ -91,14 +91,14 @@ function reportsScreen({ reports }) {
 // ---- screen 12: settings
 function settingsScreen({ settings }) {
   const cats = Object.entries(settings.autopilot || {}).map(([cat, mode]) => `<label style="display:block;padding:6px 0;">
-    <input type="checkbox" name="${esc(cat)}" ${mode === 'auto' ? 'checked' : ''}> ${esc(cat.replace(/_/g, ' '))} — apply automatically</label>`).join('');
+    <input type="checkbox" name="${esc(cat)}" ${mode === 'auto' ? 'checked' : ''}> ${esc(cat.replace(/_/g, ' '))} - apply automatically</label>`).join('');
   return shell('Settings', '/app/settings', `
   <div class="card"><b>Plan</b><p class="sub">${esc(settings.plan_line)}</p><a href="${esc(settings.portal_url || '#')}"><button class="ghost">Manage billing</button></a></div>
   <div class="card"><b>Automation</b><form method="post" action="/app/settings/autopilot">${cats}<button style="margin-top:8px;">Save</button></form></div>
   <div class="card"><b>Google connection</b><p class="sub">${esc(settings.connection_status)}</p></div>`);
 }
 
-// ---- screen 2: discovery confirm (§7 — one button, never a form)
+// ---- screen 2: discovery confirm (§7 - one button, never a form)
 function discoveryScreen({ matched, unmatched }) {
   const cards = matched.map((a) => `<div class="card" style="border-left:4px solid ${COLORS.success};">
     <b>${esc(a.display_name || a.external_id)}</b> <span class="sub">· found on your site</span></div>`).join('');
@@ -107,10 +107,10 @@ function discoveryScreen({ matched, unmatched }) {
   return shell('Is this yours?', '/app', `
   <h2 style="text-align:center;">We found your setup</h2>
   ${cards}${rest}
-  <form method="post" action="/app/confirm" style="text-align:center;"><button>Yes — run my free check</button></form>`);
+  <form method="post" action="/app/confirm" style="text-align:center;"><button>Yes - run my free check</button></form>`);
 }
 
-// ---- screen 5: plan (one column — their band; Core pre-selected)
+// ---- screen 5: plan (one column - their band; Core pre-selected)
 function planScreen({ plan }) {
   const rows = plan.tiers.map((t) => `<label class="card" style="display:block;border:2px solid ${t.selected ? ACCENT : '#e6e6e6'};">
     <input type="radio" name="tier" value="${esc(t.tier)}" ${t.selected ? 'checked' : ''}> <b>${esc(t.label)}</b>
@@ -118,16 +118,16 @@ function planScreen({ plan }) {
   return shell('Pick your plan', '/app', `
   <form method="post" action="/app/subscribe">${rows}
   <p class="sub" style="text-align:center;">Your $20 audit payment is credited to the first month.</p>
-  <div style="text-align:center;"><button>Start — cancel anytime</button></div></form>`);
+  <div style="text-align:center;"><button>Start - cancel anytime</button></div></form>`);
 }
 
 // ---- screen 6: first-fix ceremony
 function firstFixScreen({ fix }) {
-  if (!fix) return shell('First fix', '/app', empty('No fix is waiting — your report has the full picture.', 'Back home', '/app'));
+  if (!fix) return shell('First fix', '/app', empty('No fix is waiting - your report has the full picture.', 'Back home', '/app'));
   return shell('Your first fix', '/app', `
   <div class="card"><b>${esc(fix.finding_title)}</b><p>${esc(fix.explanation)}</p>
   <p class="sub">Before: ${esc(fix.before_line)}<br>After: ${esc(fix.after_line)}</p></div>
-  <p class="sub" style="text-align:center;">To apply fixes we need permission to make changes — Google will ask once. We verify every change within 48 hours and anything can be undone with one tap.</p>
+  <p class="sub" style="text-align:center;">To apply fixes we need permission to make changes - Google will ask once. We verify every change within 48 hours and anything can be undone with one tap.</p>
   <form method="post" action="/app/approve/${esc(fix.change_id)}" style="text-align:center;"><button>Approve this fix</button></form>`);
 }
 

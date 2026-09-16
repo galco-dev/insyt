@@ -1,7 +1,7 @@
-// Store adapters — the real Supabase implementations of every store contract
+// Store adapters - the real Supabase implementations of every store contract
 // the apps consume. One factory per consumer, all over one PostgREST client.
 // Contracts are defined by the consumers (apps/worker/src/*, apps/web/src/*,
-// packages/tools/src/executor.js, packages/billing/src/webhooks.js) — these
+// packages/tools/src/executor.js, packages/billing/src/webhooks.js) - these
 // adapters exist to satisfy them against the deployed §1 schema.
 
 const q = (s) => encodeURIComponent(s);
@@ -75,10 +75,10 @@ function workerStore(db) {
       if (resolved.length) {
         await db.update('findings', `id=in.(${resolved.map((r) => q(r.id)).join(',')})`, { status: 'resolved', resolved_run_id: runId }).catch(() => {});
         // One ledger line per resolved finding: it stopped firing without us
-        // applying a change — either it fixed itself or the owner fixed it.
+        // applying a change - either it fixed itself or the owner fixed it.
         await db.insert('ledger', resolved.map((r) => ({
           tenant_id: tenantId, event: 'finding_resolved', actor: 'system',
-          summary_text: `${r.title ? `"${r.title}"` : r.rule_id.replace(/[._]/g, ' ')} is no longer showing up — it fixed itself or you fixed it. We noticed.`,
+          summary_text: `${r.title ? `"${r.title}"` : r.rule_id.replace(/[._]/g, ' ')} is no longer showing up - it fixed itself or you fixed it. We noticed.`,
         })), { returning: false }).catch(() => {});
       }
     },
@@ -181,7 +181,7 @@ function workerStore(db) {
     },
     // Snapshot stage (§6.3/6.4/§11.3): campaigns + spend_daily + asset
     // labels, refreshed by every run so pacing, the spend card and the
-    // creative loop read stored data — never live Google calls.
+    // creative loop read stored data - never live Google calls.
     saveSnapshots: async (tenantId, ads, runId = null) => {
       const out = { campaigns: 0, days: 0, assets: 0 };
       const nowIso = new Date().toISOString();
@@ -304,7 +304,7 @@ function workerStore(db) {
       const event = { verified: 'watch_verified', inconclusive: 'watch_inconclusive', regressed: 'watch_regressed' }[verdict.outcome];
       await db.insert('ledger', [{ tenant_id: tenantId, event, change_id: change ? change.id : null, actor: 'system',
         summary_text: `${change ? change.summary_text || change.tool_id : 'A change'}: ${verdict.line}` }], { returning: false }).catch(() => {});
-      // Tracking breakage: the one auto-revert (§9.3) — money protection.
+      // Tracking breakage: the one auto-revert (§9.3) - money protection.
       if (verdict.outcome === 'regressed' && verdict.tracking_breakage && rollback && change) {
         const [rb] = await db.insert('changes', [{
           tenant_id: tenantId, finding_id: change.finding_id || null, tool_id: rollback.tool_id, params: rollback.params,
@@ -318,7 +318,7 @@ function workerStore(db) {
           summary_text: `We undid "${change.summary_text || change.tool_id}" straight away: ${verdict.line}` }], { returning: false }).catch(() => {});
       }
     },
-    // "Against your goals" report section — non-null only when targets are
+    // "Against your goals" report section - non-null only when targets are
     // set for this tenant (agency accounts). Month-to-date actuals + pacing.
     performanceFor: async (tenantId) => {
       const t = await db.select('account_targets', `tenant_id=eq.${q(tenantId)}&select=*`, { single: true }).catch(() => null);
@@ -387,6 +387,20 @@ function executorStore(db, { tenantId }) {
 // ---------------------------------------------------------------- billing (webhooks)
 function billingStore(db) {
   return {
+    // Report unlocked: a line in History and the receipt email with the report link.
+    unlockReceipt: async (tenantId, { amountUsd = 0, kind = 'audit_unlock', email = null } = {}) => {
+      const [owner, report] = await Promise.all([
+        db.select('users', `tenant_id=eq.${q(tenantId)}&role=eq.owner&select=email&limit=1`, { single: true }).catch(() => null),
+        db.select('reports', `tenant_id=eq.${q(tenantId)}&select=id&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+      ]);
+      const amount = `$${Number(amountUsd || 0).toLocaleString('en-US')}`;
+      await db.insert('ledger', [{ tenant_id: tenantId, event: 'subscription_changed', actor: 'user', summary_text: amountUsd > 0 ? `Your full report is unlocked. ${amount} paid, credited to your first month if you start a plan.` : 'Your full report is unlocked, at no charge.' }], { returning: false }).catch(() => {});
+      const to = (owner && owner.email) || email;
+      if (!to) return { queued: false };
+      const base = process.env.APP_BASE_URL || 'https://app.tryinsyt.com';
+      await db.insert('emails', [{ tenant_id: tenantId, template_id: 'unlock_receipt', to_email: to, stream: 'transactional', status: 'queued', payload: { amount, kind, report_url: report ? `${base}/app/report/${report.id}` : `${base}/app` } }], { returning: false }).catch(() => {});
+      return { queued: true };
+    },
     upsertSubscription: async (row) => { await db.upsert('subscriptions', [row], 'stripe_subscription_id'); },
     markSubscription: async (stripeSubId, patch) => {
       await db.update('subscriptions', `stripe_subscription_id=eq.${q(stripeSubId)}`, patch);
@@ -630,7 +644,7 @@ function dashStore(db, deps = {}) {
     // Consumer spend card (§6.4). Month-to-date from spend_daily snapshots;
     // the month budget is the explicit target when one is set, else the sum
     // of enabled daily budgets across the month. Null until the first
-    // snapshot lands — the card simply does not render.
+    // snapshot lands - the card simply does not render.
     spendPosition: async (tenantId, now = new Date()) => {
       const monthStart = `${now.toISOString().slice(0, 7)}-01`;
       const [days, target, camps] = await Promise.all([
@@ -842,7 +856,7 @@ function dashStore(db, deps = {}) {
     // customer's own numbers, so every gated state speaks in their figures.
     access: async (tenantId) => {
       const [paid, sub, tenant, pricing, report, pending, ads, owner] = await Promise.all([
-        db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&refunded_at=is.null&select=id,kind,refunded_at&limit=1`, { single: true }).catch(() => null),
+        db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&refunded_at=is.null&select=id,kind,refunded_at,amount_usd&limit=1`, { single: true }).catch(() => null),
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status,price_usd,stripe_customer_id,canceled_at&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
         db.select('tenants', `id=eq.${q(tenantId)}&select=size_band,paused_until`, { single: true }).catch(() => null),
         db.select('pricing_config', 'select=matrix&order=effective_from.desc&limit=1', { single: true }).catch(() => null),
@@ -961,7 +975,7 @@ function dashStore(db, deps = {}) {
       }], { returning: false });
       await db.insert('audit_log', [{ tenant_id: tenantId, event: 'change_requested', detail: { text: clean } }], { returning: false }).catch(() => {});
       // Until the drafting flow (phase 5) maps it, every request is also an
-      // unanswered-log row — the customer-written backlog (§11.4).
+      // unanswered-log row - the customer-written backlog (§11.4).
       await tel.unanswered({ tenantId, source: 'composer', text: clean });
       await tel.event({ tenantId, name: 'approval.request_change', props: { chars: clean.length }, source: 'server' });
     },
@@ -1060,7 +1074,7 @@ function dashStore(db, deps = {}) {
       // The date in Gulf time, not UTC, so a Saturday night never reads as Saturday.
       const nextRun = new Date(nowMs + 4 * 3600_000); nextRun.setUTCDate(nextRun.getUTCDate() + nextDays);
       return {
-        plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check — no plan yet',
+        plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check - no plan yet',
         autopilot: (auto && auto.categories) || {},
         connection_status: (conn && CONNECTION_LINE[conn.status]) || 'Google connection pending.',
         assistant_enabled: await store.assistantEnabled(tenantId),
@@ -1299,10 +1313,10 @@ function dashStore(db, deps = {}) {
     },
     journey: async (tenantId) => {
       const j = await db.select('journey_state', `tenant_id=eq.${q(tenantId)}&select=journey,stage,gates&limit=1`, { single: true });
-      if (!j) return { journey: 'A', stage: 'active', gates: { tag: true, billing: true, approval: true }, instruction_line: 'Everything is set up — your weekly checks run automatically.' };
-      const next = !j.gates.tag ? 'Install your tracking — the guide takes 30 seconds.'
+      if (!j) return { journey: 'A', stage: 'active', gates: { tag: true, billing: true, approval: true }, instruction_line: 'Everything is set up - your weekly checks run automatically.' };
+      const next = !j.gates.tag ? 'Install your tracking - the guide takes 30 seconds.'
         : !j.gates.approval ? 'Review and approve your campaigns.'
-          : !j.gates.billing ? 'Connect your ad money to Google — last step.' : 'All gates clear — launching.';
+          : !j.gates.billing ? 'Connect your ad money to Google - last step.' : 'All gates clear - launching.';
       return { ...j, instruction_line: next };
     },
     approveChange: async (tenantId, changeId, { keep = null } = {}) => {
@@ -1464,7 +1478,7 @@ function dashStore(db, deps = {}) {
       }
       return { ok: true, rollback_change_id: rb.id };
     },
-    // "What have I told you never to touch?" (§4.5) — listable and clearable.
+    // "What have I told you never to touch?" (§4.5) - listable and clearable.
     exceptions: async (tenantId) => db.select('standing_exceptions',
       `tenant_id=eq.${q(tenantId)}&cleared_at=is.null&select=id,summary_text,target,created_from,created_at&order=created_at.desc`).catch(() => []),
     clearException: async (tenantId, id) => {
@@ -1480,7 +1494,7 @@ function dashStore(db, deps = {}) {
 
 // ---------------------------------------------------------------- agency (master §13)
 // Binding: no auto-apply, no auto-publish. Every mutation logs to
-// agency_audit_log with the acting seat — the agency's own dispute record.
+// agency_audit_log with the acting seat - the agency's own dispute record.
 function agencyStore(db, deps = {}) {
   const { healthScore } = require('../../rules/src/engine');
   const { pace, sortPacing, targetStatus } = require('../../pacing/src/pacing');
@@ -1652,7 +1666,7 @@ function agencyStore(db, deps = {}) {
       })).sort((a, b) => (b.money_monthly_usd || 0) - (a.money_monthly_usd || 0));
     },
 
-    // Campaign snapshots across all managed accounts — powers the scope bar
+    // Campaign snapshots across all managed accounts - powers the scope bar
     // dropdowns and name/ID search. Refreshed by the weekly audit runs.
     campaignsFor: async (agencyId, scope = null) => {
       const accounts = await accountsFor(agencyId, 'in.(pending,active)', 'id,tenant_id,display_name', scope);
@@ -1722,7 +1736,7 @@ function agencyStore(db, deps = {}) {
     },
 
     // ---- P0: budget pacing + performance targets (agency's OWN operating
-    // targets — never client fees; that principle is binding).
+    // targets - never client fees; that principle is binding).
     pacing: async (agencyId, nowIso, scope = null) => {
       const now = nowIso || new Date().toISOString();
       const monthStart = `${now.slice(0, 8)}01`;
@@ -1788,7 +1802,7 @@ function agencyStore(db, deps = {}) {
     },
 
     // ---- P0: triage snooze + batch approval. Batch logs every id
-    // individually — the audit trail never compresses.
+    // individually - the audit trail never compresses.
     snoozeChange: async (agencyId, seatId, changeId, days, reason, scope = null) => {
       const own = await ownedRow(agencyId, 'changes', changeId, '', scope);
       if (!own) return { ok: false, reason: 'not_found' };

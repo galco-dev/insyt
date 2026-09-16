@@ -1,4 +1,4 @@
-// Tag-installation state machine — build-doc §9, master §9.
+// Tag-installation state machine - build-doc §9, master §9.
 // Ambient verification: polling starts when the guide is issued and NEVER
 // requires user confirmation. "I've done it" merely accelerates the next poll.
 // State persists indefinitely; detection at any point resumes the cascade.
@@ -48,14 +48,14 @@ function dueNudge(state, now) {
  * Advance the machine on a poll result.
  * pollResult: { container_seen, collect_fired_correct_id, coverage_ok, ga4_data_arrived }
  * Cascade (§9): source check → live render → coverage crawl → data arrival.
- * Returns { state, effects: [{type, ...}] } — effects are emails/gates for the caller.
+ * Returns { state, effects: [{type, ...}] } - effects are emails/gates for the caller.
  */
 function advance(state, pollResult, now) {
   const s = { ...state, poll_count: (state.poll_count || 0) + 1 };
   const effects = [];
 
   if (!pollResult || !pollResult.container_seen) {
-    // Still nothing (or vanished mid-cascade) — keep polling on the schedule.
+    // Still nothing (or vanished mid-cascade) - keep polling on the schedule.
     if (s.stage !== 'awaiting_install' && !s.verified_at) s.stage = 'awaiting_install';
     s.next_poll_at = new Date(now + pollDelay(s.poll_count)).toISOString();
     const nudge = dueNudge(s, now);

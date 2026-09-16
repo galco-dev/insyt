@@ -1,8 +1,8 @@
-// Stripe catalogue — build-doc §10. Everything derives from pricing_config
+// Stripe catalogue - build-doc §10. Everything derives from pricing_config
 // (the §12 matrix as DATA); this module turns a pricing_config row into the
 // exact set of Stripe objects, and the seeding script (scripts/seed-stripe.js)
 // creates them idempotently. Products prefixed insyt_, statement descriptor
-// INSYT — Insyt is a separate business on the existing Stripe account.
+// INSYT - Insyt is a separate business on the existing Stripe account.
 
 const TIERS = ['core', 'autopilot', 'scale'];
 const BANDS = ['4k', '10k', '25k'];
@@ -34,7 +34,7 @@ function catalogueFromConfig(pricingConfig) {
 /**
  * Idempotent seeding against an injected Stripe-like client:
  *   stripe.products.{list,create}, stripe.prices.{list,create}
- * Uses metadata.key as the identity — safe to re-run after config changes
+ * Uses metadata.key as the identity - safe to re-run after config changes
  * (new price objects are versioned per §10; old ones left in place).
  */
 async function seedCatalogue(stripe, pricingConfig) {

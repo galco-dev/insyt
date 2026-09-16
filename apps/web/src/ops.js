@@ -1,4 +1,4 @@
-// Ops console — build-doc §15. Internal, Max-only: bearer OPS_TOKEN.
+// Ops console - build-doc §15. Internal, Max-only: bearer OPS_TOKEN.
 // A table-and-buttons admin, deliberately not a product.
 //
 // deps: opsStore (packages/db/src/stores.js contract) + queue { enqueue }.
@@ -64,12 +64,12 @@ async function handleOps(req, res, u, { opsStore, queue, opsToken, rediscover = 
       const cost = Number(cogsBy.get(t.id) || 0);
       const whale = s && cost > 2 * Number(s.price_usd || Infinity) ? ' 🐋' : '';
       return `<tr><td>${esc(t.business_name || t.website_url || t.id)}</td><td>${esc(t.status)}</td>
-        <td>${s ? `${esc(s.tier)}/${esc(s.size_band)} $${esc(s.price_usd)}` : '—'}</td>
+        <td>${s ? `${esc(s.tier)}/${esc(s.size_band)} $${esc(s.price_usd)}` : ' - '}</td>
         <td>$${cost.toFixed(2)}${whale}</td>
         <td><a href="/ops/tenant/${esc(t.id)}">open</a> · <a href="/ops/ledger/${esc(t.id)}">ledger</a> ·
           <form method="post" action="/ops/run/${esc(t.id)}" style="display:inline"><button>run now</button></form></td></tr>`;
     }).join('');
-    return html(200, page(`tenants — MRR $${mrr}`, `<table><tr><th>tenant</th><th>status</th><th>plan</th><th>COGS/mo</th><th></th></tr>${rows}</table>`)), true;
+    return html(200, page(`tenants - MRR $${mrr}`, `<table><tr><th>tenant</th><th>status</th><th>plan</th><th>COGS/mo</th><th></th></tr>${rows}</table>`)), true;
   }
 
   if (req.method === 'GET' && path === '/ops/runs') {

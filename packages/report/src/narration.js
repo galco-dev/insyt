@@ -1,9 +1,9 @@
-// Narration stage — build-doc §2.2, §8 (narration step).
+// Narration stage - build-doc §2.2, §8 (narration step).
 // Sonnet writes `title` and `explanation` per finding plus the envelope's
 // narrative slots. BINDING RULES enforced here, not hoped for:
-//   1. The model NEVER sees `payload` (register safety — it cannot leak
+//   1. The model NEVER sees `payload` (register safety - it cannot leak
 //      locked detail it never received).
-//   2. The model may repeat numbers verbatim, never derive new ones — every
+//   2. The model may repeat numbers verbatim, never derive new ones - every
 //      number token in its output must already appear in its input.
 // The model client is injected: async generate({system, prompt}) -> string.
 

@@ -1,4 +1,4 @@
-// Campaign builder — spec shape, precondition blockers, register split.
+// Campaign builder - spec shape, precondition blockers, register split.
 const assert = require('node:assert');
 const { test } = require('node:test');
 const { buildCampaignSpec, validateSpec, renderBrief, renderPlain } = require('../src/builder');
@@ -13,7 +13,7 @@ const base = {
 
 test('brand template: exact+phrase brand keywords, pinned official headline, paused', () => {
   const spec = buildCampaignSpec({ ...base, template: 'brand' });
-  assert.strictEqual(spec.name, 'Brand — Glow Studio');
+  assert.strictEqual(spec.name, 'Brand - Glow Studio');
   assert.strictEqual(spec.settings.start_paused, true);
   assert.strictEqual(spec.bidding, 'Maximise conversions'); // never clicks
   const kw = spec.ad_groups[0].keywords.map((k) => k.match).sort();
@@ -37,7 +37,7 @@ test('remarketing template: display channel, audience ad group', () => {
   assert.strictEqual(spec.ad_groups[0].audience, 'site_visitors_30d');
 });
 
-test('validateSpec blocks on broken measurement — the brand-defining precondition', () => {
+test('validateSpec blocks on broken measurement - the brand-defining precondition', () => {
   const spec = buildCampaignSpec({ ...base, template: 'brand' });
   assert.strictEqual(validateSpec(spec, { conversionGoalHealthy: true, billingAttached: true, openCriticalTracking: 0 }).ok, true);
 
@@ -61,7 +61,7 @@ test('renderBrief carries the full technical spec', () => {
   assert.ok(brief.includes('Negatives: jobs, careers, salary'));
 });
 
-test('renderPlain speaks the customer register — no trade vocabulary', () => {
+test('renderPlain speaks the customer register - no trade vocabulary', () => {
   const specs = ['brand', 'generic', 'remarketing'].map((template) => buildCampaignSpec({ ...base, template, services: ['Gel nails'] }));
   const BLOCKLIST = [/\bcontainers?\b/i, /\bsnippets?\b/i, /\bproperty\b/i, /\bconversion actions?\b/i, /\bmeasurement id\b/i,
     /\bRSA\b/, /\bad group\b/i, /\bkeywords?\b/i, /\bbidding\b/i, /\bcampaign\b/i];

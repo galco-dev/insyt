@@ -1,6 +1,6 @@
-// Pre-signin findings strip — build-doc §5.4, fix plan move 3.
+// Pre-signin findings strip - build-doc §5.4, fix plan move 3.
 // Turns a crawl result into the plain-language teaser shown before sign-in.
-// Register: master §4 — no jargon, ever. "your tracking", not "container".
+// Register: master §4 - no jargon, ever. "your tracking", not "container".
 // Every line carries a tone: issue (worth fixing), ok (good), note (we saw
 // this, here is what it means). Saying what we saw beats a false alarm.
 

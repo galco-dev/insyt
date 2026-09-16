@@ -1,4 +1,4 @@
-// Extraction logic — pure functions over page HTML + network URLs.
+// Extraction logic - pure functions over page HTML + network URLs.
 // Kept free of Playwright so it unit-tests without a browser.
 
 const PATTERNS = {
@@ -97,7 +97,7 @@ function deriveKeyPages(html, baseUrl, limit = 5) {
 }
 
 /**
- * Price-menu extraction — feeds truth.price_mismatch (deep layer). Pulls
+ * Price-menu extraction - feeds truth.price_mismatch (deep layer). Pulls
  * "label ... CUR amount" pairs from visible text; deterministic, no model.
  * Strips tags first; a label is the preceding run of letters/spaces on the
  * same text fragment (menus, price lists, service cards all match).

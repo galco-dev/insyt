@@ -1,7 +1,7 @@
-// Verification watches with outcomes AND effect sizes — engine-spec §4.4.
+// Verification watches with outcomes AND effect sizes - engine-spec §4.4.
 // Pure judgement over measured windows; the worker supplies the numbers
 // (fetchWindow) and persists the verdict. The learning layer (§11.1) reads
-// `effect` — so every close records the deltas, not just the label.
+// `effect` - so every close records the deltas, not just the label.
 //
 //   planWatch(draft, appliedAt, now)      -> watches row (kind 'change_verify')
 //   judgeWatch({ kind, baseline, window }) -> { outcome, effect, line, tracking_breakage }
@@ -45,22 +45,22 @@ function judgeWatch({ kind, baseline = {}, window }) {
   // Tracking-breakage signature: conversions collapse after a counting change.
   if (kind === 'counting') {
     if (expected >= 3 && (window.conversions || 0) <= expected * 0.2) {
-      return { outcome: 'regressed', effect, line: `Conversions fell from ${effect.prior_conversions} to ${effect.conversions} after the counting change — reverting to protect your numbers.`, tracking_breakage: true };
+      return { outcome: 'regressed', effect, line: `Conversions fell from ${effect.prior_conversions} to ${effect.conversions} after the counting change - reverting to protect your numbers.`, tracking_breakage: true };
     }
     if (tooThin) return { outcome: 'inconclusive', effect, line: 'Too few conversions in the window to judge the counting change either way.', tracking_breakage: false };
     if ((window.conversions || 0) >= expected * 0.6 && (window.conversions || 0) <= expected * 1.6) {
       return { outcome: 'verified', effect, line: `Counting looks sane: ${effect.conversions} conversions over ${window.days} days against ${effect.prior_conversions} before.`, tracking_breakage: false };
     }
-    return { outcome: 'inconclusive', effect, line: `Conversion volume moved (${effect.conversions} vs ${effect.prior_conversions}) — worth a look, not a verdict.`, tracking_breakage: false };
+    return { outcome: 'inconclusive', effect, line: `Conversion volume moved (${effect.conversions} vs ${effect.prior_conversions}) - worth a look, not a verdict.`, tracking_breakage: false };
   }
 
   if (kind === 'negatives') {
     effect.blocked_terms_spend_usd = window.blocked_terms_spend_usd == null ? null : r2(window.blocked_terms_spend_usd);
     const stopped = window.blocked_terms_spend_usd != null ? window.blocked_terms_spend_usd <= 1 : null;
     if (expected >= 5 && (window.conversions || 0) < expected * 0.6) {
-      return { outcome: 'regressed', effect, line: `Conversions dropped ${Math.abs(effect.conversions_delta_pct)}% in the week after the exclusions — proposing to undo them.`, tracking_breakage: false };
+      return { outcome: 'regressed', effect, line: `Conversions dropped ${Math.abs(effect.conversions_delta_pct)}% in the week after the exclusions - proposing to undo them.`, tracking_breakage: false };
     }
-    if (stopped === false) return { outcome: 'inconclusive', effect, line: `The excluded searches still spent $${effect.blocked_terms_spend_usd} — checking whether the exclusion took.`, tracking_breakage: false };
+    if (stopped === false) return { outcome: 'inconclusive', effect, line: `The excluded searches still spent $${effect.blocked_terms_spend_usd} - checking whether the exclusion took.`, tracking_breakage: false };
     if (stopped === null && tooThin) return { outcome: 'inconclusive', effect, line: 'Not enough traffic in the window to judge.', tracking_breakage: false };
     return { outcome: 'verified', effect, line: `Spend on the excluded searches stopped; conversions held (${effect.conversions} vs ${effect.prior_conversions} the week before).`, tracking_breakage: false };
   }
@@ -75,7 +75,7 @@ function judgeWatch({ kind, baseline = {}, window }) {
       return { outcome: 'inconclusive', effect, line: 'Too few results in the window to judge the budget move.', tracking_breakage: false };
     }
     if (cpa != null && baseline.cpa_30d_usd && cpa > baseline.cpa_30d_usd * 1.5 && c.conversions >= 3) {
-      return { outcome: 'regressed', effect, line: `Cost per result rose to $${cpa} (from $${baseline.cpa_30d_usd}) after the budget change — proposing to put it back.`, tracking_breakage: false };
+      return { outcome: 'regressed', effect, line: `Cost per result rose to $${cpa} (from $${baseline.cpa_30d_usd}) after the budget change - proposing to put it back.`, tracking_breakage: false };
     }
     if (cpa != null && baseline.cpa_30d_usd && cpa <= baseline.cpa_30d_usd * 1.15) {
       return { outcome: 'verified', effect, line: `Cost per result held at $${cpa} (was $${baseline.cpa_30d_usd}) across ${r2(c.conversions)} results.`, tracking_breakage: false };
@@ -85,7 +85,7 @@ function judgeWatch({ kind, baseline = {}, window }) {
 
   // generic (ask-first tools without a specific measure): sanity on account conversions
   if (expected >= 5 && (window.conversions || 0) < expected * 0.5) {
-    return { outcome: 'regressed', effect, line: `Conversions halved after the change — proposing to undo it.`, tracking_breakage: false };
+    return { outcome: 'regressed', effect, line: `Conversions halved after the change - proposing to undo it.`, tracking_breakage: false };
   }
   if (tooThin) return { outcome: 'inconclusive', effect, line: 'Not enough data to judge yet.', tracking_breakage: false };
   return { outcome: 'verified', effect, line: `Numbers held steady for ${window.days} days after the change.`, tracking_breakage: false };

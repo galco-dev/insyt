@@ -1,4 +1,4 @@
-// Magic-link machinery — build-doc §12: single-use, scoped, expiring.
+// Magic-link machinery - build-doc §12: single-use, scoped, expiring.
 // Report/other links live 72h; approve links 7d. Tokens are random 256-bit,
 // only their SHA-256 hash is stored (magic_links.token_hash).
 //
@@ -16,7 +16,7 @@ const TTL_HOURS = {
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
-/** Mint a link. Returns { token, url } — the token itself is never stored. */
+/** Mint a link. Returns { token, url } - the token itself is never stored. */
 function mintLink({ tenantId, purpose, targetId = null, baseUrl, now }, store) {
   if (!(purpose in TTL_HOURS)) throw new Error(`unknown magic-link purpose: ${purpose}`);
   const token = crypto.randomBytes(32).toString('base64url');

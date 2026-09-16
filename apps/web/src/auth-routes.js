@@ -1,4 +1,4 @@
-// Google data-scope OAuth routes — build-doc §6 ladder steps 2–4 + §7
+// Google data-scope OAuth routes - build-doc §6 ladder steps 2–4 + §7
 // discovery-on-callback. Identity sign-in stays with Supabase Auth; these
 // routes handle the SEPARATE data grants and the moment right after:
 //
@@ -22,7 +22,7 @@ const { scopeLevel } = require('../../../packages/google/src/scopes');
 const q = (s) => encodeURIComponent(s);
 const sign = (payload, secret) => crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 
-// State: signed tenant + step + expiry — CSRF guard that also survives the
+// State: signed tenant + step + expiry - CSRF guard that also survives the
 // round-trip without server-side storage.
 function issueState({ tenantId, step, secret, now, site = '' }) {
   const payload = `${tenantId || ''}|${step}|${now + 15 * 60_000}|${site}`;
@@ -83,21 +83,21 @@ async function handleGoogleAuth(req, res, u, session, deps) {
     // signed-out visitor goes back to the start page (not a sign-in loop).
     if (u.searchParams.get('error')) return redirect(session ? '/app?connect=declined' : '/app/start?declined=1');
     const st = readState(u.searchParams.get('state'), sessionSecret, now());
-    if (!st) return fail('This connection link expired — start again from your dashboard.');
+    if (!st) return fail('This connection link expired - start again from your dashboard.');
     const code = u.searchParams.get('code');
     if (!code) return fail('Missing sign-in code.');
 
     const ex = await (deps.exchangeCode || exchangeCode)({
       clientId: config.clientId, clientSecret: config.clientSecret, redirectUri: config.redirectUri, code,
     });
-    if (ex.error) return fail('Google did not accept that connection — try again.');
+    if (ex.error) return fail('Google did not accept that connection - try again.');
 
     // Always learn who just signed in. A signed-in browser can pick a
     // DIFFERENT Google account at the chooser; that identity's tokens and
     // assets must never be bound to the current session's tenant (a shared
     // laptop switches accounts, it does not merge them).
     const who = await (deps.fetchUserinfo || fetchUserinfo)(ex.tokens.access_token);
-    if (!who || !who.sub) return fail('Google did not tell us who you are — try again.');
+    if (!who || !who.sub) return fail('Google did not tell us who you are - try again.');
     let setCookie = null;
     let switched = false;
     if (st.tenantId) {
@@ -180,7 +180,7 @@ async function handleGoogleAuth(req, res, u, session, deps) {
     else await db.insert('google_connections', [{ user_id: user.id, ...patch }], { returning: false });
     await db.insert('ledger', [{
       tenant_id: st.tenantId, event: 'connection_changed', actor: 'user',
-      summary_text: st.step === 'discovery' ? 'Google connected — read access granted.' : 'Google connection upgraded — fix access granted.',
+      summary_text: st.step === 'discovery' ? 'Google connected - read access granted.' : 'Google connection upgraded - fix access granted.',
     }], { returning: false }).catch(() => {});
 
     // Discovery step: enumerate + match + store, then confirmation screen.

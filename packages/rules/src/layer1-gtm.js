@@ -1,4 +1,4 @@
-// Layer 1 — GTM config rules (build-doc §3).
+// Layer 1 - GTM config rules (build-doc §3).
 // Input: a normalised GTM container snapshot (fetched once per run, cached
 // 24h per the §8 quota budget) plus tenant context. Shape:
 //
@@ -16,12 +16,12 @@
 // }
 // ctx.linkedMeasurementIds: G-IDs of GA4 streams on the tenant's linked property
 // ctx.servesEuUk: crawl/geo signal for consent-mode applicability
-// ctx.eventVolumeDrops: [{ event_name, drop_pct, breakpoint_date }] — Layer 3 join
-// ctx.now: ms epoch (injected — engine code never calls Date.now())
+// ctx.eventVolumeDrops: [{ event_name, drop_pct, breakpoint_date }] - Layer 3 join
+// ctx.now: ms epoch (injected - engine code never calls Date.now())
 //
 // Every rule returns partial findings: { category, entity_key, evidence,
 // payload, fix?, money?, severity_override? }. Severity itself comes from
-// rule_config (05 seed migration) — overrides only where §3 says "by magnitude".
+// rule_config (05 seed migration) - overrides only where §3 says "by magnitude".
 
 const GA4_CONFIG_TYPES = new Set(['gaawc', 'googtag']); // GA4 config / Google tag
 const LEGACY_TYPES = new Set(['ua', 'ua_event', 'awct_legacy', 'flc', 'fls']); // UA + old pixels
@@ -85,9 +85,9 @@ const rules = [
           payload: {
             locked: true,
             entities: [{ kind: 'gtm_tag', value: t.name, tag_id: t.id }],
-            fix_detail: refs.length === 0 ? 'Tag has no trigger — it can never fire.' : 'All trigger references point to deleted triggers.',
+            fix_detail: refs.length === 0 ? 'Tag has no trigger - it can never fire.' : 'All trigger references point to deleted triggers.',
           },
-          // §3: remove_tag is brief-only default — no fix proposed automatically.
+          // §3: remove_tag is brief-only default - no fix proposed automatically.
           icon: 'unlink',
         }];
       });
@@ -100,7 +100,7 @@ const rules = [
     // GA4 tag measurement ID ≠ any stream on the linked property.
     run({ gtm, linkedMeasurementIds }) {
       const linked = new Set(linkedMeasurementIds || []);
-      if (linked.size === 0) return []; // nothing linked yet — Layer 2 covers that
+      if (linked.size === 0) return []; // nothing linked yet - Layer 2 covers that
       return gtm.tags
         // Only GA4 ids (G-…) can mismatch a GA4 stream. AW-/DC-/GT- Google tags
         // are Ads/Floodlight/gateway tags and legitimately carry other ids.
@@ -138,7 +138,7 @@ const rules = [
         payload: {
           locked: true,
           entities: legacy.map((t) => ({ kind: 'gtm_tag', value: t.name, tag_id: t.id, tag_type: t.type })),
-          fix_detail: `Pause ${legacy.length} outdated tag(s) — they stopped collecting data in 2023 but still slow your pages.`,
+          fix_detail: `Pause ${legacy.length} outdated tag(s) - they stopped collecting data in 2023 but still slow your pages.`,
         },
         fix: { params_ref: 'changes.params', risk: 'low', reversible: true, approval_scope: 'change' },
         icon: 'archive',
@@ -162,7 +162,7 @@ const rules = [
         payload: {
           locked: true,
           entities: [],
-          fix_detail: 'Your site serves European visitors but tracking has no consent handling — ad data from those visitors is at risk.',
+          fix_detail: 'Your site serves European visitors but tracking has no consent handling - ad data from those visitors is at risk.',
         },
         icon: 'shield-alert',
       }];
@@ -191,9 +191,9 @@ const rules = [
         payload: {
           locked: true,
           entities: changes.map((c) => ({ kind: 'workspace_change', value: `${c.change_type} ${c.entity}` })),
-          fix_detail: `${changes.length} saved change(s) were never made live — the site still runs the old setup.`,
+          fix_detail: `${changes.length} saved change(s) were never made live - the site still runs the old setup.`,
         },
-        // gtm.publish is its own approval scope (§4) — full version diff shown.
+        // gtm.publish is its own approval scope (§4) - full version diff shown.
         fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'changeset' },
         icon: 'upload',
       }];
@@ -235,7 +235,7 @@ const rules = [
             kind: 'gtm_tag', value: t.name, tag_id: t.id,
             event: t.event_name, drop_pct: dropsByEvent.get(t.event_name).drop_pct,
           })),
-          fix_detail: `Restore ${correlated.length} tag(s) from the previous version — their events stopped arriving right after the change.`,
+          fix_detail: `Restore ${correlated.length} tag(s) from the previous version - their events stopped arriving right after the change.`,
         },
         fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'changeset' },
         icon: 'history',

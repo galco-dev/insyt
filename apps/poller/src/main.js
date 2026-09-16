@@ -1,7 +1,7 @@
 require('../../../packages/shared/src/sentry').init({ service: 'poller' });
 
 // Railway `poller` service bootstrap. Watch handlers arrive with the §9
-// cascade wiring; until then the pump runs with an empty handler set —
+// cascade wiring; until then the pump runs with an empty handler set - 
 // due watches are simply left untouched (never falsely resolved).
 
 const { createClient } = require('../../../packages/db/src/postgrest');

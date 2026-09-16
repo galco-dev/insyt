@@ -1,17 +1,17 @@
-// Campaign executor — engine-spec §5 / §10.3. Turns an approved canonical
+// Campaign executor - engine-spec §5 / §10.3. Turns an approved canonical
 // spec (builder.js) into a REAL Google Ads campaign, created PAUSED, through
 // the Ads API mutate surface. Enabling is a separate tool call (ads.unpause_launch)
-// behind the second explicit yes — never bundled here.
+// behind the second explicit yes - never bundled here.
 //
 // Pure planning + injected I/O:
 //   planMutations(spec, { customerId, finalUrl, geoTargetIds, languageIds }) -> ordered operation groups
 //   createCampaignPaused({ spec, adsMutate, adsSearch, customerId, finalUrl }) -> { campaign_id, resources, warnings }
 //
 // Invariants enforced in code, not prompts:
-//   - campaign status PAUSED, always (the catalogue guard refuses anything else upstream too)
-//   - no broad match in v1 drafts (phrase/exact only) — spec §5
-//   - final URLs must be http(s) on the tenant's site
-//   - every created resource name is returned so enable/teardown are exact
+//  - campaign status PAUSED, always (the catalogue guard refuses anything else upstream too)
+//  - no broad match in v1 drafts (phrase/exact only) - spec §5
+//  - final URLs must be http(s) on the tenant's site
+//  - every created resource name is returned so enable/teardown are exact
 
 const MATCH = { exact: 'EXACT', phrase: 'PHRASE', broad: 'BROAD' };
 
@@ -98,7 +98,7 @@ async function createCampaignPaused({ spec, adsMutate, adsSearch, customerId, fi
   const geoTargetIds = adsSearch ? await resolveGeo(adsSearch, location) : [];
   const plan = planMutations(spec, { customerId, finalUrl, geoTargetIds });
   const warnings = [];
-  if (!geoTargetIds.length && location && location !== 'account default') warnings.push(`Could not resolve "${location}" to a Google location — campaign created without a location limit; set one before enabling.`);
+  if (!geoTargetIds.length && location && location !== 'account default') warnings.push(`Could not resolve "${location}" to a Google location - campaign created without a location limit; set one before enabling.`);
 
   // 1) budget + campaign (+ geo/language) in one atomic request
   const first = await adsMutate('googleAds', plan.campaignOps, { atomic: true });

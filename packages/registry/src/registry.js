@@ -1,4 +1,4 @@
-// The change registry — engine-spec §4.1. Every finding type maps to exactly
+// The change registry - engine-spec §4.1. Every finding type maps to exactly
 // one change shape, executed by the existing tool surface. This is data
 // (like rule_config), kept in the repo so tunings arrive as PRs (§11.9).
 // Adding an optimisation = adding a row + tests, not new machinery.
@@ -7,7 +7,7 @@
 //   rule_id      the finding this row answers
 //   tool_id      catalogue tool (packages/tools/src/catalogue.js)
 //   category     autopilot category: 'negatives' | 'budgets' | 'counting' | null (= always ask)
-//   watch        { kind, days } — the verification watch opened on apply (§4.4)
+//   watch        { kind, days } - the verification watch opened on apply (§4.4)
 //   derive(finding, ctx) -> [{ params, target, before, after, summary }]
 //                the deterministic param derivation. Returns [] when the
 //                finding lacks what a safe change needs (finding stays brief-only).
@@ -133,7 +133,7 @@ const ROWS = [
       return actions.slice(1).map((a) => ({
         params: { conversion_action_id: String(a.id) },
         target: `conversion_action:${a.id}:primary`,
-        before: { line: `"${a.name}" and "${actions[0].name}" both count as primary — the same customer is counted twice` },
+        before: { line: `"${a.name}" and "${actions[0].name}" both count as primary - the same customer is counted twice` },
         after: { line: `"${a.name}" becomes secondary; "${actions[0].name}" stays the one that counts` },
         summary: `Set "${a.name}" to secondary (double counting removed)`,
         money_impact_usd: null,

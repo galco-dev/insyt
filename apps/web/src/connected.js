@@ -1,4 +1,4 @@
-// Connected data — the transparency screen behind Settings → "See what Insyt
+// Connected data - the transparency screen behind Settings → "See what Insyt
 // reads". One tab per Google API the customer granted, each showing the raw
 // objects that API returns for THEIR accounts, in Google's own names:
 //

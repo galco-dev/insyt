@@ -1,4 +1,4 @@
-// Google Ads fetcher — produces the Layer 4 input contract documented in
+// Google Ads fetcher - produces the Layer 4 input contract documented in
 // packages/rules/src/layer4-ads.js, via the Ads REST API (searchStream GAQL).
 // Requires the developer token (env) and login-customer-id (our MCC) headers.
 // Basic Access is granted (manager 331-582-4995); the pipeline still
@@ -9,7 +9,7 @@
 // API version is config, not code: Google sunsets versions roughly a year
 // after release, so a bump is an env change (GOOGLE_ADS_API_VERSION).
 const VERSION = process.env.GOOGLE_ADS_API_VERSION || 'v24';
-const MAX_PAGES = 10; // 10k rows per page — enough for any SMB account
+const MAX_PAGES = 10; // 10k rows per page - enough for any SMB account
 
 function gaqlDate(daysAgo, now = Date.now()) {
   return new Date(now - daysAgo * 86_400_000).toISOString().slice(0, 10);
@@ -78,7 +78,7 @@ async function fetchAds({ auth, tenantId, customerId, developerToken, loginCusto
     search({ ...ctx, query: 'SELECT customer.currency_code FROM customer' }),
   ]);
 
-  // Aggregate campaign rows (one per date segment when segmented — here totals).
+  // Aggregate campaign rows (one per date segment when segmented - here totals).
   const campMap = new Map();
   for (const r of campaigns) {
     const c = r.campaign; const m = r.metrics || {};

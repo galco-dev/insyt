@@ -1,4 +1,4 @@
-// Crawl ↔ discovered-assets cross-match — build-doc §7.
+// Crawl ↔ discovered-assets cross-match - build-doc §7.
 // Container IDs and G-IDs seen on the site score the "this is your site"
 // confidence per asset. Output drives the confirmation screen: matched
 // assets pre-ticked, unmatched listed collapsed. Never a configuration form.

@@ -1,7 +1,7 @@
-// Layer 5b — final-URL health (agency-specialist audit P1). The verification
+// Layer 5b - final-URL health (agency-specialist audit P1). The verification
 // crawl fetches every distinct final URL used by enabled ads and records what
 // the money actually lands on. Ads pointing at dead or limping pages burn
-// spend invisibly — Google keeps serving them.
+// spend invisibly - Google keeps serving them.
 //
 // ctx.urlHealth = {
 //   checks: [{ url, campaign_id, campaign_name, ad_count,
@@ -40,7 +40,7 @@ const rules = [
             campaign_name: c.campaign_name || null,
             fix_detail: c.soft_404
               ? `${c.ad_count} ad(s) send paid clicks to ${c.url}, which returns a page that says the content is gone. Every click is a paid dead end.`
-              : `${c.ad_count} ad(s) send paid clicks to ${c.url}, which returns HTTP ${c.status}. Every click is a paid dead end — pause the ads or fix the URL today.`,
+              : `${c.ad_count} ad(s) send paid clicks to ${c.url}, which returns HTTP ${c.status}. Every click is a paid dead end - pause the ads or fix the URL today.`,
           },
           icon: 'unlink',
         }));
@@ -65,7 +65,7 @@ const rules = [
             entities: [{ kind: 'url', value: c.url }],
             campaign_ref: String(c.campaign_id),
             campaign_name: c.campaign_name || null,
-            fix_detail: `${c.url} bounces through ${c.redirect_hops} redirects before landing. Each hop adds latency and can strip tracking parameters — point the ads at the final URL directly.`,
+            fix_detail: `${c.url} bounces through ${c.redirect_hops} redirects before landing. Each hop adds latency and can strip tracking parameters - point the ads at the final URL directly.`,
           },
           icon: 'git-branch',
         }));
@@ -90,7 +90,7 @@ const rules = [
             entities: [{ kind: 'url', value: c.url }],
             campaign_ref: String(c.campaign_id),
             campaign_name: c.campaign_name || null,
-            fix_detail: `${c.url} takes ${(c.load_ms / 1000).toFixed(1)}s to load — paid visitors give up before the page appears, and Google charges more per click for slow landing pages.`,
+            fix_detail: `${c.url} takes ${(c.load_ms / 1000).toFixed(1)}s to load - paid visitors give up before the page appears, and Google charges more per click for slow landing pages.`,
           },
           icon: 'timer',
         }));

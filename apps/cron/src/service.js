@@ -1,4 +1,4 @@
-// Railway `cron` service — build-doc §8, §15.
+// Railway `cron` service - build-doc §8, §15.
 // One loop, four duties: Sunday-night weekly enqueue (tenant-hash staggered),
 // deep-audit anniversaries, weekly token-validation sweep, staleness checks.
 // All logic lives in packages/journeys + packages/google; this service is the
@@ -14,7 +14,7 @@ const TICK_MS = 5 * 60_000; // five-minute clock; all duties are idempotent
  *   store: opsStore + { subscriptionFor(tenantId), lastDeepRunAt(tenantId),
  *                       runExists(idempotencyKey), insertRun(row) }
  *   queue: { enqueue(queueName, run) }
- *   sweep: { validate(connection) }  — google validation probe
+ *   sweep: { validate(connection) } - google validation probe
  */
 async function tick({ store, queue, sweep, now = Date.now() }) {
   const actions = { weekly: 0, deep: 0, swept: 0, signup: 0 };
@@ -54,7 +54,7 @@ async function tick({ store, queue, sweep, now = Date.now() }) {
     actions.resumed = resumed.length;
   }
 
-  // 1. Weekly runs — Sunday window, hash-staggered, one per tenant per ISO week.
+  // 1. Weekly runs - Sunday window, hash-staggered, one per tenant per ISO week.
   //    The $20 tail (fix plan move 13): four weekly reports without a plan,
   //    then monthly, so an unlock never costs a check a week forever.
   for (const t of tenantsDueForWeekly(tenants, now)) {
@@ -82,7 +82,7 @@ async function tick({ store, queue, sweep, now = Date.now() }) {
     actions.deep += 1;
   }
 
-  // 3. Token validation sweep — weekly per connection, proactive (§6), and
+  // 3. Token validation sweep - weekly per connection, proactive (§6), and
   //    the weekly look-again (fix plan move 10) on every valid connection.
   const conns = await store.connectionsForSweep();
   for (const conn of dueForValidation(conns, now)) {

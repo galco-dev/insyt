@@ -179,7 +179,7 @@ function RequestComposer() {
 
 // §5 consumer door: "your ad" drafts in the customer register. Created
 // paused on the first yes; switched on by a second, separate yes. A draft
-// that cannot ship yet is staged behind the setup checklist (§5.1) — never
+// that cannot ship yet is staged behind the setup checklist (§5.1) - never
 // a dead end.
 function YourAds() {
   const [drafts, setDrafts] = useState(null);

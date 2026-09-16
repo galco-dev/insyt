@@ -1,4 +1,4 @@
-// Outbound email drain — build-doc §12/§17.
+// Outbound email drain - build-doc §12/§17.
 // Pulls queued rows from the emails table and sends via Resend. Report-stream
 // rows with a report_id send the frozen reports.html_email; transactional
 // rows render their template from emails.payload. From-addresses per §17:

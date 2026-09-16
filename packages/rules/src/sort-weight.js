@@ -1,4 +1,4 @@
-// sort_weight — build-doc §2.2. Severity base + money factor, computed by
+// sort_weight - build-doc §2.2. Severity base + money factor, computed by
 // code so report, email and dashboard order identically. Never model-decided.
 
 const SEVERITY_BASE = { critical: 80, warning: 60, opportunity: 40, info: 10 };

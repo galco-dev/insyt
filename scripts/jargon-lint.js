@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Jargon linter — master-doc §4.3 / build-doc §12, CI-enforced.
+// Jargon linter - master-doc §4.3 / build-doc §12, CI-enforced.
 // Fails the build if any customer-facing string file contains blocklisted jargon.
 // Scope: email templates and app copy. Code, SQL and internal docs are exempt.
 
@@ -55,7 +55,7 @@ for (const root of COPY_GLOBS) {
 }
 
 if (failures > 0) {
-  console.error(`\n${failures} jargon violation(s). The register is the product — fix the copy.`);
+  console.error(`\n${failures} jargon violation(s). The register is the product - fix the copy.`);
   process.exit(1);
 }
 console.log('jargon-lint: clean');

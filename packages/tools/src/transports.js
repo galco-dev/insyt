@@ -1,4 +1,4 @@
-// Tool transports — the API side of the §4 catalogue. The executor calls
+// Tool transports - the API side of the §4 catalogue. The executor calls
 // api[tool_id](params) and expects { before, after }. Guardrails live in
 // catalogue.js (pure); THIS file only performs the writes, one Google API
 // call pattern per tool, always fetching `before` where the API allows.
@@ -173,7 +173,7 @@ function createTransports({ auth, tenantId, developerToken, loginCustomerId, cus
       }]);
       return { before: { primary: false }, after: { primary: true } };
     },
-    // Campaign creation — the biggest possible change. Always PAUSED; the
+    // Campaign creation - the biggest possible change. Always PAUSED; the
     // executor returns every created resource so enable/teardown are exact.
     'ads.create_campaign_draft': async (p) => {
       const { createCampaignPaused } = require('../../campaigns/src/executor');

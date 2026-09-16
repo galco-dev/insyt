@@ -1,4 +1,4 @@
-// Request interpretation — engine-spec §6.5 / §7.1 "Draft". Free text → the
+// Request interpretation - engine-spec §6.5 / §7.1 "Draft". Free text → the
 // model turns it into a STRUCTURED intent (never a change) → deterministic
 // code maps the intent onto a registry-shaped change, validates it against
 // the bounds, and produces a card. Out-of-bounds requests degrade to the
@@ -9,7 +9,7 @@
 //   ctx = { campaigns: [{ id, name, status, budget_daily_usd, budget_resource }], convertingTerms: Set,
 //           pausedByUs: Set, autopilot: {negatives,budgets,counting}, bounds: state for checkBounds }
 //
-// Consent lanes (§7.2): every bot-drafted change is ask-first — the card is
+// Consent lanes (§7.2): every bot-drafted change is ask-first - the card is
 // the only thing that executes anything. The one asymmetry: "stop autopilot"
 // contracts what can happen and runs immediately; turning it ON gets a card.
 

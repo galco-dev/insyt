@@ -390,7 +390,7 @@ function NextStep({ access, pending, latest, money, goUnlock, openSheet }) {
               If you approve all {pending.length}{access.pending_value_usd > 0 ? `: about ${money(access.pending_value_usd)} a month recovered` : ' fixes, they are applied within the hour'}.
             </div>
             <div className="mt-0.5 text-small text-neutral-900">
-              A plan applies what you approve, checks again every week, and keeps a one-tap undo on everything. {access.credit_applies ? 'Your $20 comes off the first month.' : ''}
+              A plan applies what you approve, checks again every week, and keeps a one-tap undo on everything. {access.credit_applies ? `Your $${access.credit_usd || 20} comes off the first month.` : ''}
             </div>
           </div>
         </div>
@@ -467,7 +467,7 @@ export default function Home() {
             <p className="mt-1 text-small text-neutral-900">Nothing is running. Switch a campaign on and the first check runs the next morning.</p>
           )}
           {overview && overview.cadence === 'monthly' && access && access.level !== 'active' && (
-            <p className="mt-1 text-small text-neutral-900">Checks are monthly until you start a plan.{access.credit_applies ? ' Your $20 comes off the first month.' : ''}</p>
+            <p className="mt-1 text-small text-neutral-900">Checks are monthly until you start a plan.{access.credit_applies ? ` Your $${access.credit_usd || 20} comes off the first month.` : ''}</p>
           )}
           {access && access.paused_until && (
             <p className="mt-1 text-small text-neutral-900">Paused until {new Date(access.paused_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}. Alerts about breakage still reach you.</p>

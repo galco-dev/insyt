@@ -1,4 +1,4 @@
-// GTM snapshot fetcher — produces the Layer 1 input contract documented in
+// GTM snapshot fetcher - produces the Layer 1 input contract documented in
 // packages/rules/src/layer1-gtm.js, from GTM API v2. Quota-aware (§8): the
 // caller caches the result 24h; version-number check is the cheap probe.
 
@@ -26,7 +26,7 @@ function mapTag(t) {
 /**
  * Fetch the tenant's GTM container snapshot.
  * @param {object} p { auth (client.js), tenantId, containerPublicId,
- *                     accountId?, containerId? }  — ids from the assets row
+ *                     accountId?, containerId? } - ids from the assets row
  *                     metadata when known; otherwise resolved by public id.
  */
 async function fetchGtmSnapshot({ auth, tenantId, containerPublicId, accountId, containerId }) {

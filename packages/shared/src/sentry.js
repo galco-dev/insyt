@@ -1,4 +1,4 @@
-// Minimal Sentry reporter — §15 monitoring line, no SDK dependency.
+// Minimal Sentry reporter - §15 monitoring line, no SDK dependency.
 // Parses the DSN, posts store-API events, hooks process-level failures.
 
 function parseDsn(dsn) {

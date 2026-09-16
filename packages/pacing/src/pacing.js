@@ -1,17 +1,17 @@
-// Budget pacing math — pure functions, injected time. The daily agency ritual
+// Budget pacing math - pure functions, injected time. The daily agency ritual
 // ("is anything going to blow its budget?") reduced to one sorted list.
 //
 // Model: an account paces against its monthly media budget (account_targets.
-// monthly_budget_usd). Spend comes from spend_daily snapshots — month-to-date
+// monthly_budget_usd). Spend comes from spend_daily snapshots - month-to-date
 // sum. Projection is a simple run rate over elapsed days: agencies think in
 // run rate, and a fancier model would be false precision on snapshot data.
 //
 // Status bands (deltaPct = projected vs budget):
-//   over       ≥ +10% — projected to overspend meaningfully
-//   under      ≤ −20% — leaving budget (and volume) on the table
+//   over       ≥ +10% - projected to overspend meaningfully
+//   under      ≤ −20% - leaving budget (and volume) on the table
 //   at_risk    within ±band but > +10% pace in the last 7 days (accelerating)
 //   on_pace    otherwise
-// no_budget: target not set — surfaced first so it gets set.
+// no_budget: target not set - surfaced first so it gets set.
 
 function daysInMonth(iso) {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);

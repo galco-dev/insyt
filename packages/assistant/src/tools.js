@@ -1,4 +1,4 @@
-// The assistant's read-only tool surface — engine-spec §7.1 "Ask" / §7.4
+// The assistant's read-only tool surface - engine-spec §7.1 "Ask" / §7.4
 // rule 4. Structural guardrail: this module contains NO execute, NO
 // cross-tenant read, NO billing mutation. Every payload carries an as_of so
 // the model quotes numbers with their time and never recomputes them.

@@ -1,9 +1,9 @@
-// Money display + rough FX — one place for both.
+// Money display + rough FX - one place for both.
 // Amounts everywhere in the engine are in the AD ACCOUNT'S OWN currency
 // (Google returns cost_micros in the account currency). These helpers make
 // that visible ("AED 1,251", "$1,251") and give a rough USD view for the
 // engine's USD-denominated guardrails and size bands. Rates are deliberately
-// coarse (monthly-review material, §11) — never used for billing.
+// coarse (monthly-review material, §11) - never used for billing.
 const SYMBOL = { USD: '$', AUD: 'A$', CAD: 'C$', NZD: 'NZ$', GBP: '£', EUR: '€' };
 const TO_USD = {
   USD: 1, AED: 0.2723, SAR: 0.2666, QAR: 0.2747, KWD: 3.24, BHD: 2.65, OMR: 2.60,

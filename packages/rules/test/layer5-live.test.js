@@ -24,7 +24,7 @@ test('collect_wrong_id: only unexpected measurement IDs flagged', () => {
   const hits = byId['live.collect_wrong_id'].run({ witness, linkedMeasurementIds: ['G-RIGHT00001'] });
   assert.strictEqual(hits.length, 1);
   assert.deepStrictEqual(hits[0].payload.entities, [{ kind: 'measurement_id', value: 'G-ROGUE00001' }]);
-  assert.strictEqual(byId['live.collect_wrong_id'].run({ witness, linkedMeasurementIds: [] }).length, 0, 'nothing linked — no comparison');
+  assert.strictEqual(byId['live.collect_wrong_id'].run({ witness, linkedMeasurementIds: [] }).length, 0, 'nothing linked - no comparison');
 });
 
 test('coverage_gap: homepage tagged, key pages not; fully-missing defers to container_missing', () => {

@@ -1,7 +1,7 @@
-// Railway `worker` service entrypoint — build-doc §8, §15.
+// Railway `worker` service entrypoint - build-doc §8, §15.
 // BullMQ consumer over Redis; per-tenant lock via BullMQ job ids (one run at
 // a time per tenant). BullMQ is lazy-required so the pipeline itself (and
-// CI) never needs Redis — this file is only exercised on Railway.
+// CI) never needs Redis - this file is only exercised on Railway.
 //
 // Env: REDIS_URL, SUPABASE_URL, SUPABASE_SERVICE_KEY, ANTHROPIC_API_KEY, …
 

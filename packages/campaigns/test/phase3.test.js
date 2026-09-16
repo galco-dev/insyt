@@ -45,7 +45,7 @@ test('copy validation: lengths, jargon, policy, unwitnessed prices, counts, pins
   const good = { headlines: ['Gel Nails in Dubai', 'Book Gel Nails Today', 'The Nail DXB - Gel Nails', 'See Prices & Availability', 'Rated by Real Customers', 'Fast, Friendly Service', 'Easy Online Booking', 'Gel Nails from AED 120'], descriptions: ['Looking for gel nails in Dubai? Clear prices, real reviews, quick booking.', 'Book online in under a minute.', 'Local and rated by customers like you.'], pinned: { headline_1: 'Gel Nails in Dubai' } };
   const v = validateCopy(good, { witnessedPrices: [120] });
   assert.deepStrictEqual(v.problems, []);
-  const bad = validateCopy({ ...good, headlines: [...good.headlines.slice(0, 7), 'The best nails — guaranteed!! Only AED 99'] }, { witnessedPrices: [120] });
+  const bad = validateCopy({ ...good, headlines: [...good.headlines.slice(0, 7), 'The best nails \u2014 guaranteed!! Only AED 99'] }, { witnessedPrices: [120] });
   assert.ok(bad.problems.some((p) => /characters/.test(p)) && bad.problems.some((p) => /superlative/.test(p)) && bad.problems.some((p) => /guarantee/.test(p)) && bad.problems.some((p) => /price 99/.test(p)));
   assert.ok(bad.rsa.headlines[7].includes(' - '), 'em dash normalised');
   assert.ok(validateCopy({ ...good, descriptions: ['Boost your conversion rate today.', 'x', 'y'] }).problems.some((p) => /trade vocabulary/.test(p)));

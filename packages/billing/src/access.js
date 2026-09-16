@@ -47,7 +47,9 @@ function accessFrom({ paid, sub, tenant, pricing, report, pending, ads, now = Da
     has_customer: !!(sub && sub.stripe_customer_id) || isPaid,
     // The $20 comes off the first month once, for tenants who paid the fee and
     // never held a plan. A canceled plan does not earn a second credit.
-    credit_applies: isPaid && !sub,
+    // What they paid, capped at $20; a 100% code paid nothing, so nothing comes off.
+    credit_usd: isPaid && !sub ? Math.min(paid.amount_usd != null ? Number(paid.amount_usd) : 20, 20) : 0,
+    credit_applies: isPaid && !sub && Math.min(paid.amount_usd != null ? Number(paid.amount_usd) : 20, 20) > 0,
     band,
     price_usd: price('core'),
     prices: { core: price('core'), autopilot: price('autopilot'), scale: price('scale') },

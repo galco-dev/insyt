@@ -1,4 +1,4 @@
-// Authed Google API client per tenant — build-doc §6 token lifecycle.
+// Authed Google API client per tenant - build-doc §6 token lifecycle.
 // Loads the tenant's google_connection, refreshes the access token on demand
 // (cached until expiry), and exposes an authed fetch. On invalid_grant the
 // connection is marked expired (state machine) and the error surfaces so the
@@ -22,7 +22,7 @@ function createGoogleAuth({ db, clientId, clientSecret, fetchImpl = fetch }) {
     const conn = await db.select('google_connections', `user_id=eq.${q(user.id)}&select=*&limit=1`, { single: true });
     if (!conn) throw new Error(`no google connection for tenant ${tenantId}`);
     if (conn.status === 'revoked' || conn.status === 'expired') {
-      throw new Error(`google connection ${conn.status} — reconnect needed`);
+      throw new Error(`google connection ${conn.status} - reconnect needed`);
     }
     return conn;
   }

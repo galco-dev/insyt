@@ -1,7 +1,7 @@
-// Safety bounds — engine-spec §4.2, RULED by Max (§9.1, binding). Pure
+// Safety bounds - engine-spec §4.2, RULED by Max (§9.1, binding). Pure
 // functions over drafted changes + account state; never tuned by the
 // learning layer (the never-tune list, §11.9). The tool catalogue's own
-// guardrails still run at apply time — these are the ENGINE's tighter
+// guardrails still run at apply time - these are the ENGINE's tighter
 // bounds on what it proposes and what autopilot may apply on its own.
 //
 //   checkBounds(draft, state) -> null | 'reason'
@@ -30,7 +30,7 @@ function checkBounds(draft, state) {
   const p = draft.params || {};
 
   if ((state.reverted_30d || 0) >= BOUNDS.suspect_reverts_30d) {
-    return `account is suspect-heavy (${state.reverted_30d} reverted changes in 30 days) — manual review before any new change`;
+    return `account is suspect-heavy (${state.reverted_30d} reverted changes in 30 days) - manual review before any new change`;
   }
 
   if (draft.tool_id === 'ads.adjust_budget') {
@@ -49,7 +49,7 @@ function checkBounds(draft, state) {
     if (!Array.isArray(p.terms) || !p.terms.length) return 'no terms';
     if (p.terms.length > BOUNDS.negatives_max_per_change) return `${p.terms.length} terms exceeds ${BOUNDS.negatives_max_per_change} per change`;
     const hit = p.terms.find((t) => state.converting_terms && state.converting_terms.has(t.text));
-    if (hit) return `"${hit.text}" converted in the last 90 days — never excluded`;
+    if (hit) return `"${hit.text}" converted in the last 90 days - never excluded`;
   }
 
   if (draft.category === 'counting') {

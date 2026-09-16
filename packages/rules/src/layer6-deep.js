@@ -1,11 +1,11 @@
-// Layer 6 — deep audit rules. The rule families the hand-built deep report
+// Layer 6 - deep audit rules. The rule families the hand-built deep report
 // (The Nail DXB, 20 Aug 2026) proved out, made deterministic. Same engine
 // contract as every other layer; severity/thresholds from rule_config
 // (16 seed). Measured money comes from real spend sums; anything modelled
 // carries money.confidence 'model' and the renderer labels it MODELLED.
 //
 // Extended input shape (assembled at fetch_ads / demo fixtures; every block
-// optional — a rule whose block is absent returns [] and the envelope lists
+// optional - a rule whose block is absent returns [] and the envelope lists
 // the dataset under "not yet examined"):
 //
 // ctx.adsDeep = {
@@ -51,7 +51,7 @@ const rules = [
   {
     rule_id: 'qs.low_average',
     layer: 6,
-    // Average quality rating across the highest-volume keywords is low —
+    // Average quality rating across the highest-volume keywords is low - 
     // the account pays a structural per-click premium. Money is a MODEL.
     run({ adsDeep, ads, thresholds }) {
       if (!adsDeep || !adsDeep.keywords) return [];

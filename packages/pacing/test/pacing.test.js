@@ -1,4 +1,4 @@
-// Pacing math — the daily "will anything blow its budget?" answer.
+// Pacing math - the daily "will anything blow its budget?" answer.
 const assert = require('node:assert');
 const { test } = require('node:test');
 const { pace, sortPacing, targetStatus, daysInMonth } = require('../src/pacing');

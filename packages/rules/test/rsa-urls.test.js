@@ -24,7 +24,7 @@ const adsBase = {
   spend_30d_usd: 2000,
   campaigns: [
     { id: '10', name: 'Gel & Extensions', status: 'enabled' },
-    { id: '11', name: 'Old — Paused', status: 'paused' },
+    { id: '11', name: 'Old - Paused', status: 'paused' },
   ],
   ad_groups: [
     { id: 'g1', name: 'Gel', campaign_id: '10', status: 'enabled', rsas: [{ ad_id: 'a1', strength: 'GOOD', headline_count: 12, description_count: 4, pinned_headlines: 1, pinned_descriptions: 0 }] },
@@ -66,8 +66,8 @@ test('build-gap rules: brand fires without a brand campaign, respects spend floo
   assert.ok(!low.findings.some((f) => f.rule_id.startsWith('ads.missing')));
 
   const covered = run(rsa.rules, { ads: { ...adsBase, campaigns: [
-    { id: '10', name: 'Brand — Glow', status: 'enabled' },
-    { id: '12', name: 'Remarketing — Glow', status: 'enabled' },
+    { id: '10', name: 'Brand - Glow', status: 'enabled' },
+    { id: '12', name: 'Remarketing - Glow', status: 'enabled' },
   ], ad_groups: [] } });
   assert.ok(!covered.findings.some((f) => f.rule_id.startsWith('ads.missing')));
 });

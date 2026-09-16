@@ -1,6 +1,6 @@
-// Run envelope assembly — build-doc §2.3.
+// Run envelope assembly - build-doc §2.3.
 // The single object every downstream consumer receives: renderer, email,
-// dashboard, blur layer. Numbers are summed here, in code — narration slots
+// dashboard, blur layer. Numbers are summed here, in code - narration slots
 // arrive from the narration stage and carry prose only.
 
 const { fmtMoney } = require('../../shared/src/money');
@@ -38,10 +38,10 @@ function assembleEnvelope({ run, findings, ledgerCumulative, narrativeSlots, per
       since_last_week: (narrativeSlots && narrativeSlots.since_last_week) || '',
       ...(narrativeSlots && narrativeSlots.deep_synthesis ? { deep_synthesis: narrativeSlots.deep_synthesis } : {}),
     },
-    // Performance vs the agency's targets (account_targets + spend_daily) —
+    // Performance vs the agency's targets (account_targets + spend_daily) - 
     // rendered as the "Against your goals" section when present.
     ...(performance ? { performance } : {}),
-    // Deep-report sections (charts, tables, execution register, unexamined) —
+    // Deep-report sections (charts, tables, execution register, unexamined) - 
     // assembled by deep.js when the deep data blocks are present.
     ...(deep ? { deep } : {}),
     // Prefix every amount renders with: "$" for USD, "AED " otherwise.

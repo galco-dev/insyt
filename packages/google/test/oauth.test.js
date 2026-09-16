@@ -23,7 +23,7 @@ test('buildAuthUrl: discovery step is incremental, offline, read-only scopes', (
   assert.match(scope, /adwords/);
   assert.match(scope, /analytics\.readonly/);
   assert.match(scope, /tagmanager\.readonly/);
-  assert.ok(!/edit/.test(scope), 'no write scopes at discovery — asked at first Apply only');
+  assert.ok(!/edit/.test(scope), 'no write scopes at discovery - asked at first Apply only');
 });
 
 test('buildAuthUrl: create step refuses (no scopes to ask)', () => {

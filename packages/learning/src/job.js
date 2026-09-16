@@ -1,7 +1,7 @@
-// The monthly learning job — engine-spec §10.6 / §11.9. Fetches the
+// The monthly learning job - engine-spec §10.6 / §11.9. Fetches the
 // telemetry (pooled only from consenting tenants, min-N enforced in the
 // loops), runs the five loops, applies governance, records proposals in
-// tuning_log (status 'proposed' — nothing is ever applied here), writes the
+// tuning_log (status 'proposed' - nothing is ever applied here), writes the
 // review artefact, and reports instrumentation incidents.
 //
 //   runLearningJob({ db, month, now }) -> { month, proposals, carried, rejected, incidents, review_md }

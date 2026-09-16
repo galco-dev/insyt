@@ -1,8 +1,8 @@
-// Apply loop — turns approved changes into applied ones (§4 executor +
+// Apply loop - turns approved changes into applied ones (§4 executor +
 // transports), grouped per tenant into a changeset (the revert unit), with
 // the 48h verification watch spawned on success (master §3.7).
 //
-// scanAndApply({ db, makeApi, makeCtx, now }) — makeApi(tenantId) returns the
+// scanAndApply({ db, makeApi, makeCtx, now }) - makeApi(tenantId) returns the
 // transports map; makeCtx(tenantId) returns the guardrail context. Both are
 // injected so this tests offline.
 
@@ -12,7 +12,7 @@ const { planWatch } = require('../../../packages/registry/src/watches');
 
 async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }) {
   const q = (s) => encodeURIComponent(s);
-  // changes has no run_id column — the run comes through the finding.
+  // changes has no run_id column - the run comes through the finding.
   const rows = await db.select('changes',
     `status=eq.approved&applied_at=is.null&select=id,tenant_id,tool_id,params,finding_id,actor,summary_text,money_impact_usd,change_key,target,category,watch_plan,reverts_change_id,finding:findings(run_id)&order=created_at.asc&limit=${limit}`);
   const approved = (rows || []).map((c) => ({ ...c, run_id: c.run_id || (c.finding && c.finding.run_id) || null }));

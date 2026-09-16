@@ -1,4 +1,4 @@
-// Layer 4 — Ads closure rules (build-doc §3).
+// Layer 4 - Ads closure rules (build-doc §3).
 // The first layer where real money enters the findings: wasted_terms and the
 // budget rules carry MEASURED monthly USD impact from actual spend data.
 //
@@ -18,8 +18,8 @@
 //   disapproved: [{ ad_id, ad_group, campaign_id, policy }],
 //   ads_conversions_30d, ga4_key_events_30d,              // for divergence
 // }
-// ctx.silentGa4Events — Set/array of event names Layer 3 found silent (cause join)
-// ctx.now — ms epoch, injected
+// ctx.silentGa4Events - Set/array of event names Layer 3 found silent (cause join)
+// ctx.now - ms epoch, injected
 //
 // All thresholds from rule_config (08 seed); guardrails (≤200 negatives etc.)
 // belong to the §4 tool layer, not here.
@@ -33,7 +33,7 @@ function daysSince(iso, now) {
   return iso ? (now - Date.parse(iso)) / DAY_MS : Infinity;
 }
 
-/** Median CPA across enabled campaigns with conversions — the §3 comparator. */
+/** Median CPA across enabled campaigns with conversions - the §3 comparator. */
 function accountMedianCpa(ads) {
   const cpas = activeCampaigns(ads)
     .filter((c) => c.conversions_30d > 0)
@@ -66,7 +66,7 @@ const rules = [
         payload: {
           locked: true,
           entities: [],
-          fix_detail: "We'll build your complete measurement stack — included in your plan, live within days.",
+          fix_detail: "We'll build your complete measurement stack - included in your plan, live within days.",
         },
         icon: 'eye-off',
       }];
@@ -114,7 +114,7 @@ const rules = [
   {
     rule_id: 'ads.tcpa_blind',
     layer: 4,
-    // Smart-bidding campaign whose primary actions are all silent — bidding blind.
+    // Smart-bidding campaign whose primary actions are all silent - bidding blind.
     // §3: the rule emits BOTH options (pause, or fix tracking first).
     run({ ads, thresholds, now }) {
       const silentDays = thresholds.silent_days ?? 14;
@@ -136,7 +136,7 @@ const rules = [
           payload: {
             locked: true,
             entities: [{ kind: 'campaign', value: c.name, strategy: c.bidding.strategy }],
-            fix_detail: `"${c.name}" lets Google bid automatically toward conversions — but no conversions have been recorded for ${silentDays}+ days, so it's optimising blind. Two ways out: pause it while we fix the tracking, or fix the tracking first and leave it running.`,
+            fix_detail: `"${c.name}" lets Google bid automatically toward conversions - but no conversions have been recorded for ${silentDays}+ days, so it's optimising blind. Two ways out: pause it while we fix the tracking, or fix the tracking first and leave it running.`,
             options: [
               { tool_id: 'ads.pause_campaign', label: 'Pause while tracking is fixed' },
               { tool_id: null, label: 'Fix tracking first, leave running' },
@@ -174,7 +174,7 @@ const rules = [
           payload: {
             locked: true,
             entities: actions.map((a) => ({ kind: 'conversion_action', value: a.name })),
-            fix_detail: `${actions.length} customer-action counters record the same thing — every real conversion is counted ${actions.length} times, and bidding optimises to inflated numbers. Keep one, demote the rest.`,
+            fix_detail: `${actions.length} customer-action counters record the same thing - every real conversion is counted ${actions.length} times, and bidding optimises to inflated numbers. Keep one, demote the rest.`,
           },
           fix: { params_ref: 'changes.params', risk: 'low', reversible: true, approval_scope: 'change' },
           icon: 'copy',
@@ -206,7 +206,7 @@ const rules = [
         payload: {
           locked: true,
           entities: [],
-          fix_detail: `Your two counting systems disagree by ${divergence}% — some difference is normal, this much means one of them is wrong.`,
+          fix_detail: `Your two counting systems disagree by ${divergence}% - some difference is normal, this much means one of them is wrong.`,
         },
         icon: 'scale',
       }];
@@ -216,7 +216,7 @@ const rules = [
   {
     rule_id: 'ads.wasted_terms',
     layer: 4,
-    // THE money rule: search terms with spend, zero conversions — measured waste.
+    // THE money rule: search terms with spend, zero conversions - measured waste.
     run({ ads, thresholds }) {
       const minTermSpend = thresholds.min_term_spend_90d_usd ?? 5;
       const minTotalSpend = thresholds.min_total_spend_90d_usd ?? 50;
@@ -255,7 +255,7 @@ const rules = [
   {
     rule_id: 'ads.budget_constrained_winner',
     layer: 4,
-    // Hitting budget cap with CPA below account median — money left on the table.
+    // Hitting budget cap with CPA below account median - money left on the table.
     run({ ads, thresholds }) {
       const minLostIs = thresholds.min_budget_lost_is_pct ?? 10;
       const minConversions = thresholds.min_conversions_30d ?? 3;
@@ -285,7 +285,7 @@ const rules = [
             payload: {
               locked: true,
               entities: [{ kind: 'campaign', value: c.name, budget_daily_usd: c.budget_daily_usd }],
-              fix_detail: `"${c.name}" wins customers cheaper than your average but runs out of budget ${c.budget_lost_is_pct}% of the time — a modest raise buys more of your best traffic.`,
+              fix_detail: `"${c.name}" wins customers cheaper than your average but runs out of budget ${c.budget_lost_is_pct}% of the time - a modest raise buys more of your best traffic.`,
             },
             fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'change' },
             icon: 'trending-up',
@@ -357,7 +357,7 @@ const rules = [
         payload: {
           locked: true,
           entities: inActive.map((d) => ({ kind: 'ad', value: String(d.ad_id), campaign_id: d.campaign_id, policy: d.policy })),
-          fix_detail: `${inActive.length} ad(s) were rejected by Google and aren't showing — the campaigns around them keep running with less coverage.`,
+          fix_detail: `${inActive.length} ad(s) were rejected by Google and aren't showing - the campaigns around them keep running with less coverage.`,
         },
         icon: 'file-x',
       }];

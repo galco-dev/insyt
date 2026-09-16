@@ -26,7 +26,7 @@ const PAGES = {
   '/contact': `<!doctype html><html><head>
     <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-TEST123"></script>
     </head><body><h1>Contact</h1></body></html>`,
-  '/services': `<!doctype html><html><head></head><body><h1>Services — no tag here (coverage gap)</h1></body></html>`,
+  '/services': `<!doctype html><html><head></head><body><h1>Services - no tag here (coverage gap)</h1></body></html>`,
   '/booking': `<!doctype html><html><head>
     <script>gtag('config', 'G-FIXTURE001');</script>
     </head><body><h1>Book</h1></body></html>`,

@@ -1,6 +1,6 @@
-// Minimal PostgREST client over fetch — no SDK dependency.
+// Minimal PostgREST client over fetch - no SDK dependency.
 // Runs with the SERVICE ROLE key (workers/web are the service layer; RLS
-// applies to end-user JWTs, not to us — build-doc §1 conventions).
+// applies to end-user JWTs, not to us - build-doc §1 conventions).
 
 function createClient({ url, serviceKey, fetchImpl = fetch }) {
   const base = url.replace(/\/$/, '') + '/rest/v1';

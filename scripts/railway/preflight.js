@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Railway preflight — verbose diagnostics for the provision workflow.
+// Railway preflight - verbose diagnostics for the provision workflow.
 // Probes ALL token modes (account/workspace/team) and prints every response.
 // Never prints the token itself.
 
@@ -32,8 +32,8 @@ async function main() {
   const accountMode = me.data && me.data.me;
   const workspaceMode = projects.data && projects.data.projects;
   console.log('\n=== VERDICT ===');
-  if (accountMode) console.log('Token works in ACCOUNT mode — provision will use me.projects.');
-  else if (workspaceMode) console.log('Token works in WORKSPACE/TEAM mode — provision will use top-level projects.');
+  if (accountMode) console.log('Token works in ACCOUNT mode - provision will use me.projects.');
+  else if (workspaceMode) console.log('Token works in WORKSPACE/TEAM mode - provision will use top-level projects.');
   else {
     console.log('Token rejected in every mode. Create a new token at railway.com → Account Settings → Tokens, choosing your PERSONAL account (no team/workspace) in the dropdown, and update the RAILWAY_TOKEN repo secret.');
     process.exit(1);

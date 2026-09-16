@@ -1,4 +1,4 @@
-// Watch handlers — build-doc §9/§15. Pure logic over injected I/O:
+// Watch handlers - build-doc §9/§15. Pure logic over injected I/O:
 //   deps: { db, crawler: { verificationCrawl(url) }, now() }
 // Each handler returns { triggered?, resolved?, patch? } for the pump.
 
@@ -31,7 +31,7 @@ function makeHandlers({ db, crawler, now = Date.now }) {
       }], { returning: false }).catch(() => {});
       await db.insert('ledger', [{
         tenant_id: watch.tenant_id, event: 'watch_triggered', actor: 'system',
-        summary_text: 'Your tracking disappeared from your site — we emailed you a one-tap reinstall.',
+        summary_text: 'Your tracking disappeared from your site - we emailed you a one-tap reinstall.',
       }], { returning: false }).catch(() => {});
       return { triggered: true };
     },
@@ -41,7 +41,7 @@ function makeHandlers({ db, crawler, now = Date.now }) {
     // without a crash flag resolves as verified.
     changeset_verify: async (watch) => {
       const until = watch.schedule && watch.schedule.until ? Date.parse(watch.schedule.until) : null;
-      if (!until) return { resolved: true }; // malformed — close it rather than spin
+      if (!until) return { resolved: true }; // malformed - close it rather than spin
       if (now() < until) return { patch: {} }; // keep watching
       await db.update('changesets', `id=eq.${q(watch.target_id)}`, { status: 'verified' }).catch(() => {});
       await db.insert('emails', [{
@@ -65,7 +65,7 @@ async function ownerEmail(db, tenantId) {
 }
 
 /**
- * Journey tag-install pump (§9) — separate from watches: drains journey_state
+ * Journey tag-install pump (§9) - separate from watches: drains journey_state
  * rows whose tag_install.next_poll_at is due, advances the state machine, and
  * applies its effects (emails, gates, watch creation).
  */
@@ -78,7 +78,7 @@ async function pumpTagInstalls({ db, crawler, advance, now = Date.now, limit = 2
 
   for (const row of due) {
     const state = row.tag_install || {};
-    if (!state.guide_issued_at) continue; // guide not issued yet — nothing to poll
+    if (!state.guide_issued_at) continue; // guide not issued yet - nothing to poll
     const [site, container] = await Promise.all([
       db.select('tenants', `id=eq.${q(row.tenant_id)}&select=website_url`, { single: true }),
       db.select('assets', `tenant_id=eq.${q(row.tenant_id)}&kind=eq.gtm_container&select=external_id&limit=1`, { single: true }),
@@ -93,7 +93,7 @@ async function pumpTagInstalls({ db, crawler, advance, now = Date.now, limit = 2
       const collect = pages.some((p) => p.ok && (p.collect_measurement_ids || []).length > 0);
       const coverage = pages.filter((p) => p.ok).every((p) => (p.gtm_containers_seen || []).includes(container.external_id));
       pollResult = { container_seen: seen, collect_fired_correct_id: collect, coverage_ok: coverage, ga4_data_arrived: collect };
-    } catch { /* site unreachable — treated as not seen; backoff continues */ }
+    } catch { /* site unreachable - treated as not seen; backoff continues */ }
 
     const { state: next, effects } = advance(state, pollResult, now());
     actions.polled += 1;

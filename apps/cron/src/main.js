@@ -1,6 +1,6 @@
 require('../../../packages/shared/src/sentry').init({ service: 'cron' });
 
-// Railway `cron` service bootstrap — the real clock over Supabase + BullMQ.
+// Railway `cron` service bootstrap - the real clock over Supabase + BullMQ.
 // Token sweep is a no-op until the Google OAuth client exists (it logs the
 // connections it WOULD validate, so the ledger of intent is visible).
 
@@ -110,7 +110,7 @@ if (googleClientId && googleClientSecret) {
 
 start({ store, queue, sweep });
 
-// Email drain — every minute, when the Resend key exists (§12/§17 send loop).
+// Email drain - every minute, when the Resend key exists (§12/§17 send loop).
 if (process.env.RESEND_API_KEY) {
   const { drainQueuedEmails } = require('../../../packages/emails/src/sender');
   setInterval(() => {
@@ -122,7 +122,7 @@ if (process.env.RESEND_API_KEY) {
 } else {
   console.log('email drain idle: no RESEND_API_KEY');
 }
-// §10.6 learning job — once per calendar month (first tick after the 1st),
+// §10.6 learning job - once per calendar month (first tick after the 1st),
 // idempotent via learning_reviews(month). Proposes; never applies.
 const { runLearningJob } = require('../../../packages/learning/src/job');
 async function learningTick() {

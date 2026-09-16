@@ -9,7 +9,7 @@ import { PlanOffer } from '../lib/plan-sheet.jsx';
 
 export default function Plan() {
   const { access, level } = useAccess();
-  const kicker = level === 'active' && access && access.plan ? `Your plan: ${access.plan.label}` : access && access.credit_applies ? 'Your $20 audit is credited to month one' : 'Plans';
+  const kicker = level === 'active' && access && access.plan ? `Your plan: ${access.plan.label}` : access && access.credit_applies ? `Your $${access.credit_usd || 20} audit is credited to month one` : 'Plans';
   return (
     <div className="mx-auto max-w-l2 px-5 pb-24 pt-12">
       <MonoLabel>{kicker}</MonoLabel>

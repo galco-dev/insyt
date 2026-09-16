@@ -1,4 +1,4 @@
-// §5.1 provisioning — Insyt does the work for a first-time advertiser:
+// §5.1 provisioning - Insyt does the work for a first-time advertiser:
 // create the missing GA4 property (+ web data stream → measurement id) and
 // the missing GTM container, on the scope ladder's write grant. Every
 // created asset is recorded with created_by_us = true so it is ours to

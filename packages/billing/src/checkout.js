@@ -1,4 +1,4 @@
-// Stripe Checkout + billing-portal sessions — build-doc §10 purchase paths.
+// Stripe Checkout + billing-portal sessions - build-doc §10 purchase paths.
 // No Stripe SDK: thin form-encoded REST client, injectable fetch for tests.
 // Prices are found by metadata.key exactly as scripts/seed-stripe.js created
 // them (insyt_audit_unlock, insyt_core_4k_monthly, …).
@@ -63,7 +63,7 @@ function createStripeCheckout({ secretKey, fetchImpl = fetch }) {
       } while (startingAfter);
     }
     const id = priceCache.get(key);
-    if (!id) throw new Error(`no Stripe price with key ${key} — run scripts/seed-stripe.js`);
+    if (!id) throw new Error(`no Stripe price with key ${key} - run scripts/seed-stripe.js`);
     return id;
   }
 

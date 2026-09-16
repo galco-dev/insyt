@@ -1,4 +1,4 @@
-// app.tryinsyt.com — Journey A server slice (build-doc §11 screens 1, 3, 4).
+// app.tryinsyt.com - Journey A server slice (build-doc §11 screens 1, 3, 4).
 // Framework-free node http; React/shadcn dashboard replaces the shell later,
 // the routes and store contract stay. All I/O injected for tests.
 //
@@ -9,7 +9,7 @@
 //     getReportHtml(reportId) -> { html_web, unlocked } | null,
 //     magicLinks: { findByHash, markUsed, insertLink },   // packages/emails contract
 //   }
-//   crawler: { discoveryCrawl(url) }  — real one on Railway; stub in tests
+//   crawler: { discoveryCrawl(url) } - real one on Railway; stub in tests
 //   now: () => ms epoch
 
 const http = require('http');
@@ -38,7 +38,7 @@ async function planActive(dashStore, tenantId) {
   return !a || a.level === 'active';
 }
 
-// §5 limits: 1 crawl/domain/hour, 3/day (email-verified: 5 — later).
+// §5 limits: 1 crawl/domain/hour, 3/day (email-verified: 5 - later).
 const LIMITS = { perHour: 1, perDay: 3 };
 
 function json(res, code, body) {
@@ -92,7 +92,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
     }
     const domain = target.hostname;
     // A check that already finished in the last hour is simply shown again
-    // (same id, instant result) — never a refusal. A check still running is
+    // (same id, instant result) - never a refusal. A check still running is
     // joined. Only completed checks count against the per-domain limits;
     // failed ones never lock a visitor out of retrying.
     // Check again after a fix (fix plan move 16): a forced check skips the
@@ -106,7 +106,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
     }
     if (!ownSite && !force && (await store.crawlCountForDomain(domain, now() - 3_600_000) >= LIMITS.perHour
       || await store.crawlCountForDomain(domain, now() - 86_400_000) >= LIMITS.perDay)) {
-      return json(res, 429, { error: 'This site was checked very recently — try again in a little while.' });
+      return json(res, 429, { error: 'This site was checked very recently - try again in a little while.' });
     }
     const id = await store.createCrawl({ url: target.href, domain, status: 'running', created_at: now() });
     // Fire and record; progress endpoint reflects state.
@@ -153,7 +153,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         return html(res, 200, landingPage());
       }
 
-      // Stripe webhooks — §10. Signature verified before anything is parsed.
+      // Stripe webhooks - §10. Signature verified before anything is parsed.
       if (req.method === 'POST' && path === '/api/stripe/webhook' && billing) {
         let raw = '';
         req.on('data', (c) => { raw += c; });
@@ -203,7 +203,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       }
 
       if (req.method === 'GET' && path.startsWith('/check/')) {
-        // Old links resume the same check inside the one funnel — never a second address prompt.
+        // Old links resume the same check inside the one funnel - never a second address prompt.
         if (hasClient()) { res.writeHead(302, { location: `/app/start?crawl=${encodeURIComponent(path.split('/')[2])}` }); return res.end(); }
         return html(res, 200, progressPage(path.split('/')[2]));
       }
@@ -275,7 +275,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             return json(res, 200, { url: r.url });
           }
         } catch (err) {
-          return json(res, 400, { error: 'We could not start that payment — try again in a moment.' });
+          return json(res, 400, { error: 'We could not start that payment - try again in a moment.' });
         }
       }
 
@@ -322,7 +322,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           return res.end();
         }
         await store.magicLinks.markUsed(r.link.id, new Date(now()).toISOString());
-        // Redemption signs the tenant in (one tap from inbox — master §5).
+        // Redemption signs the tenant in (one tap from inbox - master §5).
         // A viewer link signs in read-only; an approve-join link adds the requester (fix plan move 12).
         if (r.link.purpose === 'join_approve' && dashStore && dashStore.approveJoin) await dashStore.approveJoin(r.link.tenant_id, r.link.target_id).catch(() => {});
         const session = issueSession({ tenantId: r.link.tenant_id, secret: sessionSecret, now: now(), role: r.link.purpose === 'join_viewer' ? 'viewer' : 'owner' });
@@ -644,7 +644,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         return json(res, 404, { error: 'not found' });
       }
 
-      // ---- agency console API (master §13). Binding: no auto-apply — every
+      // ---- agency console API (master §13). Binding: no auto-apply - every
       // write here is an explicit seat action, logged with the seat.
       if (path.startsWith('/api/agency') && agencyStore) {
         const session = readSession(req.headers.cookie, sessionSecret, now());

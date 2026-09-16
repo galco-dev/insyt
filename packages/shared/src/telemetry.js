@@ -1,4 +1,4 @@
-// Learning-layer telemetry writer — engine-spec §8 / §11. Backend-only.
+// Learning-layer telemetry writer - engine-spec §8 / §11. Backend-only.
 // Every write is best-effort (never throws into a request or a pipeline
 // stage) and bumps the stream's heartbeat, because a silent stream is an
 // incident (§11.9). One factory over the PostgREST client.
@@ -25,7 +25,7 @@ function modelCost({ inputTokens = 0, outputTokens = 0, cachedTokens = 0, priceI
   return Math.round((((inputTokens - cachedTokens) * priceIn + cachedTokens * cachedRate + outputTokens * priceOut) / 1_000_000) * 10_000) / 10_000;
 }
 
-/** Minimal line diff for draft_edits.diff — enough to learn from, cheap to store. */
+/** Minimal line diff for draft_edits.diff - enough to learn from, cheap to store. */
 function textDiff(drafted, shipped) {
   const a = String(drafted || ''); const b = String(shipped || '');
   return {

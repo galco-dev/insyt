@@ -1,4 +1,4 @@
-// Incremental-consent OAuth machinery — build-doc §6.
+// Incremental-consent OAuth machinery - build-doc §6.
 // Identity sign-in lives in Supabase Auth; THIS module handles the separate
 // data-scope grants (ladder steps 2–4), token exchange/refresh/revoke.
 // Transport is injectable so everything unit-tests offline.

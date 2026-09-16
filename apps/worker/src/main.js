@@ -1,4 +1,4 @@
-// Railway `worker` service bootstrap — wires the §8 pipeline to real I/O.
+// Railway `worker` service bootstrap - wires the §8 pipeline to real I/O.
 // With GOOGLE_CLIENT_ID/SECRET present the REAL Google fetchers run (asset
 // ids resolved from the tenant's linked assets rows); without them the fetch
 // stages throw "not configured" and runs complete honestly degraded.
@@ -91,7 +91,7 @@ const google = googleConfigured ? {
     return fetchWindow({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: loginFor(a), since, campaignIds, terms });
   },
   // Deep blocks (hours, days, devices, share, keywords, monthly, assets,
-  // daily) — the modelled→measured flip. Failure degrades per block.
+  // daily) - the modelled→measured flip. Failure degrades per block.
   fetchAdsDeep: async (tenantId) => {
     const a = await linkedAsset(tenantId, 'ads_account');
     if (!a) throw new Error('no linked Ads asset');
@@ -210,7 +210,7 @@ if (googleConfigured) {
   console.log('apply loop idle: Google OAuth client not configured');
 }
 
-// Narration repair — findings that shipped with empty copy (model outage,
+// Narration repair - findings that shipped with empty copy (model outage,
 // unparseable reply) get their title/explanation written on the next tick.
 // Same grounded narrator, same register rules; 40 findings per 10 minutes.
 if (process.env.ANTHROPIC_API_KEY) {

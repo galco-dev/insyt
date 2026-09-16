@@ -1,4 +1,4 @@
-// Discovery crawl — build-doc §5.
+// Discovery crawl - build-doc §5.
 // Playwright chromium; homepage rendered with a 15s budget, then ≤5 nav-derived
 // key pages. Emits a `crawls`-row-shaped object. Robots.txt respected for depth
 // pages; homepage always fetched. No crawl of login-walled pages.
@@ -81,12 +81,12 @@ async function discoveryCrawl(url, opts = {}) {
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (compatible; InsytBot/0.1; +https://tryinsyt.com)',
     viewport: { width: 1366, height: 900 },
-    // Dev-proxy TLS interception only — never set in production.
+    // Dev-proxy TLS interception only - never set in production.
     ignoreHTTPSErrors: process.env.INSYT_INSECURE_TLS === '1',
   });
 
   try {
-    // 1. Homepage — always fetched.
+    // 1. Homepage - always fetched.
     const home = await renderPage(context, target.href, HOMEPAGE_BUDGET_MS);
     if (!home.ok && !home.html) {
       return {
@@ -101,7 +101,7 @@ async function discoveryCrawl(url, opts = {}) {
     const cms = fingerprintCms(home.html, home.headers);
     let booking = detectBookingProvider(home.html);
 
-    // 2. Key pages — nav-derived, robots-respected, ≤5.
+    // 2. Key pages - nav-derived, robots-respected, ≤5.
     const allowed = await fetchRobots(target.origin);
     const keyPages = deriveKeyPages(home.html, target.href, 5)
       .filter((p) => allowed(new URL(p).pathname));

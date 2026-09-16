@@ -1,12 +1,12 @@
-// Governance — engine-spec §11.7–11.9. The learning layer proposes; it never
+// Governance - engine-spec §11.7–11.9. The learning layer proposes; it never
 // applies. This module is the constitution in code:
-//   - the never-tune list (safety floors, consent lanes, paywall, tracking
+//  - the never-tune list (safety floors, consent lanes, paywall, tracking
 //     severity, pricing) rejects proposals before they are even recorded
-//   - the tuning-rate budget (≤5 config changes per cycle) keeps outcomes attributable
-//   - shadow mode evaluates a threshold proposal against what recent runs
+//  - the tuning-rate budget (≤5 config changes per cycle) keeps outcomes attributable
+//  - shadow mode evaluates a threshold proposal against what recent runs
 //     actually saw before anyone reads it
-//   - every applied tuning opens its own watch
-//   - instrumentation heartbeat: a silent stream is an incident
+//  - every applied tuning opens its own watch
+//  - instrumentation heartbeat: a silent stream is an incident
 
 const NEVER_TUNE = [
   { re: /^bounds\./, why: 'safety-bound floors are constitutional (§4.2)' },

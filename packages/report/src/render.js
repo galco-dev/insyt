@@ -1,14 +1,14 @@
-// Report renderer — build-doc §13. ONE renderer, two outputs from the same
+// Report renderer - build-doc §13. ONE renderer, two outputs from the same
 // envelope: email HTML (inline styles, table layout) and web view HTML.
 // Identical section order. The blur boundary is enforced HERE, server-side:
-// when `unlocked` is false, locked payload subtrees NEVER enter the markup —
+// when `unlocked` is false, locked payload subtrees NEVER enter the markup - 
 // placeholders carry only counts. CSS hides nothing because there is nothing
 // to hide.
 //
-// Design tokens from §18.1/18.2 — the marketing site and the app share them.
+// Design tokens from §18.1/18.2 - the marketing site and the app share them.
 
 const path = require('path');
-// Copy lives in the linted tree (packages/emails) — the register is the product.
+// Copy lives in the linted tree (packages/emails) - the register is the product.
 const COPY = require(path.join(__dirname, '..', '..', 'emails', 'copy.json')).report;
 
 // v28 light mono palette (21 Aug 2026): ink/silver chrome, severity colors
@@ -16,7 +16,7 @@ const COPY = require(path.join(__dirname, '..', '..', 'emails', 'copy.json')).re
 // serves email + standalone web where light is the correct ground.
 const TOKENS = {
   accent: '#16181b',
-  cta: '#2563EB', // brand blue — primary action only (kit v2, Sep 2026)
+  cta: '#2563EB', // brand blue - primary action only (kit v2, Sep 2026)
   critical: '#DC2626',
   warning: '#D97706',
   success: '#16A34A',

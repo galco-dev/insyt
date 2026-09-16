@@ -1,11 +1,11 @@
-// Layer 3 — firing verification (build-doc §3, "the money layer").
+// Layer 3 - firing verification (build-doc §3, "the money layer").
 // The census of what SHOULD fire (GTM config) against what DID fire (GA4
-// Data API event volumes). This is the product's differentiator — the
+// Data API event volumes). This is the product's differentiator - the
 // configured-but-never-fired findings nobody else surfaces.
 //
 // Input shapes (assembled at the fetch_ga4_data pipeline stage, §8):
 //
-// ctx.gtm — Layer 1 container snapshot (gaawe tags carry event_name)
+// ctx.gtm - Layer 1 container snapshot (gaawe tags carry event_name)
 // ctx.ga4Data = {
 //   window_days: 30,
 //   sessions_30d: 4200,
@@ -16,8 +16,8 @@
 //     param_null_pct: { value: 0, currency: 0 },   // purchase-class only
 //   }],
 // }
-// ctx.gtmPublishDates — ['YYYY-MM-DD', ...] container version publish dates
-// ctx.now — ms epoch, injected
+// ctx.gtmPublishDates - ['YYYY-MM-DD', ...] container version publish dates
+// ctx.now - ms epoch, injected
 //
 // computeVolumeDrops(ga4Data, thresholds) is exported separately: it is the
 // Layer 3 join consumed by Layer 1's gtm.version_regression.
@@ -104,7 +104,7 @@ const rules = [
         payload: {
           locked: true,
           entities,
-          fix_detail: `${silent.length} tracked action(s) are set up but have never been recorded — the setup looks done, the data never arrives.`,
+          fix_detail: `${silent.length} tracked action(s) are set up but have never been recorded - the setup looks done, the data never arrives.`,
         },
         fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'changeset' },
         icon: 'zap-off',
@@ -144,8 +144,8 @@ const rules = [
             locked: true,
             entities: [{ kind: 'event', value: ev.event_name, stopped_on: breakpoint, correlated_publish: correlated }],
             fix_detail: correlated
-              ? `"${ev.event_name}" stopped being recorded on ${breakpoint} — the same day your tracking setup was changed. Restoring the previous version fixes it.`
-              : `"${ev.event_name}" stopped being recorded on ${breakpoint}. No setup change matches the date — the cause is on the site itself.`,
+              ? `"${ev.event_name}" stopped being recorded on ${breakpoint} - the same day your tracking setup was changed. Restoring the previous version fixes it.`
+              : `"${ev.event_name}" stopped being recorded on ${breakpoint}. No setup change matches the date - the cause is on the site itself.`,
           },
           fix: correlated
             ? { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'changeset' }
@@ -179,7 +179,7 @@ const rules = [
             payload: {
               locked: true,
               entities: bad.map(([p, pct]) => ({ kind: 'event_param', value: `${e.event_name}.${p}`, null_pct: pct })),
-              fix_detail: `Sales are being recorded without the ${bad.map(([p]) => p).join(' and ')} — Google can count that a sale happened but not what it was worth, so bidding can't optimise for revenue.`,
+              fix_detail: `Sales are being recorded without the ${bad.map(([p]) => p).join(' and ')} - Google can count that a sale happened but not what it was worth, so bidding can't optimise for revenue.`,
             },
             fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'change' },
             icon: 'badge-dollar-sign',
@@ -191,7 +191,7 @@ const rules = [
   {
     rule_id: 'fire.plausibility',
     layer: 3,
-    // Events-per-100-sessions outside the configured band. Diagnostic only —
+    // Events-per-100-sessions outside the configured band. Diagnostic only - 
     // bands live in thresholds and tighten as benchmark data accumulates.
     run({ ga4Data, thresholds }) {
       const bands = thresholds.bands || {};
@@ -216,8 +216,8 @@ const rules = [
             locked: true,
             entities: [{ kind: 'event', value: eventName, rate_per_100_sessions: Math.round(per100 * 100) / 100 }],
             fix_detail: low
-              ? `"${eventName}" is recorded far less often than a site like yours should see — some are probably going uncounted.`
-              : `"${eventName}" is recorded implausibly often — something is probably firing it more than once.`,
+              ? `"${eventName}" is recorded far less often than a site like yours should see - some are probably going uncounted.`
+              : `"${eventName}" is recorded implausibly often - something is probably firing it more than once.`,
           },
           icon: 'scale',
         });
@@ -252,7 +252,7 @@ const rules = [
           payload: {
             locked: true,
             entities: [{ kind: 'event', value: ev.event_name, drop_pct: base.drop_pct }],
-            fix_detail: `"${ev.event_name}" is running ${base.drop_pct}% below a normal week — ${base.recent_7d} recorded where about ${base.expected_7d} were expected.`,
+            fix_detail: `"${ev.event_name}" is running ${base.drop_pct}% below a normal week - ${base.recent_7d} recorded where about ${base.expected_7d} were expected.`,
           },
           icon: 'trending-down',
         });

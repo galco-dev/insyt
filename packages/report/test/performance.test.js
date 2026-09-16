@@ -1,4 +1,4 @@
-// "Against your goals" report section — renders only with targets set,
+// "Against your goals" report section - renders only with targets set,
 // plain language, correct on-target/needs-work verdicts.
 const assert = require('node:assert');
 const { test } = require('node:test');
@@ -22,7 +22,7 @@ test('budget + CPA + ROAS rows with verdicts', () => {
     targets: { monthly_budget_usd: 3900, cpa_target_usd: 45, roas_target: 4 },
     pacing: { projected: 4588, deltaPct: 17.6, status: 'over' },
   }, TOKENS);
-  assert.ok(html.includes('Against your goals — August'));
+  assert.ok(html.includes('Against your goals - August'));
   assert.ok(html.includes('Spend vs plan'));
   assert.ok(html.includes('heading for $4,588'));
   assert.ok(html.includes('Running hot'));

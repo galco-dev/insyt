@@ -1,4 +1,4 @@
-// Unauthed pages — §11 screens 1 and 3. §18 tokens, §4 register, one action.
+// Unauthed pages - §11 screens 1 and 3. §18 tokens, §4 register, one action.
 // Copy inline here is customer-facing: keep it inside the linter's reach by
 // mirroring any new strings into packages/emails/copy.json if they grow.
 
@@ -23,15 +23,15 @@ button{font-family:${FONT};font-size:14px;font-weight:500;background:${ACCENT};c
 <body>`;
 
 function landingPage() {
-  return `${head('Insyt — your ads, watched and fixed every week')}
+  return `${head('Insyt - your ads, watched and fixed every week')}
 <div class="wrap">
   <h1 style="font-size:32px;font-weight:600;margin:0 0 8px 0;">Your Google Ads, watched and fixed every week.</h1>
   <p class="sub">Paste your website. Get a free check in 3 minutes.</p>
   <form onsubmit="go(event)">
     <input id="url" placeholder="yourwebsite.com" autocomplete="url" required>
-    <button>Check my website — free</button>
+    <button>Check my website - free</button>
   </form>
-  <p class="sub" style="margin-top:24px;">We only ever get read access until you approve a fix — and you can see <a href="/sample">an example report</a> before connecting anything.</p>
+  <p class="sub" style="margin-top:24px;">We only ever get read access until you approve a fix - and you can see <a href="/sample">an example report</a> before connecting anything.</p>
 </div>
 <script>
 async function go(e){e.preventDefault();

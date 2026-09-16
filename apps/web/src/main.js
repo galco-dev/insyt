@@ -1,4 +1,4 @@
-// Railway `web` service bootstrap — wires createApp to the real stores.
+// Railway `web` service bootstrap - wires createApp to the real stores.
 // Requires SUPABASE_URL + SUPABASE_SERVICE_KEY (deploy/README.md).
 
 require('../../../packages/shared/src/sentry').init({ service: 'web' });
@@ -73,7 +73,7 @@ if (process.env.REDIS_URL) {
   };
 }
 
-// Google data-scope OAuth deps (§6) — active once the GCP client exists.
+// Google data-scope OAuth deps (§6) - active once the GCP client exists.
 const baseUrl = process.env.APP_BASE_URL || 'https://app.tryinsyt.com';
 // Railway carries the OAuth client as GOOGLE_OAUTH_CLIENT_ID/SECRET; the
 // older GOOGLE_CLIENT_ID/SECRET names still work.
@@ -91,7 +91,7 @@ const googleAuth = (googleClientId && googleClientSecret) ? {
 } : null;
 
 // Campaign executor deps (engine-spec §5): live Ads transports per tenant
-// and the Fable copy path. Both optional — without them drafts stay
+// and the Fable copy path. Both optional - without them drafts stay
 // provisional and copy comes from the deterministic builder.
 const { createGoogleAuth } = require('../../../packages/google/src/client');
 const { fetchAds } = require('../../../packages/google/src/fetch-ads');
@@ -160,7 +160,7 @@ const connected = createConnected({
   mccId: googleAuth ? googleAuth.config.loginCustomerId : '3315824995',
 });
 
-// Stripe checkout deps (§10) — active once STRIPE_SECRET_KEY exists.
+// Stripe checkout deps (§10) - active once STRIPE_SECRET_KEY exists.
 let checkout = null;
 if (process.env.STRIPE_SECRET_KEY) {
   const { createStripeCheckout } = require('../../../packages/billing/src/checkout');

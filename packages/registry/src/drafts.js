@@ -1,4 +1,4 @@
-// draft_pass — engine-spec §6.1 / §4.3 / §7.3. Turns this run's findings into
+// draft_pass - engine-spec §6.1 / §4.3 / §7.3. Turns this run's findings into
 // drafted changes through the registry, applies the bounds, decides which
 // drafts autopilot may apply and which become ask-first cards, and dedups
 // against what is already pending, recently applied, or standing-excepted.

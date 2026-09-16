@@ -1,4 +1,4 @@
-// Real asset-listing clients for discovery.js — build-doc §7 first half.
+// Real asset-listing clients for discovery.js - build-doc §7 first half.
 // These run right after the OAuth callback, over the freshly-exchanged access
 // token (no google_connections row exists yet), so they take a raw token
 // rather than the per-tenant auth client.
@@ -28,7 +28,7 @@ function createListClients({ accessToken, developerToken, loginCustomerId, fetch
 
   return {
     // Ads: listAccessibleCustomers gives resource names; details need the
-    // developer token. Without one we still return the ids (names unknown) —
+    // developer token. Without one we still return the ids (names unknown) - 
     // discovery stays useful pre-Basic-access.
     listAdsAccounts: async () => {
       if (!developerToken) {
@@ -145,7 +145,7 @@ function createListClients({ accessToken, developerToken, loginCustomerId, fetch
                   measurementId: d.webStreamData && d.webStreamData.measurementId,
                   displayName: d.displayName || null,
                 }));
-            } catch { /* property visible but streams not — keep the property */ }
+            } catch { /* property visible but streams not - keep the property */ }
             // The Ads accounts this property is linked to (fix plan move 2):
             // the modern way an Ads account belongs to a site.
             let adsLinks = [];

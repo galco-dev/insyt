@@ -1,4 +1,4 @@
-// Scheduling helpers — build-doc §8, §15.
+// Scheduling helpers - build-doc §8, §15.
 // Sunday-night weekly runs staggered 18:00–23:00 Gulf by tenant hash, so no
 // thundering herd on the GTM API budget. Deep audits on anniversaries.
 

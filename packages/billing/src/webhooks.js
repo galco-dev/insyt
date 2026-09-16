@@ -1,4 +1,4 @@
-// Stripe webhook handling — build-doc §10. Stripe is the source of truth;
+// Stripe webhook handling - build-doc §10. Stripe is the source of truth;
 // our subscriptions table is a cache mirrored here. The grace ladder degrades,
 // it never cuts (master §11): monitoring continues through failed payments.
 //
@@ -44,6 +44,8 @@ async function handleWebhook(event, store) {
           ...(obj.customer ? { stripe_customer_id: obj.customer } : {}),
         });
         await store.audit({ tenant_id: tenantId, event: 'checkout_completed', detail: { kind, session: obj.id } });
+        // The receipt (audit scenario): a History line and the unlock_receipt email, once.
+        if (store.unlockReceipt) await store.unlockReceipt(tenantId, { amountUsd: (obj.amount_total || 0) / 100, kind: kind || 'audit_unlock', email: obj.customer_details && obj.customer_details.email }).catch(() => {});
       }
       if (obj.mode === 'subscription') {
         // Gated-platform spec §6: the fix the customer tapped before paying is

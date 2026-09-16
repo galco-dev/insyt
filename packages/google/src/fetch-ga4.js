@@ -1,4 +1,4 @@
-// GA4 fetchers — produce the Layer 2 (config) and Layer 3 (data) input
+// GA4 fetchers - produce the Layer 2 (config) and Layer 3 (data) input
 // contracts documented in packages/rules/src/layer2-ga4.js / layer3-fire.js.
 // Admin API v1beta for config; Data API v1beta for event volumes.
 

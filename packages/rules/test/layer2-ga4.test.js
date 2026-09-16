@@ -37,7 +37,7 @@ test('key_event_wrong: non-business events flagged, business events pass', () =>
 test('ads_link_missing: needs a confirmed Ads account AND no link', () => {
   const ga4 = baseGa4();
   ga4.ads_links = [];
-  assert.strictEqual(byId['ga4.ads_link_missing'].run({ ga4, linkedAdsCustomerIds: [] }).length, 0, 'no ads account — Journey B/C ground, not a finding');
+  assert.strictEqual(byId['ga4.ads_link_missing'].run({ ga4, linkedAdsCustomerIds: [] }).length, 0, 'no ads account - Journey B/C ground, not a finding');
   assert.strictEqual(byId['ga4.ads_link_missing'].run({ ga4, linkedAdsCustomerIds: ['6424596144'] }).length, 1);
   ga4.ads_links = [{ customer_id: '6424596144', create_time: '2026-01-01T00:00:00Z' }];
   assert.strictEqual(byId['ga4.ads_link_missing'].run({ ga4, linkedAdsCustomerIds: ['6424596144'] }).length, 0);

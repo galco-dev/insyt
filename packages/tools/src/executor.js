@@ -1,10 +1,10 @@
-// Changeset executor — build-doc §4 cross-cutting circuit breakers +
+// Changeset executor - build-doc §4 cross-cutting circuit breakers +
 // master §3.7 changeset semantics.
 //
-//   - ≤30 entities touched per run per tenant
-//   - tool error rate >10% in a run aborts the changeset
-//   - every write idempotency-keyed (tenant, run, tool, target)
-//   - every applied write emits ledger + audit rows with the API result
+//  - ≤30 entities touched per run per tenant
+//  - tool error rate >10% in a run aborts the changeset
+//  - every write idempotency-keyed (tenant, run, tool, target)
+//  - every applied write emits ledger + audit rows with the API result
 //
 // I/O is injected:
 //   api[tool_id](params)  -> { before, after }   (throws on API failure)
@@ -62,7 +62,7 @@ async function applyChangeset({ changes, ctx, api, store, tenantId, runId, chang
       continue;
     }
 
-    // Tool guardrails — pure, checked before any I/O.
+    // Tool guardrails - pure, checked before any I/O.
     const reason = tool.guard(change.params || {}, ctx);
     if (reason) {
       results.push({ id: change.id, status: 'failed', reason });
