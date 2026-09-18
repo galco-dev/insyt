@@ -329,10 +329,10 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
         const dest = {
           join_viewer: '/app',
           join_approve: '/app/settings?joined=1',
-          view_report: `/app/report/${r.link.target_id}`,
+          view_report: r.link.target_id ? `/app/report/${r.link.target_id}` : '/app',
           approve_all: '/app/approvals',
           approve_one: '/app/approvals',
-          revert: `/app/revert/${r.link.target_id}`,
+          revert: r.link.target_id ? `/app/revert/${r.link.target_id}` : '/app/history',
           reconnect: '/app/settings',
           resume_journey: '/app/journey',
         }[r.link.purpose] || '/app';
@@ -410,7 +410,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           }
           if (sub === '/setup') return json(res, 200, dashStore.setupSteps ? await dashStore.setupSteps(t) : { steps: [] });
           if (sub.startsWith('/report/')) {
-            const r = await dashStore.reportData(t, sub.split('/')[2]);
+            const id = sub.split('/')[2];
+            if (!id || id === 'null' || id === 'undefined') return json(res, 404, { error: 'Report not found.' });
+            const r = await dashStore.reportData(t, id);
             if (r && r.held) return json(res, 404, { error: 'Your agency is reviewing this report. It arrives once they have looked at it.', held: true });
             if (!r) return json(res, 404, { error: 'Report not found.' });
             // Pending changes ride along so each finding can carry its

@@ -318,3 +318,14 @@ test('the web report at /r/:id awaits the store: a real id renders, an unknown o
     assert.strictEqual((await fetch(`${base}/r/not-a-report`)).status, 404);
   });
 });
+
+test('api: a report id that is not an id answers 404, never 500 (a link with no target lands on the app)', async () => {
+  const ds = dashStore();
+  ds.reportData = async () => { throw new Error('postgrest 400: invalid input syntax for type uuid'); };
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const r = await fetch(`${base}/api/app/report/null`, { headers: { cookie: authedCookie() } });
+    assert.equal(r.status, 404);
+    const body = await r.json();
+    assert.match(body.error, /not found/i);
+  });
+});

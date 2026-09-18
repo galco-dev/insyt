@@ -1053,7 +1053,7 @@ function dashStore(db, deps = {}) {
     },
     reportData: async (tenantId, reportId) => {
       const r = await db.select('reports',
-        `id=eq.${q(reportId)}&tenant_id=eq.${q(tenantId)}&select=id,type,created_at,findings_snapshot,unlocked,summary,review_status`, { single: true });
+        `id=eq.${q(reportId)}&tenant_id=eq.${q(tenantId)}&select=id,type,created_at,findings_snapshot,unlocked,summary,review_status`, { single: true }).catch(() => null);
       if (r && r.review_status === 'pending') return { held: true };
       if (r) await db.update('reports', `id=eq.${q(reportId)}`, { viewed_at: new Date().toISOString() }).catch(() => {});
       return r;
