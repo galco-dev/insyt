@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Lock01 as Lock } from '@untitledui/icons';
 import clsx from 'clsx';
-import { api } from '../lib/api.js';
+import { api, pushDL } from '../lib/api.js';
 import { useAccess, fmtMoney } from '../lib/access.jsx';
 import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote, Receipt } from '../lib/ui.jsx';
 import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
@@ -337,7 +337,8 @@ export default function Approvals() {
         setNote({ tone: 'success', text: `Done. ${p.fence.summary_text}. We will not suggest changes there; change your mind any time in Settings.` });
       } else {
         const body = kind === 'dismiss' ? { expanded_first: !!open[id] } : undefined;
-        await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
+        const r = await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
+        if (kind === 'approve' && r && r.first_approval) pushDL('first_fix_approved', { plan: access && access.plan ? access.plan.tier : null });
       }
       if (kind === 'approve') setNote({ tone: 'success', text: `Done. "${p.title}"${partial ? ` (${keep.length} of ${p.list.length})` : ''} goes to your Google account within the hour, then we watch it for 48 hours. Undo is one tap.` });
       if (kind === 'dismiss') setNote({ tone: 'info', text: `Fine. "${p.title}" stays as it is and we will not raise it again. Nothing was changed.` });

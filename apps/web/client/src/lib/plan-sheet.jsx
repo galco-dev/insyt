@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { XClose, Check, ArrowRight } from '@untitledui/icons';
 import clsx from 'clsx';
-import { api, isDemo, track } from './api.js';
+import { api, isDemo, track, pushDL } from './api.js';
 import { useAccess, fmtMoney, setDemoLevel } from './access.jsx';
 import { useRouter, Link } from './router.jsx';
 import { MonoLabel, Button, Spinner } from './ui.jsx';
@@ -76,7 +76,13 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
         } else if (action && action.id) {
           // Back from Stripe: replay the tapped action from what we remembered.
           const call = REPLAY[action.kind];
-          if (call) { try { await call(action.id); track('gate.auto_applied', { kind: action.kind, id: action.id }); } catch { /* the webhook approved it already */ } }
+          if (call) {
+            try {
+              const r = await call(action.id);
+              track('gate.auto_applied', { kind: action.kind, id: action.id });
+              if (r && r.first_approval) pushDL('first_fix_approved', { plan: a.plan ? a.plan.tier : null });
+            } catch { /* the webhook approved it already */ }
+          }
           setDoneTitle(action.title || null);
         }
         setState('done');
@@ -102,7 +108,8 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
       if (r.emailed) { setNote(`Sent to ${r.emailed}. The plan starts the moment they pay.`); setBusy(null); setPayer(null); return; }
       if (r.url) {
         // Remembered for the return trip (spec §6); the webhook covers approvals on its own.
-        try { sessionStorage.setItem('insyt_pending_action', JSON.stringify(action ? { kind: action.kind, id: action.id, title: action.title } : null)); } catch { /* ignore */ }
+        try { sessionStorage.setItem('insyt_pending_action', JSON.stringify(action ? { kind: action.kind, id: action.id, title: action.title } : null)); sessionStorage.setItem('insyt_cadence', cadence); } catch { /* ignore */ }
+        pushDL('begin_checkout', { item: tier, value: cadence === 'annual' ? annual(tier) : priceOf(tier), currency: 'USD' });
         window.location.href = r.url; return;
       }
       if (isDemo()) {

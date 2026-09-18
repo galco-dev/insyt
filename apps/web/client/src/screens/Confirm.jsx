@@ -5,7 +5,7 @@
 // proposal exists. Never a configuration form.
 import React, { useEffect, useState } from 'react';
 import { CheckCircle as CheckCircle2, ChevronDown } from '@untitledui/icons';
-import { api, isDemo } from '../lib/api.js';
+import { api, isDemo, pushDL } from '../lib/api.js';
 import { useRouter } from '../lib/router.jsx';
 import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Button, Card, Spinner, ErrorNote } from '../lib/ui.jsx';
@@ -157,7 +157,9 @@ export default function Confirm() {
     setBusy(true);
     try {
       const exceptions = campaigns.filter((c) => fenced[c.id]).map((c) => ({ target: `campaign:${c.id}`, summary_text: `Leave "${c.name}" alone` }));
-      await api('/api/app/confirm', { method: 'POST', body: { link: Object.values(chosen).filter(Boolean), exceptions } });
+      const link = Object.values(chosen).filter(Boolean);
+      await api('/api/app/confirm', { method: 'POST', body: { link, exceptions } });
+      pushDL('confirm', { accounts_count: link.length + (doors.ads_account.state === 'matched' ? 1 : 0) + (doors.ga4_property.state === 'matched' ? 1 : 0) + (doors.gtm_container.state === 'matched' ? 1 : 0), has_ads: doors.ads_account.state === 'matched' || !!chosen.ads_account });
       // No tracking on the site at all: the first thing to fix is the setup, so land there (fix plan move 3).
       const noTracking = doors.gtm_container.state === 'unused' && doors.ga4_property.state !== 'matched';
       navigate(noTracking ? '/app/journey' : '/app');

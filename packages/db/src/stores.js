@@ -353,7 +353,7 @@ function webStore(db) {
   return {
     createCrawlRow: async (row) => {
       const [r] = await db.insert('crawls', [{
-        session_id: row.session_id || 'anon', url: row.url, status: 'running',
+        session_id: row.session_id || 'anon', url: row.url, status: 'running', attribution: row.attribution || null,
       }]);
       return r.id;
     },
@@ -869,7 +869,8 @@ function dashStore(db, deps = {}) {
       // analytics and tracking writes need the write step. ready | ask | reconnect.
       const conn = owner ? await db.select('google_connections', `user_id=eq.${q(owner.id)}&select=status,scope_level&limit=1`, { single: true }).catch(() => null) : null;
       const fix_access = !conn || conn.status !== 'valid' ? 'reconnect' : (conn.scope_level === 'write' || conn.scope_level === 'create' ? 'ready' : 'ask');
-      const base = { ...accessFrom({ paid, sub, tenant, pricing, report, pending, ads }), fix_access };
+      // tenant_id rides for the dataLayer's user_id (tracking brief B2): an internal id, never an email or a Google id.
+      const base = { ...accessFrom({ paid, sub, tenant, pricing, report, pending, ads }), fix_access, tenant_id: tenantId };
       // A sandbox tenant (migration 37): every gate open, nothing to pay, for testing on the live stack.
       if (tenant && tenant.sandbox) {
         return { ...base, level: 'active', has_customer: true, credit_applies: false, credit_usd: 0, sandbox: true,
@@ -887,6 +888,36 @@ function dashStore(db, deps = {}) {
         plan: base.plan || { tier: 'agency', status: 'active', label: `Looked after by ${managed.agency_name}`, price_usd: 0 },
         managed: { agency: managed.agency_name, mode: managed.client_mode },
       };
+    },
+    // Tracking brief B4: what the client may tell Tag Manager after a payment.
+    // List price and amount paid in USD, a stable Stripe id, never a card or an email.
+    lastPayment: async (tenantId) => {
+      const [pay, sub, pricing] = await Promise.all([
+        db.select('payments', `tenant_id=eq.${q(tenantId)}&refunded_at=is.null&select=kind,amount_usd,stripe_payment_intent,stripe_session_id,promotion_code,created_at&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+        db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=stripe_subscription_id,tier,size_band,price_usd,status,created_at&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
+        db.select('pricing_config', 'select=matrix&order=effective_from.desc&limit=1', { single: true }).catch(() => null),
+      ]);
+      const m = (pricing && pricing.matrix) || {};
+      const fees = m.audit_fees || {};
+      const listOf = (kind) => (kind === 'setup_bundle' ? Number(m.bundle_usd || 199) : kind === 'large_audit_xl' ? Number(fees.xl || fees.large || 20) : kind === 'large_audit' ? Number(fees.large || 20) : Number(fees.standard || 20));
+      let invoice = null;
+      if (sub) invoice = await db.select('audit_log', `tenant_id=eq.${q(tenantId)}&event=eq.invoice_paid&created_at=gte.${q(sub.created_at)}&select=detail&order=created_at.asc&limit=1`, { single: true }).catch(() => null);
+      const paidSub = invoice && invoice.detail && invoice.detail.amount_usd != null ? Number(invoice.detail.amount_usd) : null;
+      return {
+        payment: pay ? {
+          kind: pay.kind, transaction_id: pay.stripe_payment_intent || pay.stripe_session_id, value_usd: listOf(pay.kind),
+          amount_paid_usd: Number(pay.amount_usd || 0), internal_test: Number(pay.amount_usd || 0) === 0, created_at: pay.created_at,
+        } : null,
+        subscription: sub ? {
+          transaction_id: sub.stripe_subscription_id, plan: sub.tier, band: sub.size_band, value_usd: Number(sub.price_usd || 0), status: sub.status,
+          amount_paid_usd: paidSub, internal_test: paidSub === 0, created_at: sub.created_at,
+        } : null,
+      };
+    },
+    // How many fixes have ever been approved (tracking brief B3: the first one is an event).
+    approvedCount: async (tenantId) => {
+      const rows = await db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(approved,applied,failed,reverted)&select=id&limit=2`).catch(() => []);
+      return (rows || []).length;
     },
     pendingApprovals: async (tenantId) => {
       // Change summaries are written for the ledger (past tense: "Excluded…").

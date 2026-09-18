@@ -82,7 +82,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
     res.end(fs.readFileSync(file));
     return true;
   }
-  async function handleCrawlRequest(res, urlRaw, { force = false, ownSite = false } = {}) {
+  async function handleCrawlRequest(res, urlRaw, { force = false, ownSite = false, attribution = null } = {}) {
     let target;
     try { target = new URL(urlRaw.startsWith('http') ? urlRaw : `https://${urlRaw}`); } catch {
       return json(res, 400, { error: 'That does not look like a website address.' });
@@ -108,7 +108,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       || await store.crawlCountForDomain(domain, now() - 86_400_000) >= LIMITS.perDay)) {
       return json(res, 429, { error: 'This site was checked very recently - try again in a little while.' });
     }
-    const id = await store.createCrawl({ url: target.href, domain, status: 'running', created_at: now() });
+    const id = await store.createCrawl({ url: target.href, domain, status: 'running', created_at: now(), attribution });
     // Fire and record; progress endpoint reflects state.
     crawler.discoveryCrawl(target.href)
       .then((result) => store.patchCrawl(id, { status: result.status, result, strip: findingsStrip(result) }))
@@ -192,7 +192,15 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           } catch { ownSite = false; }
         }
         if (!ownSite && !crawlAllowed(ip)) return json(res, 429, { error: 'That is a lot of checks in one hour - try again a little later.' });
-        return handleCrawlRequest(res, parsed.url, { force: !!parsed.force, ownSite });
+        // Landing attribution (tracking brief B2): the marketing site's src and
+        // trade, and Google's click ids, kept against the check and later the
+        // tenant. Whitelisted keys, short values, nothing else from the body.
+        const attribution = {};
+        for (const k of ['src', 'trade', 'gclid', 'gbraid', 'wbraid']) {
+          const v = parsed[k];
+          if (typeof v === 'string' && v.trim() && v.length <= 200) attribution[k] = v.trim();
+        }
+        return handleCrawlRequest(res, parsed.url, { force: !!parsed.force, ownSite, attribution: Object.keys(attribution).length ? attribution : null });
       }
 
       if (req.method === 'GET' && path.startsWith('/api/crawl/')) {
@@ -393,6 +401,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/approvals') return json(res, 200, { pending: await dashStore.pendingApprovals(t), access: await accessWithRole() });
           if (sub === '/ledger') return json(res, 200, { entries: await dashStore.ledger(t), pending: await dashStore.pendingApprovals(t), receipts: dashStore.receipts ? (await dashStore.receipts(t, new Date(now()))).by_change : {}, access: await accessWithRole() });
           if (sub === '/reports') return json(res, 200, { reports: await dashStore.reports(t) });
+          if (sub === '/last-payment') return json(res, 200, dashStore.lastPayment ? await dashStore.lastPayment(t) : { payment: null, subscription: null });
           if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t, new Date(now())), access: await accessWithRole() });
           if (sub === '/runs') return json(res, 200, { runs: dashStore.runs ? await dashStore.runs(t) : [] });
           if (sub === '/discovery') return json(res, 200, await dashStore.discovery(t));
@@ -541,10 +550,11 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                   if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
                   const ids = Array.isArray(parsed.ids) ? parsed.ids.map(String).slice(0, 50) : [];
                   if (!ids.length) return json(res, 400, { error: 'Nothing selected to approve.' });
+                  const before = dashStore.approvedCount ? await dashStore.approvedCount(t).catch(() => null) : null;
                   let r;
                   if (dashStore.approveBatch) r = await dashStore.approveBatch(t, ids);
                   else { for (const id of ids) await dashStore.approveChange(t, id); r = { approved: ids.length, requested: ids.length }; }
-                  return json(res, 200, { ok: true, ...r });
+                  return json(res, 200, { ok: true, ...r, first_approval: before === 0 });
                 }
                 if (sub === '/event') {
                   if (dashStore.trackEvent) dashStore.trackEvent(t, String(parsed.name || ''), parsed.props || {}, parsed.session || null).catch(() => {});
@@ -593,8 +603,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           // and its undo. Both need a plan; the client opens the Plan sheet on 402.
           if (sub.startsWith('/approve/')) {
             if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
+            const before = dashStore.approvedCount ? await dashStore.approvedCount(t).catch(() => null) : null;
             await dashStore.approveChange(t, sub.split('/')[2]);
-            return json(res, 200, { ok: true });
+            return json(res, 200, { ok: true, first_approval: before === 0 });
           }
           if (sub.startsWith('/revert/')) {
             // Undo stays free for 30 days after cancelling (fix plan move 13).

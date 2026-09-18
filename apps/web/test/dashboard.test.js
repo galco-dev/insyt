@@ -104,7 +104,7 @@ test('api: /api/app/approve-batch needs a plan, then approves each id through th
     assert.strictEqual(empty.status, 400);
     const r = await fetch(`${base}/api/app/approve-batch`, { method: 'POST', headers: { cookie: authedCookie(), 'content-type': 'application/json' }, body: JSON.stringify({ ids: ['c1', 'c2'] }) });
     assert.strictEqual(r.status, 200);
-    assert.deepStrictEqual(await r.json(), { ok: true, approved: 2, requested: 2 });
+    assert.deepStrictEqual(await r.json(), { ok: true, approved: 2, requested: 2, first_approval: false });
     assert.deepStrictEqual(active.actions, [['approve', 'c1'], ['approve', 'c2']]);
   });
 });

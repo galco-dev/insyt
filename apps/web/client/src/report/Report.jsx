@@ -8,7 +8,7 @@ import clsx from 'clsx';
 import { LineChart, StackedBarsH, Histogram, HourProfile, ShareBars } from './charts.jsx';
 import { CheckCircle as CheckCircle2, AlertTriangle, Lock01 as Lock, ArrowRight, FlipBackward as Undo2, Eye } from '@untitledui/icons';
 import { audit, deep } from './data.js';
-import { api, isDemo } from '../lib/api.js';
+import { api, isDemo, pushDL } from '../lib/api.js';
 import { useAccess, fmtMoney } from '../lib/access.jsx';
 import { useBatchApprove } from '../lib/batch.jsx';
 import { needsWriteStep, goWriteStep, FIX_ACCESS_LINE } from '../lib/fix-access.js';
@@ -243,7 +243,7 @@ function UnlockBar({ visible }) {
     try {
       // Return to this report once paid (the gate refreshes on ?paid=1).
       const r = await api('/api/checkout/audit', { method: 'POST', body: { kind: 'audit_unlock', next: window.location.pathname } });
-      if (r.url) { window.location.href = r.url; return; }
+      if (r.url) { pushDL('begin_checkout', { item: 'report', value: 20, currency: 'USD' }); window.location.href = r.url; return; }
       setNote(isDemo() ? 'Demo mode - checkout opens here once payments are connected.' : 'Payments are almost ready - try again shortly.');
     } catch (e) { setNote(e.status === 401 ? 'Sign in first - run your free check from the start page.' : e.message); }
     setBusy(false);
@@ -323,6 +323,8 @@ function RealReport({ reportId }) {
   const [receipts, setReceipts] = useState({});
   const [error, setError] = useState(null);
   const { gate, level, access, version, paidNow } = useAccess();
+  // Tracking brief B3: one report_view per report load, locked or not.
+  useEffect(() => { if (report) pushDL('report_view', { locked: access ? access.level === 'locked' : report.unlocked === false }); }, [report && report.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { api(`/api/app/report/${reportId}`).then((d) => { setReport(d.report); setPending(d.pending || []); setReceipts(d.receipts || {}); }).catch((e) => setError(e.message)); }, [reportId, version]);
 
   if (error) return <div className="mx-auto max-w-l2 px-5 pt-14"><ErrorNote message={error} /></div>;

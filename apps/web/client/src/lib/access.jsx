@@ -10,7 +10,39 @@
 // button being hidden. The return from Stripe (?subscribed=1&pa=<change>)
 // re-opens the sheet in its activating state and finishes the tapped action.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { api, onAccess, isPlanRequired, isDemo, track } from './api.js';
+import { api, onAccess, isPlanRequired, isDemo, track, pushDL, pushDLOnce, setDataLayerUser } from './api.js';
+
+// Tracking brief B4: the payment events fire only once the server has the
+// record (the webhook may land a few seconds after Stripe sends us back), and
+// once per Stripe id, kept for the tab. The list price is the value; the
+// amount actually paid rides alongside, with internal_test when it was $0.
+async function pushPaymentEvent(kind) {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 12; i += 1) {
+    let d = null;
+    try { d = await api('/api/app/last-payment'); } catch { d = null; }
+    const p = d && d.payment;
+    const s = d && d.subscription;
+    if (kind === 'paid' && p && p.transaction_id) {
+      const bundle = p.kind === 'setup_bundle';
+      pushDLOnce(p.transaction_id, bundle ? 'launch_bundle_purchased' : 'report_unlocked', {
+        transaction_id: p.transaction_id, value: bundle ? 199 : p.value_usd, currency: 'USD', ...(bundle ? {} : { item: p.kind }),
+        amount_paid: p.amount_paid_usd, ...(p.internal_test ? { internal_test: true } : {}),
+      });
+      return;
+    }
+    if (kind === 'subscribed' && s && s.transaction_id && /active|trialing/.test(s.status || '')) {
+      let cadence = null;
+      try { cadence = sessionStorage.getItem('insyt_cadence'); } catch { cadence = null; }
+      pushDLOnce(s.transaction_id, 'subscription_started', {
+        transaction_id: s.transaction_id, value: s.value_usd, currency: 'USD', plan: s.plan, cadence: cadence || 'monthly',
+        amount_paid: s.amount_paid_usd == null ? s.value_usd : s.amount_paid_usd, ...(s.internal_test ? { internal_test: true } : {}),
+      });
+      return;
+    }
+    await wait(5000);
+  }
+}
 import { useRouter } from './router.jsx';
 
 const AccessCtx = createContext(null);
@@ -35,7 +67,7 @@ export function AccessProvider({ children }) {
   const { path, navigate } = useRouter();
   const pendingRef = useRef(null);
 
-  const setAccess = useCallback((a) => { if (a) setAccessState(a); }, []);
+  const setAccess = useCallback((a) => { if (a) { setAccessState(a); setDataLayerUser(a.tenant_id); } }, []);
   useEffect(() => { onAccess(setAccess); return () => onAccess(null); }, [setAccess]);
 
   const refresh = useCallback(async () => {
@@ -87,6 +119,8 @@ export function AccessProvider({ children }) {
   // then finish the tapped action. The URL is cleaned so a reload is inert.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // Google sign-in lands on the confirm step with what discovery found (tracking brief B3).
+    if (window.location.pathname === '/app/confirm' && params.has('found')) pushDLOnce('signin', 'signin', { method: 'google' });
     if (params.get('subscribed') === '1') {
       const pa = params.get('pa');
       params.delete('subscribed'); params.delete('pa');
@@ -96,8 +130,10 @@ export function AccessProvider({ children }) {
       try { remembered = JSON.parse(sessionStorage.getItem('insyt_pending_action') || 'null'); sessionStorage.removeItem('insyt_pending_action'); } catch { /* ignore */ }
       const action = remembered && remembered.id ? remembered : pa ? { kind: 'approve', id: pa, title: null } : null;
       setSheet({ mode: 'activating', action, title: null });
+      if (!isDemo()) pushPaymentEvent('subscribed');
     } else if (params.get('paid') === '1') {
       setPaidNow(true);
+      if (!isDemo()) pushPaymentEvent('paid');
       params.delete('paid');
       window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params}` : ''}`);
       refresh();

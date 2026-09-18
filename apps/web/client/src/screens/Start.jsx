@@ -2,7 +2,7 @@
 // Public (no session). §5 crawl endpoints; strip shape from findings-strip.js.
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchMd as Search, CheckCircle as CheckCircle2, AlertTriangle, ShieldTick as ShieldCheck, Eye } from '@untitledui/icons';
-import { api, isDemo } from '../lib/api.js';
+import { api, isDemo, pushDL, attribution } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { MonoLabel, Button, Card, ErrorNote } from '../lib/ui.jsx';
 
@@ -80,14 +80,20 @@ export default function Start() {
       return;
     }
     try {
-      const { id } = resumeId ? { id: resumeId } : await api('/api/crawl', { method: 'POST', body: { url: target, ...(force ? { force: true } : {}) } });
+      if (!resumeId) {
+        try { pushDL('paste', { site_host: new URL(target.startsWith('http') ? target : `https://${target}`).hostname.replace(/^www\./, '') }); } catch { /* an odd address still gets checked */ }
+      }
+      const { id } = resumeId ? { id: resumeId } : await api('/api/crawl', { method: 'POST', body: { url: target, ...(force ? { force: true } : {}), ...attribution() } });
       const startedAt = Date.now();
       pollRef.current = setInterval(async () => {
         try {
           const c = await api(`/api/crawl/${id}`);
           if (c.status && c.status !== 'running') {
             clearInterval(pollRef.current); clearInterval(stageTimer);
-            if (c.strip) { setStrip(c.strip); setCheckedAt(c.checked_at || null); setState('done'); } else { setState('failed'); }
+            if (c.strip) {
+              setStrip(c.strip); setCheckedAt(c.checked_at || null); setState('done');
+              pushDL('crawl_done', { duration_ms: Date.now() - startedAt, findings_count: Number(c.strip.visible_issue_count || 0) });
+            } else { setState('failed'); }
           } else if (Date.now() - startedAt > 4 * 60_000) {
             // Never spin forever: after four minutes, say so and offer a retry.
             clearInterval(pollRef.current); clearInterval(stageTimer);

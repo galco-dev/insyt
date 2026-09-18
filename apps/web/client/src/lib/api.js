@@ -2,6 +2,7 @@
 // sticky per tab) resolves everything from canned data so every screen can be
 // reviewed before Google/Stripe credentials exist.
 import { demoData } from './demo.js';
+import { buildRow, pushOnce } from './datalayer.mjs';
 
 // Storage can throw (Edge and Safari with strict tracking prevention, private
 // windows, blocked site data). Every read and write goes through these so a
@@ -19,6 +20,23 @@ if (params.get('demo')) store.set('insyt_demo', '1');
 // a visitor who peeked at the sample report is never shown Glow Studio again.
 else if (window.location.pathname === '/app/start' || params.has('found') || params.has('url')) store.del('insyt_demo');
 export const isDemo = () => store.get('insyt_demo') === '1';
+
+// Landing attribution (tracking brief B2): src and trade from the marketing
+// site's link, and the Google click ids, remembered for the tab so they
+// survive the Google sign-in and the Stripe round trip. The click ids go to
+// the server with the check and never into the dataLayer.
+const ATTR_KEYS = ['src', 'trade', 'gclid', 'gbraid', 'wbraid'];
+if (window.location.pathname === '/app/start') {
+  for (const k of ATTR_KEYS) {
+    const v = params.get(k);
+    if (v && v.length <= 200) store.set(`insyt_${k}`, v);
+  }
+}
+export const attribution = () => {
+  const out = {};
+  for (const k of ATTR_KEYS) { const v = store.get(`insyt_${k}`); if (v) out[k] = v; }
+  return out;
+};
 
 export class ApiError extends Error {
   constructor(status, message, data = {}) { super(message); this.status = status; this.data = data; }
@@ -67,6 +85,22 @@ const sessionKey = (() => {
     return k;
   } catch { return null; }
 })();
+// Tag Manager dataLayer (tracking brief B2): rows come from lib/datalayer.mjs
+// (pure, tested); this wires them to the tab's attribution, the signed-in
+// tenant id and window.dataLayer. Inert in demo mode, silent on failure.
+export function setDataLayerUser(id) { if (id) store.set('insyt_uid', String(id)); }
+export function pushDL(event, extra = {}) {
+  try {
+    const row = buildRow(event, extra, { demo: isDemo(), attribution: attribution(), userId: store.get('insyt_uid') });
+    if (!row) return false;
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push(row);
+    return true;
+  } catch { return false; }
+}
+// One push per transaction id, kept for the tab so a reload never repeats it.
+export const pushDLOnce = (key, event, extra = {}) => pushOnce(store, key, () => pushDL(event, extra));
+
 export function track(name, props = {}) {
   if (isDemo()) return;
   try {

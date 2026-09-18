@@ -8,13 +8,17 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { GTM_ID } from './src/lib/gtm.js';
+
+// index.html carries __GTM_ID__ twice (script and noscript); one constant fills both.
+const gtmId = () => ({ name: 'insyt-gtm-id', transformIndexHtml: (html) => html.replaceAll('__GTM_ID__', GTM_ID) });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   root: __dirname,
   base: '/app/',
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), gtmId()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src/uui'),

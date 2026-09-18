@@ -3,6 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      // Tag Manager (__GTM_ID__). Never in demo mode and never on the agency
+      // console, so sample traffic and staff never reach GA4 or Google Ads.
+      // The demo rule mirrors lib/api.js: ?demo=1 sets it, a real entry clears it.
+      window.dataLayer = window.dataLayer || [];
+      (function () {
+        try {
+          var p = new URLSearchParams(location.search), path = location.pathname;
+          var demo = p.get('demo') ? true : (path === '/app/start' || p.has('found') || p.has('url')) ? false : sessionStorage.getItem('insyt_demo') === '1';
+          if (demo || path.indexOf('/app/agency') === 0) return;
+          window.__insytGtm = true;
+          (function (w, d, s, l, i) { w[l] = w[l] || []; w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' }); var f = d.getElementsByTagName(s)[0], j = d.createElement(s), dl = l !== 'dataLayer' ? '&l=' + l : ''; j.async = true; j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl; f.parentNode.insertBefore(j, f); })(window, document, 'script', 'dataLayer', '__GTM_ID__');
+        } catch (e) { /* tracking never breaks the app */ }
+      })();
+    </script>
     <title>Your report - Insyt</title>
     <meta name="description" content="Paste your website, get a free check of your Google Ads and tracking. Read-only, three minutes, no email needed." />
     <meta name="theme-color" content="#000D14" />
@@ -25,6 +40,7 @@
     <meta name="facebook-domain-verification" content="sxlwbu0v4rf3rm7yofkgnr9l5xowdn" />
   </head>
   <body>
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=__GTM_ID__" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -133,8 +133,15 @@ async function handleGoogleAuth(req, res, u, session, deps) {
       if (!deps.findOrCreateTenantByGoogle || !deps.issueSession || !deps.cookieFor) return fail('Sign-in is not available right now.');
       st.tenantId = await deps.findOrCreateTenantByGoogle({ sub: who.sub, email: who.email, name: who.name, preferTenantId: join && join[1] === 'account' ? join[2] : null });
       if (st.site) {
-        const t = await db.select('tenants', `id=eq.${q(st.tenantId)}&select=website_url`, { single: true }).catch(() => null);
+        const t = await db.select('tenants', `id=eq.${q(st.tenantId)}&select=website_url,attribution`, { single: true }).catch(() => null);
         if (t && !t.website_url) await db.update('tenants', `id=eq.${q(st.tenantId)}`, { website_url: st.site }).catch(() => {});
+        // The check that brought them carries the landing attribution (src,
+        // trade, Google click ids); it moves to the tenant once, at sign-in.
+        if (t && !t.attribution) {
+          const host = String(st.site).replace(/^https?:\/\//i, '').replace(/^www\./, '').replace(/\/.*$/, '');
+          const c = await db.select('crawls', `url=ilike.*${q(host)}*&attribution=not.is.null&select=attribution&order=created_at.desc&limit=1`, { single: true }).catch(() => null);
+          if (c && c.attribution) await db.update('tenants', `id=eq.${q(st.tenantId)}`, { attribution: c.attribution }).catch(() => {});
+        }
       }
       setCookie = deps.cookieFor(deps.issueSession({ tenantId: st.tenantId, secret: sessionSecret, now: now() }));
     }
