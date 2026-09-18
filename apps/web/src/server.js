@@ -343,6 +343,9 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
       // ---- JSON API for the React client (§11 screens over dashStore)
       if (path.startsWith('/api/app') && dashStore) {
         const session = readSession(req.headers.cookie, sessionSecret, now());
+        // The start page and the public sample send telemetry before anyone is
+        // signed in; drop it quietly rather than answer with a sign-in error.
+        if (!session && path === '/api/app/event') { res.writeHead(204); return res.end(); }
         if (!session) return json(res, 401, { error: 'Sign in first.' });
         const t = session.tenantId;
         const sub = path.slice('/api/app'.length) || '/';

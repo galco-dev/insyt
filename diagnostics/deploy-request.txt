@@ -48,3 +48,4 @@ deploy request: the assistant reads its reply from the first text block (thinkin
 2026-09-18T13:08:02Z sample report renders clear; bottom bar takes their address into the free check
 2026-09-18T13:14:04Z Glow Studio sample and demo are location agnostic
 2026-09-18T13:16:20Z sample page leaves room for its bar on phones
+2026-09-18T13:37:43Z signed-out telemetry dropped with 204

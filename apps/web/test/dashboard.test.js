@@ -329,3 +329,12 @@ test('api: a report id that is not an id answers 404, never 500 (a link with no 
     assert.match(body.error, /not found/i);
   });
 });
+
+test('api: a signed-out telemetry event is dropped with 204, not answered with a sign-in error', async () => {
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: dashStore(), sessionSecret: SECRET }, async (base) => {
+    const r = await fetch(`${base}/api/app/event`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'gate.shown', props: {} }) });
+    assert.equal(r.status, 204);
+    const other = await fetch(`${base}/api/app/access`);
+    assert.equal(other.status, 401);
+  });
+});
