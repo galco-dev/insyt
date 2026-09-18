@@ -76,6 +76,7 @@ function brief({ business, service, location, offers = [], prices = [], siteLine
     `Write Google search ad text for ${business}${service ? `, for the service "${service}"` : ''}${location ? ` in ${location}` : ''}.`,
     'Return ONLY a JSON object: {"headlines": [12 strings, each 30 characters or fewer], "descriptions": [4 strings, each 90 characters or fewer]}.',
     'Rules: plain, specific, no exclamation marks, no superlatives (best, #1), no guarantees, no "click here", no advertising jargon, no em dashes.',
+    location ? `The ad only shows to people in ${location}: never name any other town, area or country, even one that appears in the business name.` : '',
     'Include the business name in at least two headlines and the service in at least three. Mention a price ONLY from this list, verbatim, or not at all:',
     prices.length ? prices.map((p) => `${p.currency || ''} ${p.amount}${p.label ? ` (${p.label})` : ''}`.trim()).join('; ') : '(no prices known - do not mention prices)',
     offers.length ? `Offers you may mention: ${offers.join('; ')}` : '',
