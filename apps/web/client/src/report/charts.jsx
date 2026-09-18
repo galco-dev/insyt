@@ -160,7 +160,7 @@ export function PerformanceChart({ w = 660, days, checks = [], fixes = [], label
       {clipped.map((i) => (
         <g key={`clip${i}`}>
           <line x1={x(i)} x2={x(i)} y1={top.t} y2={ysT.y(cap)} stroke={SERIES[0]} strokeWidth={1.8} strokeDasharray="3 3" />
-          <Txt x={Math.min(x(i), w - padR - 90)} y={top.t + 10} size={10} fill={SERIES[0]} weight={600}>{`off the chart: ${labelMoney(spendRaw[i])}`}</Txt>
+          <Txt x={padL + 34} y={top.t + 12} size={10} fill={SERIES[0]} weight={600}>{`one day off the chart, ${dateLabel(days[i].date)}: ${labelMoney(spendRaw[i])}`}</Txt>
         </g>
       ))}
       {panel(conv, ysB, SERIES[1], 'Results', (v) => fmt(v))}

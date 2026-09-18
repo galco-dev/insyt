@@ -37,3 +37,4 @@ deploy request: no currency conversion anywhere; the size band and the budget fl
 deploy request: sandbox tenants (migration 37): a flagged test tenant is active with nothing to pay, for audits on the live stack - 2026-09-18T09:13:57Z
 deploy request: visual audit fixes (long names clamp, right-to-left names, report batch bar and composer in the account currency, sandbox plan line, chart outlier clamp, Connected Data overflow) - 2026-09-18T09:45:56Z
 deploy request: Approvals composer reads the currency formatter from the gate (blank page fix) - 2026-09-18T09:50:17Z
+deploy request: chart outlier label moves to the left, clear of the spike - 2026-09-18T09:55:04Z
