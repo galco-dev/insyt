@@ -939,11 +939,13 @@ function dashStore(db, deps = {}) {
     assistantEnabled: async (tenantId) => {
       if (!deps.assistant) return false;
       const [t, sub] = await Promise.all([
-        db.select('tenants', `id=eq.${q(tenantId)}&select=assistant_enabled`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=assistant_enabled,sandbox`, { single: true }).catch(() => null),
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=status&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
       ]);
       if (t && t.assistant_enabled === false) return false;
       if (t && t.assistant_enabled === true) return true;
+      // A sandbox account (migration 37) has everything a plan has, the assistant included.
+      if (t && t.sandbox) return true;
       return planIsActive(sub);
     },
     // "Expected, until Sunday" (fix plan move 17): the alert is seen and the
