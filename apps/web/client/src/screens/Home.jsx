@@ -323,12 +323,15 @@ function NeedsYouHead({ pending, access, money }) {
   const batch = useBatchApprove();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [armed, setArmed] = useState(false);
   if (!pending || !pending.length || !access) return null;
   const active = access.level === 'active';
   const safe = safeFixes(pending);
   const value = access.pending_value_usd > 0 ? `about ${money(access.pending_value_usd)} a month` : null;
+  // A batch yes is confirmed once (QA-005): the first tap arms it, the second approves.
   async function all() {
-    setBusy(true); setNote(null);
+    if (!armed) { setArmed(true); return; }
+    setBusy(true); setNote(null); setArmed(false);
     try { await batch(safe, `${plural(safe.length, 'safe fix', 'safe fixes')}`); } catch (e) { setNote(e.message); }
     setBusy(false);
   }
@@ -339,9 +342,13 @@ function NeedsYouHead({ pending, access, money }) {
         {!active && value && <Chip />}
       </p>
       {active && safe.length >= 2 && access.role !== 'viewer' && (
-        <Button variant="secondary" onClick={all} disabled={busy} className="!px-4 !py-2">
-          {busy ? 'Approving…' : `Approve all ${safe.length} safe fixes`}
-        </Button>
+        <span className="flex flex-wrap items-center gap-2">
+          <Button variant={armed ? 'primary' : 'secondary'} onClick={all} disabled={busy} className="!px-4 !py-2">
+            {busy ? 'Approving…' : armed ? `Yes, approve all ${safe.length}` : `Approve all ${safe.length} safe fixes`}
+          </Button>
+          {armed && <button type="button" onClick={() => setArmed(false)} className="text-small underline underline-offset-2">Not yet</button>}
+          {armed && <span className="basis-full text-tiny text-neutral-900">Applied within the hour, watched for 48 hours, each one undoable in History.</span>}
+        </span>
       )}
       {note && <span className="text-tiny text-critical">{note}</span>}
     </div>

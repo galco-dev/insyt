@@ -189,6 +189,7 @@ function AdsTab() {
 
       <Card className="p-5">
         <MonoLabel>Customer (account)</MonoLabel>
+        <p className="mt-0.5 text-tiny text-neutral-900">Your Google Ads account as Google describes it. The customer ID is the ten-digit number Google gives every ads account; it is how Google refers to yours.</p>
         <div className="mt-2">
           <KV items={[
             ['Customer ID', <span className="font-mono">{data.account.customer_id_display}</span>],
@@ -284,7 +285,7 @@ function AdsTab() {
       <Card>
         <div className="px-4 pt-4">
           <MonoLabel>Conversion actions</MonoLabel>
-          <p className="mt-0.5 text-tiny text-neutral-900">conversion_action resources with status ENABLED, and their 30-day counts.</p>
+          <p className="mt-0.5 text-tiny text-neutral-900">The things Google counts as a result of your ads: a booking, a call, a purchase. A primary one steers your bidding; a secondary one is only recorded. This is the list Google holds, with each one's count over 30 days.</p>
         </div>
         <div className="mt-2">
           <Table
@@ -339,6 +340,7 @@ function Ga4Tab() {
 
       <Card className="p-5">
         <MonoLabel>Property</MonoLabel>
+        <p className="mt-0.5 text-tiny text-neutral-900">Your analytics for one website, as Google holds it. The measurement ID is the code on your pages that sends visits here; key events are the actions you have asked it to count.</p>
         <div className="mt-2">
           <KV items={[
             ['Property ID', <span className="font-mono">{p.id}</span>],
@@ -415,6 +417,7 @@ function GtmTab() {
 
       <Card className="p-5">
         <MonoLabel>Account → container → workspace</MonoLabel>
+        <p className="mt-0.5 text-tiny text-neutral-900">Tag Manager is the box on your website that holds your tracking. A container is one website's box; a workspace is where changes are prepared before they go live.</p>
         <div className="mt-2">
           <KV items={[
             ['Account', `${data.account.name || ''} (${data.account.id})`],

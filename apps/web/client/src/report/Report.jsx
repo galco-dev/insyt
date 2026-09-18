@@ -284,10 +284,13 @@ function DoAllBar({ pending, access, level, money }) {
   const batch = useBatchApprove();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [armed, setArmed] = useState(false);
   if (!pending || pending.length < 2 || level === 'locked' || !access || access.role === 'viewer') return null;
   const value = access.pending_value_usd > 0 ? `about ${money(access.pending_value_usd)} a month` : null;
+  // Confirmed once (QA-005): the first tap arms it, the second approves.
   async function all() {
-    setBusy(true); setNote(null);
+    if (!armed) { setArmed(true); return; }
+    setBusy(true); setNote(null); setArmed(false);
     try { await batch(pending, `${pending.length} fixes`); } catch (e) { setNote(e.message); }
     setBusy(false);
   }
@@ -300,7 +303,11 @@ function DoAllBar({ pending, access, level, money }) {
         </div>
         <div className="mt-0.5 text-small text-neutral-900">{note || 'Every one is applied within the hour, watched for 48 hours, and reversible with one tap.'}</div>
       </div>
-      <Button onClick={all} disabled={busy} className="shrink-0 !px-5 !py-2.5">{busy ? 'Approving…' : `Do all ${pending.length}`}</Button>
+      <span className="flex shrink-0 flex-wrap items-center gap-2">
+        <Button onClick={all} disabled={busy} className="!px-5 !py-2.5">{busy ? 'Approving…' : armed ? `Yes, do all ${pending.length}` : `Do all ${pending.length}`}</Button>
+        {armed && <button type="button" onClick={() => setArmed(false)} className="text-small underline underline-offset-2">Not yet</button>}
+        {armed && <span className="basis-full text-tiny text-neutral-900">Applied within the hour, watched for 48 hours, each one undoable in History.</span>}
+      </span>
     </div>
   );
 }

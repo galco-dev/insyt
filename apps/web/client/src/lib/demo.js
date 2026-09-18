@@ -442,7 +442,7 @@ function customerDemo(path, method, body) {
   if (p.startsWith('/api/app/dismiss/')) {
     const id = p.split('/').pop();
     const i = s.pending.findIndex((x) => x.id === id);
-    if (i !== -1) s.pending.splice(i, 1);
+    if (i !== -1) { const item = s.pending.splice(i, 1)[0]; s.ledger.unshift({ id: `l-${Date.now()}`, event: 'change_requested', actor: 'user', summary_text: `Not this one: ${item.title}. We will not suggest it again.`, created_at: cnow() }); }
     return { ok: true };
   }
   if (p === '/api/app/request-change') {
@@ -460,7 +460,12 @@ function customerDemo(path, method, body) {
   if (/^\/api\/app\/alerts\/[^/]+\/(ack|expected)$/.test(p)) { if (!s.ackedAlerts) s.ackedAlerts = new Set(); s.ackedAlerts.add(p.split('/')[4]); return { ok: true }; }
   if (p === '/api/app/emails') { s.emails = { reports: !!(body && body.reports) }; return { ok: true, reports: s.emails.reports }; }
   if (p === '/api/app/confirm') return { ok: true, run_id: 'demo-run' };
-  if (p.startsWith('/api/app/snooze/')) { const id = p.split('/').pop(); const i = s.pending.findIndex((x) => x.id === id); if (i !== -1) s.pending.splice(i, 1); return { ok: true, until: new Date(Date.now() + 7 * 86_400_000).toISOString() }; }
+  if (p.startsWith('/api/app/snooze/')) {
+    const id = p.split('/').pop(); const i = s.pending.findIndex((x) => x.id === id);
+    const until = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    if (i !== -1) { const item = s.pending.splice(i, 1)[0]; s.ledger.unshift({ id: `l-${Date.now()}`, event: 'change_requested', actor: 'user', summary_text: `Later: ${item.title}. It comes back on ${new Date(until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`, created_at: cnow() }); }
+    return { ok: true, until };
+  }
   if (p.startsWith('/api/app/approve-part/')) { const id = p.split('/').pop(); const i = s.pending.findIndex((x) => x.id === id); if (i !== -1) { const item = s.pending.splice(i, 1)[0]; s.cumulative.fixes += 1; s.ledger.unshift({ id: `l-${Date.now()}`, event: 'fix_applied', actor: 'user', change_id: id, summary_text: `Excluded ${(body && body.keep ? body.keep.length : 0)} searches from your ads. Reversible with one tap.`, created_at: cnow() }); } return { ok: true }; }
   if (p === '/api/app/exceptions') {
     if (!s.exceptions) s.exceptions = [];

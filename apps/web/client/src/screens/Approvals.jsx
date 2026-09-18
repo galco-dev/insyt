@@ -300,6 +300,9 @@ export default function Approvals() {
   const { access, level, gate, goUnlock, money, version } = useAccess();
   const batch = useBatchApprove();
   const [batchBusy, setBatchBusy] = useState(false);
+  // A yes is confirmed once (QA-005): the exact change, what happens next, and undo, before it goes.
+  const [confirming, setConfirming] = useState(null);
+  const [batchArmed, setBatchArmed] = useState(false);
 
   const load = () => api('/api/app/approvals').then((d) => setPending(d.pending)).catch((e) => setError(e.message));
   useEffect(() => { load(); api('/api/app/settings').then((d) => setAssistant(!!(d.settings && d.settings.assistant_enabled))).catch(() => {}); }, [version]);
@@ -362,8 +365,10 @@ export default function Approvals() {
     return list.sort((a, b) => (a.key === 'account') - (b.key === 'account'));
   })();
   const isGroupOpen = (key, index) => (key in openGroups ? openGroups[key] : !(narrow && index > 0));
+  // Confirmed once (QA-005): the first tap arms it, the second approves.
   async function approveSafe() {
-    setBatchBusy(true);
+    if (!batchArmed) { setBatchArmed(true); return; }
+    setBatchBusy(true); setBatchArmed(false);
     try { await batch(safe, `${safe.length} safe fixes`); } catch (e) { setError(e.message); }
     setBatchBusy(false);
   }
@@ -386,7 +391,7 @@ export default function Approvals() {
           </p>
           {safe.length >= 2 && (
             <Button variant="secondary" onClick={approveSafe} disabled={batchBusy} className="!px-4 !py-2">
-              {batchBusy ? 'Approving…' : `Approve all ${safe.length} safe fixes`}
+              {batchBusy ? 'Approving…' : batchArmed ? `Yes, approve all ${safe.length}` : `Approve all ${safe.length} safe fixes`}
             </Button>
           )}
         </div>
@@ -439,8 +444,22 @@ export default function Approvals() {
                   />
                 )}
                 {viewer && <p className="mt-3 text-tiny text-neutral-900">View only. The owner decides.</p>}
-                <div className={`mt-4 flex flex-wrap gap-3 ${viewer ? 'hidden' : ''}`}>
-                  <Button onClick={() => act('approve', p.id)} disabled={busy === p.id} className="!px-5 !py-2.5">
+                {confirming === p.id && !viewer && (
+                  <div className="mt-4 rounded border border-neutral-300 bg-neutral-50 p-4 text-small" role="group" aria-label="Confirm this change">
+                    <div className="font-medium">You are approving: {p.title}{p.list && kept[p.id] && kept[p.id].size < p.list.length ? ` (${kept[p.id].size} of ${p.list.length})` : ''}</div>
+                    <ul className="mt-2 flex flex-col gap-1 text-neutral-900">
+                      {p.money_line && <li>{p.money_line.charAt(0).toUpperCase() + p.money_line.slice(1)}.</li>}
+                      <li>Applied to your own Google account within the hour, then watched for 48 hours.</li>
+                      <li>One tap in History undoes it. It lands in your History the moment you say yes.</li>
+                    </ul>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <Button onClick={() => { setConfirming(null); act('approve', p.id); }} disabled={busy === p.id} className="!px-5 !py-2.5">Yes, apply it</Button>
+                      <Button variant="secondary" onClick={() => setConfirming(null)} className="!px-4 !py-2.5">Not yet</Button>
+                    </div>
+                  </div>
+                )}
+                <div className={`mt-4 flex flex-wrap gap-3 ${viewer || confirming === p.id ? 'hidden' : ''}`}>
+                  <Button onClick={() => setConfirming(p.id)} disabled={busy === p.id} className="!px-5 !py-2.5">
                     {p.list && kept[p.id] && kept[p.id].size < p.list.length ? `Approve ${kept[p.id].size} of ${p.list.length}` : 'Approve'}
                   </Button>
                   <Button variant="secondary" onClick={() => act('later', p.id)} disabled={busy === p.id} className="!px-4 !py-2.5">
