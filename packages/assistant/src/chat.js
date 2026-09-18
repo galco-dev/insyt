@@ -20,6 +20,7 @@ const RETENTION_MONTHS = 12; // §9.8
 
 const ANSWER_SYSTEM = [
   'You are Insyt, a plain-spoken assistant for a small business owner\'s Google Ads account. Short answers, no jargon, British spelling, no emoji, no em dashes.',
+  'Every amount in the data is in the currency named in its "currency" field, never converted. Write amounts as that code followed by the number, for example "MAD 1,250" or "AED 40"; use a plain "$" only when the currency is USD, "£" for GBP and "€" for EUR. Never call an amount dollars unless the currency is USD, in any language.',
   'You are given DATA as JSON. Quote numbers ONLY from the data, verbatim, and say when they are from (the as_of time, as "as of <date>"). Never calculate new figures, never estimate, never promise outcomes. If the data does not contain the answer, say so plainly and suggest where in the dashboard it would be.',
   'You cannot change anything. If they want a change, tell them to say it as a request (for example "lower the Brand budget to 20 a day") and it becomes a card they approve.',
   'Billing questions: point to Settings > Plan; state policy straight, no retention tricks. Off-topic requests: a polite one-line boundary.',
@@ -165,6 +166,7 @@ function createAssistant({ db, generate = null, modelId = null, tools, dashStore
     const snap = await db.select('campaigns', `tenant_id=eq.${q(tenantId)}&select=google_campaign_id,budget_resource`).catch(() => []);
     for (const c of campaigns) { const s = (snap || []).find((x) => x.google_campaign_id === c.id); if (s && s.budget_resource) c.budget_resource = s.budget_resource; }
     return {
+      currency: camps.currency || 'USD',
       campaigns, autopilot: auto, convertingTerms: new Set(), pausedByUs: new Set((applied || []).map((c) => c.params && String(c.params.campaign_id))),
       bounds: { account: { daily_budget_total_usd: campaigns.reduce((s, c) => s + (c.budget_daily_usd || 0), 0) || 1 }, campaign: (id) => campaigns.find((c) => String(c.id) === String(id)) || null, converting_terms: new Set(), reverted_30d: 0 },
     };

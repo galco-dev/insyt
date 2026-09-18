@@ -17,7 +17,9 @@ const { checkBounds, BOUNDS } = require('../../registry/src/bounds');
 const { changeKey } = require('../../registry/src/drafts');
 
 const INTENTS = ['budget_set', 'budget_change', 'pause_campaign', 'enable_campaign', 'add_negatives', 'autopilot_off', 'autopilot_on', 'question', 'unknown'];
-const usd = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+const { fmtMoney } = require('../../shared/src/money');
+let CUR = 'USD';
+const usd = (n) => fmtMoney(n, CUR);
 
 const SYSTEM = [
   'You turn a small-business owner\'s request about their Google Ads into ONE structured intent. You never decide what to do; code does.',
@@ -38,6 +40,7 @@ function matchCampaign(name, campaigns) {
 /** Deterministic mapping: intent → draft (registry-shaped) or a reply. */
 function mapIntent(intent, ctx, text) {
   const campaigns = ctx.campaigns || [];
+  CUR = ctx.currency || 'USD';
   const one = (label) => (campaigns.length === 1 ? campaigns[0] : null) || (label ? matchCampaign(label, campaigns) : null);
   const askWhich = `Which campaign do you mean? You have: ${campaigns.map((c) => `"${c.name}"`).join(', ')}.`;
 
