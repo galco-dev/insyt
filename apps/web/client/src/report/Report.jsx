@@ -460,7 +460,7 @@ export default function Report({ reportId = null }) {
   ];
 
   return (
-    <div className={clsx('pb-32', locked && 'locked')}>
+    <div className={clsx('pb-56 sm:pb-36', locked && 'locked')}>
       <main className="mx-auto max-w-l2 px-5">
         {/* hero */}
         <section className="flex flex-col gap-8 pt-10 sm:flex-row sm:items-center">
