@@ -43,3 +43,4 @@ deploy request: the assistant reads its reply from the first text block (thinkin
 2026-09-18T10:20:30Z assistant: account currency in every answer, full campaign and finding lists
 2026-09-18T10:31:49Z assistant: keep-under cap requests, plain-text replies, thread follows the newest line
 2026-09-18T10:37:56Z report route: a missing id answers 404, a link with no target lands on the app
+2026-09-18T10:48:57Z chat cards: changes no longer require a finding; chat failures logged; amount field currency-neutral

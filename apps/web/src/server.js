@@ -447,8 +447,13 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                   if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
                   const text = String(parsed.text || '').trim();
                   if (!text) return json(res, 400, { error: 'Say what you would like to know or change.' });
-                  const r = await dashStore.chat(t, text, parsed.conversation_id || null);
-                  return json(res, 200, r);
+                  try {
+                    return json(res, 200, await dashStore.chat(t, text, parsed.conversation_id || null));
+                  } catch (e) {
+                    // The thread shows a plain retry line; the log line is the only way to know why.
+                    console.error(`chat turn for ${t} failed: ${e && e.message}`);
+                    return json(res, 500, { error: 'Something went wrong on our side. Try again in a moment; your approvals and dashboard are unaffected.' });
+                  }
                 }
                 // Later, partial yes, leave alone (fix plan moves 6 and 7).
                 if (sub.startsWith('/snooze/')) {
