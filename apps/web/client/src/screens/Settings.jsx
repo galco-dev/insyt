@@ -481,6 +481,15 @@ export default function Settings() {
             <p className="mt-0.5 text-small text-neutral-900">
               What we may fix without waiting for a tap. Everything stays reversible and lands in your history.
             </p>
+            {access && !onAutopilotPlan && (
+              <p className="mt-2 text-tiny text-neutral-900">
+                {level === 'locked'
+                  ? 'Unlock your audit for $20 first, then an Autopilot plan turns these on. Tapping a switch takes you to the unlock.'
+                  : level === 'unlocked'
+                    ? 'These turn on with an Autopilot plan. Tapping a switch opens the plans.'
+                    : 'These turn on with the Autopilot plan. Tapping a switch shows the upgrade.'}
+              </p>
+            )}
             <div className="mt-3 flex flex-col gap-2.5">
               {Object.entries(AUTOPILOT_LABEL).map(([key, label]) => (
                 <div key={key} className="flex items-center justify-between gap-3 text-small">
