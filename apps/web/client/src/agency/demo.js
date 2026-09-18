@@ -294,7 +294,7 @@ export function agencyDemo(path, method, body) {
         const connection = acc.status === 'pending' ? 'none' : acc.id === 'a10' ? 'reconnect' : 'connected';
         return {
           account: { ...acc, tenant_id: `tn-${acc.id}`, seat_id: acc.seat ? (s.seats.find((x) => x.name === acc.seat.name) || {}).id || null : null },
-          tenant: { business_name: acc.display_name, website_url: `${acc.display_name.toLowerCase().replace(/[^a-z]+/g, '')}.ae`, status: acc.status === 'paused' ? 'paused' : 'active' },
+          tenant: { business_name: acc.display_name, website_url: `${acc.display_name.toLowerCase().replace(/[^a-z]+/g, '')}.com`, status: acc.status === 'paused' ? 'paused' : 'active' },
           connection,
           latest_report: acc.status === 'pending' ? null : { id: `rep-${acc.id}`, type: 'weekly', created_at: '2026-08-17T07:00:00Z', review_status: null, url: '/app/report?demo=1' },
           runs: acc.status === 'pending' ? [] : [{ id: 'run-1', type: 'weekly', status: 'complete', started_at: '2026-08-17T06:40:00Z', finished_at: '2026-08-17T07:00:00Z' }],

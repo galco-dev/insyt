@@ -9,12 +9,12 @@ const pending = [
   {
     id: 'chg-1',
     category: 'negatives',
-    list: ['nail courses dubai', 'nail technician jobs', 'gel nails at home', 'nail salon for sale', 'free nail art'],
-    fence: { target: 'campaign:11', label: 'Brand - Dubai', summary_text: 'Leave "Brand - Dubai" alone' },
+    list: ['nail courses', 'nail technician jobs', 'gel nails at home', 'nail salon for sale', 'free nail art'],
+    fence: { target: 'campaign:11', label: 'Brand', summary_text: 'Leave "Brand" alone' },
     title: '$430 a month goes to searches that never book',
     money_line: 'stopped the same day you approve',
     explanation: 'Over 90 days, 11 recurring search themes - nail courses, salon jobs, DIY kits - spent money and produced zero bookings.',
-    before_line: 'Your ads show for "nail courses dubai", "nail technician jobs", "gel nails at home"',
+    before_line: 'Your ads show for "nail courses", "nail technician jobs", "gel nails at home"',
     after_line: '14 searches excluded - your ads only show to people looking to book',
   },
   {
@@ -93,16 +93,16 @@ const DEMO = {
       plan_line: 'Core · $129/mo (active)',
       autopilot: { negatives: false, budgets: false, counting: false },
       connection_status: 'Google connection healthy.',
-      weekly: { timezone: 'Asia/Dubai', next_run_at: null, next_check_days: null, last_runs: [] },
-      emails: { reports: true, address: 'hello@glowstudio.ae' },
-      business: { name: 'Glow Studio', website: 'glowstudio.ae', currency: 'USD', band: '4k' },
+      weekly: { timezone: 'UTC', next_run_at: null, next_check_days: null, last_runs: [] },
+      emails: { reports: true, address: 'hello@glowstudio.com' },
+      business: { name: 'Glow Studio', website: 'glowstudio.com', currency: 'USD', band: '4k' },
     },
   },
   'GET /api/app/discovery': {
     matched: [
       { id: 'a1', kind: 'ads_account', external_id: '642-459-1230', display_name: 'Glow Studio - Ads', linked: true },
       { id: 'a2', kind: 'ga4_property', external_id: '3418867', display_name: 'Glow Studio - Analytics', linked: true },
-      { id: 'a3', kind: 'gtm_container', external_id: 'GTM-K2P9QX', display_name: 'glowstudio.ae', linked: true },
+      { id: 'a3', kind: 'gtm_container', external_id: 'GTM-K2P9QX', display_name: 'glowstudio.com', linked: true },
     ],
     unmatched: [
       { id: 'a4', kind: 'ga4_property', external_id: '2207114', display_name: 'Old site (2023)', linked: false },
@@ -113,14 +113,14 @@ const DEMO = {
         { id: 'a5', kind: 'ads_account', external_id: '901-220-4471', display_name: 'Glow Studio (old)', spend_30d_usd: 0, test_account: false },
       ] },
       ga4_property: { state: 'matched', matched: [{ id: 'a2', kind: 'ga4_property', external_id: '3418867', display_name: 'Glow Studio - Analytics' }], candidates: [], suggested: null },
-      gtm_container: { state: 'matched', matched: [{ id: 'a3', kind: 'gtm_container', external_id: 'GTM-K2P9QX', display_name: 'glowstudio.ae' }], candidates: [], suggested: null },
+      gtm_container: { state: 'matched', matched: [{ id: 'a3', kind: 'gtm_container', external_id: 'GTM-K2P9QX', display_name: 'glowstudio.com' }], candidates: [], suggested: null },
     },
     campaigns: [
-      { id: '11', name: 'Brand - Dubai', status: 'enabled', spend_30d_usd: 310 },
-      { id: '12', name: 'Gel nails - Dubai', status: 'enabled', spend_30d_usd: 720 },
+      { id: '11', name: 'Brand', status: 'enabled', spend_30d_usd: 310 },
+      { id: '12', name: 'Gel nails', status: 'enabled', spend_30d_usd: 720 },
       { id: '13', name: 'Bridal packages', status: 'paused', spend_30d_usd: 0 },
     ],
-    site: 'glowstudio.ae',
+    site: 'glowstudio.com',
     no_access: false,
   },
   'GET /api/app/plan': {
@@ -138,7 +138,7 @@ const DEMO = {
       change_id: 'chg-1',
       finding_title: '$430 a month goes to searches that never book',
       explanation: 'Over 90 days, 11 recurring search themes - nail courses, salon jobs, DIY kits - spent $1,290 and produced zero bookings. Excluding them stops the leak the same day.',
-      before_line: 'Your ads show for “nail courses dubai”, “nail technician jobs”, “gel nails at home”…',
+      before_line: 'Your ads show for “nail courses”, “nail technician jobs”, “gel nails at home”…',
       after_line: '14 searches excluded - ads only show to people looking to book.',
     },
   },
@@ -255,7 +255,7 @@ function demoOverview(s, level) {
     accounts: [
       { kind: 'ads_account', label: 'Google Ads', href: '/app/connected', name: 'Glow Studio - Ads', external_id: '642-459-1230', status: 'ok', read_at: lastCheck },
       { kind: 'ga4_property', label: 'Analytics', href: '/app/connected/analytics', name: 'Glow Studio - Analytics', external_id: '3418867', status: 'ok', read_at: lastCheck },
-      { kind: 'gtm_container', label: 'Tag Manager', href: '/app/connected/tag-manager', name: 'glowstudio.ae', external_id: 'GTM-K2P9QX', status: 'ok', read_at: lastCheck },
+      { kind: 'gtm_container', label: 'Tag Manager', href: '/app/connected/tag-manager', name: 'glowstudio.com', external_id: 'GTM-K2P9QX', status: 'ok', read_at: lastCheck },
     ],
     alerts: [
       { id: 'al-1', severity: 'warning', kind: 'spend_spike', title: 'Yesterday cost 2.4x a normal day', at: new Date(now - 26 * 3600_000).toISOString(), acked: !!(s.ackedAlerts && s.ackedAlerts.has('al-1')) },
@@ -308,7 +308,7 @@ function customerDemo(path, method, body) {
     }
     if (p === '/api/app/overview') return { overview: demoOverview(s, access.level), access };
     if (p === '/api/app/runs') return { runs: demoRuns() };
-    if (p === '/api/app/businesses') return { businesses: [{ tenant_id: 'demo', name: 'Glow Studio', website: 'glowstudio.ae', current: true }], role: 'owner' };
+    if (p === '/api/app/businesses') return { businesses: [{ tenant_id: 'demo', name: 'Glow Studio', website: 'glowstudio.com', current: true }], role: 'owner' };
     if (p === '/api/app/approvals') return { pending: gatedPending(s, access.level), access };
     if (p === '/api/app/ledger') return { entries: access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event)), pending: gatedPending(s, access.level), receipts: access.level === 'active' ? structuredClone(RECEIPTS) : {}, access };
     if (p === '/api/app/settings') {
@@ -316,10 +316,10 @@ function customerDemo(path, method, body) {
       base.settings.autopilot = { ...s.autopilot };
       base.settings.assistant_enabled = true; // demo consoles first (§7.6)
       base.settings.plan_line = access.level === 'active' ? `${access.plan.label} · $${access.plan.price_usd}/mo (active)` : 'Free check, no plan yet';
-      const gulf = new Date(Date.now() + 4 * 3600_000);
-      const nextDays = (7 - gulf.getUTCDay()) % 7 || 7;
-      gulf.setUTCDate(gulf.getUTCDate() + nextDays);
-      base.settings.weekly = { ...base.settings.weekly, next_run_at: gulf.toISOString().slice(0, 10), next_check_days: nextDays, last_runs: demoRuns() };
+      const next = new Date();
+      const nextDays = (7 - next.getUTCDay()) % 7 || 7;
+      next.setUTCDate(next.getUTCDate() + nextDays);
+      base.settings.weekly = { ...base.settings.weekly, next_run_at: next.toISOString().slice(0, 10), next_check_days: nextDays, last_runs: demoRuns() };
       if (s.emails) base.settings.emails = { ...base.settings.emails, ...s.emails };
       if (s.business) base.settings.business = { ...base.settings.business, ...s.business };
       base.access = access;
@@ -331,10 +331,10 @@ function customerDemo(path, method, body) {
     }
     if (p === '/api/app/drafts') {
       if (!s.drafts) {
-        s.drafts = [{ id: 'd1', status: 'draft', template: 'generic', name: 'Gel nails - Dubai', budget_daily_usd: 25,
-          plain: { headline: 'Your ad: Gel nails - Dubai', who_sees_it: 'This shows to people searching for what you offer near Dubai.', what_it_says: '', what_you_pay: 'Up to $25 a day. You only pay when someone clicks. It starts switched off - nothing spends until you say go.', safety_line: 'We checked your setup first, so every click gets counted correctly from day one.' },
+        s.drafts = [{ id: 'd1', status: 'draft', template: 'generic', name: 'Gel nails', budget_daily_usd: 25,
+          plain: { headline: 'Your ad: Gel nails', who_sees_it: 'This shows to people searching for what you offer near you.', what_it_says: '', what_you_pay: 'Up to $25 a day. You only pay when someone clicks. It starts switched off - nothing spends until you say go.', safety_line: 'We checked your setup first, so every click gets counted correctly from day one.' },
           gates: { ok: true, blockers: [], steps: [] },
-          ad_groups: [{ name: 'Gel nails', rsa: { headlines: ['Gel Nails in Dubai', 'Book Gel Nails Today', 'The Nail DXB - Gel Nails', 'See Prices & Availability', 'Rated by Real Customers', 'Fast, Friendly Service', 'Easy Online Booking', 'Get a Quote in Minutes'], descriptions: ['Looking for gel nails in Dubai? The Nail DXB makes booking simple - clear prices, real reviews.', 'Book online in under a minute, or message us with any question.', 'Local, reliable and rated by customers like you.'], pinned: {} } }],
+          ad_groups: [{ name: 'Gel nails', rsa: { headlines: ['Gel Nails Near You', 'Book Gel Nails Today', 'Glow Studio - Gel Nails', 'See Prices & Availability', 'Rated by Real Customers', 'Fast, Friendly Service', 'Easy Online Booking', 'Get a Quote in Minutes'], descriptions: ['Looking for gel nails near you? Glow Studio makes booking simple - clear prices, real reviews.', 'Book online in under a minute, or message us with any question.', 'Local, reliable and rated by customers like you.'], pinned: {} } }],
           created_at: '2026-08-26T09:00:00Z' }];
       }
       return { drafts: s.drafts };
@@ -342,12 +342,12 @@ function customerDemo(path, method, body) {
     if (p === '/api/app/setup') return { steps: [{ key: 'ga4', label: 'Visit tracking', done: true }, { key: 'gtm', label: 'Tracking code on your site', done: true }, { key: 'goal', label: 'Counting customer actions', done: true }, { key: 'billing', label: 'Ad money connected to Google', done: true }], journey: 'A' };
     if (p === '/api/app/fence-options') {
       const fenced = new Set((s.exceptions || []).map((e) => e.target));
-      return { options: [{ target: 'campaign:11', name: 'Brand - Dubai', status: 'enabled', budget_daily_usd: 25 }, { target: 'campaign:12', name: 'Gel nails - Dubai', status: 'enabled', budget_daily_usd: 40 }, { target: 'campaign:13', name: 'Bridal packages', status: 'paused', budget_daily_usd: 15 }].map((o) => ({ ...o, fenced: fenced.has(o.target) })) };
+      return { options: [{ target: 'campaign:11', name: 'Brand', status: 'enabled', budget_daily_usd: 25 }, { target: 'campaign:12', name: 'Gel nails', status: 'enabled', budget_daily_usd: 40 }, { target: 'campaign:13', name: 'Bridal packages', status: 'paused', budget_daily_usd: 15 }].map((o) => ({ ...o, fenced: fenced.has(o.target) })) };
     }
     if (p.startsWith('/api/app/revert-preview/')) return { summary_text: 'Excluded 14 searches from your ads', then_line: 'Puts it back to: your ads show for those 14 searches again', now_line: null, can_undo: true };
     if (p === '/api/app/exceptions') {
       if (!s.exceptions) {
-        s.exceptions = [{ id: 'ex1', summary_text: 'Excluded 3 wasted searches from "Brand - Dubai"', target: 'campaign:11:negatives', created_from: 'revert', created_at: '2026-08-20T09:12:00Z' }];
+        s.exceptions = [{ id: 'ex1', summary_text: 'Excluded 3 wasted searches from "Brand"', target: 'campaign:11:negatives', created_from: 'revert', created_at: '2026-08-20T09:12:00Z' }];
       }
       return { exceptions: s.exceptions };
     }
@@ -387,7 +387,7 @@ function customerDemo(path, method, body) {
     const m = /(lower|raise|set|change).*?(\d+)/i.exec(t);
     if (/budget/i.test(t) && m) {
       const amt = Number(m[2]);
-      card = { id: `c-${Date.now()}`, summary: `${/lower|reduce|cut/i.test(t) ? 'Lower' : 'Set'} "Brand - Dubai" daily budget $25 → $${amt}`, before_line: '"Brand - Dubai" runs on $25 a day', after_line: `"Brand - Dubai" runs on $${amt} a day` };
+      card = { id: `c-${Date.now()}`, summary: `${/lower|reduce|cut/i.test(t) ? 'Lower' : 'Set'} the "Brand" budget from $25 to $${amt} a day`, before_line: '"Brand" runs on $25 a day', after_line: `"Brand" runs on $${amt} a day` };
       s.pending.unshift({ id: card.id, title: card.summary, money_line: null, explanation: `You asked: "${t}"`, before_line: card.before_line, after_line: card.after_line, ask_reason: 'you asked for it in chat' });
       reply = `Drafted: ${card.summary}. The card is in your approvals; nothing changes until you tap it.`;
     } else if (/pause|stop/i.test(t) && /autopilot/i.test(t)) {

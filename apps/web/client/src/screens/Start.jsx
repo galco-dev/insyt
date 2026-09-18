@@ -71,7 +71,7 @@ export default function Start() {
   async function begin(given, resumeId = null, { force = false } = {}) {
     const target = (typeof given === 'string' ? given : url).trim();
     setError(null);
-    if (!target && !resumeId) { setError('Type your website address - like glowstudio.ae'); return; }
+    if (!target && !resumeId) { setError('Type your website address - like glowstudio.com'); return; }
     setState('crawling'); setStage(0);
     const stageTimer = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 2600);
 

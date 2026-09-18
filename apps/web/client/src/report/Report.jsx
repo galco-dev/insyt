@@ -466,7 +466,7 @@ export default function Report({ reportId = null }) {
         <section className="flex flex-col gap-8 pt-10 sm:flex-row sm:items-center">
           <HealthDial score={audit.health} label={audit.healthLabel} />
           <div>
-            <MonoLabel>{audit.business} · {audit.city} · {audit.site}</MonoLabel>
+            <MonoLabel>{audit.business} · {audit.site}</MonoLabel>
             <h1 className="mt-2 text-h2 tracking-tight">
               About <span className="text-critical">${audit.wasteMonthly.toLocaleString()} a month</span> is going to waste.
             </h1>
@@ -665,7 +665,7 @@ function SampleBar() {
   function go(e) {
     e.preventDefault();
     const v = site.trim();
-    if (!v) { setError('Type your website address, like glowstudio.ae'); return; }
+    if (!v) { setError('Type your website address, like glowstudio.com'); return; }
     navigate(`/app/start?url=${encodeURIComponent(v)}`);
   }
   return (
