@@ -417,7 +417,7 @@ function RealReport({ reportId }) {
           </div>
         </section>
 
-        <DoAllBar pending={pending} access={access} level={level} money={money} />
+        <DoAllBar pending={pending} access={access} level={level} money={(n) => fmtMoney(n, (access && access.currency) || code)} />
 
         {campaignsLine && <p className="mt-6 text-small text-neutral-900">{campaignsLine}</p>}
         {findings.length === 0 ? (

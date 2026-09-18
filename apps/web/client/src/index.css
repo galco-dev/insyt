@@ -350,3 +350,6 @@
 .wordmark-dark { display: none; }
 .dark-mode .wordmark-light { display: none; }
 .dark-mode .wordmark-dark { display: inline-block; }
+
+/* Names from Google can be right-to-left; keep each one's direction intact inside an English line. */
+.bidi { unicode-bidi: plaintext; }

@@ -160,7 +160,7 @@ function RequestComposer() {
             onChange={(e) => setText(e.target.value)}
             rows={2}
             maxLength={500}
-            placeholder="For example: keep my spend under $40 a day until March"
+            placeholder={`For example: keep my spend under ${money ? money(40) : '$40'} a day until March`}
             aria-label="What would you like changed?"
             className="mt-3 w-full resize-none rounded border border-neutral-300 bg-page p-3 text-body outline-none focus:border-neutral-500"
           />
@@ -407,9 +407,9 @@ export default function Approvals() {
           {groups.map((g, gi) => (
             <div key={g.key}>
               {groups.length > 1 && (
-                <button type="button" onClick={() => setOpenGroups((o) => ({ ...o, [g.key]: !isGroupOpen(g.key, gi) }))} aria-expanded={isGroupOpen(g.key, gi)} className="mb-2 mt-2 flex w-full items-center justify-between text-left">
-                  <span className="text-h5">{g.label}</span>
-                  <span className="font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">{g.items.length} fix{g.items.length === 1 ? '' : 'es'}{isGroupOpen(g.key, gi) ? '' : ' · show'}</span>
+                <button type="button" onClick={() => setOpenGroups((o) => ({ ...o, [g.key]: !isGroupOpen(g.key, gi) }))} aria-expanded={isGroupOpen(g.key, gi)} className="mb-2 mt-2 flex w-full flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-left">
+                  <span className="bidi line-clamp-2 min-w-0 flex-1 text-h5" title={g.label}>{g.label}</span>
+                  <span className="shrink-0 whitespace-nowrap font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">{g.items.length} fix{g.items.length === 1 ? '' : 'es'}{isGroupOpen(g.key, gi) ? '' : ' · show'}</span>
                 </button>
               )}
               <div className={`flex flex-col gap-3 ${groups.length > 1 && !isGroupOpen(g.key, gi) ? 'hidden' : ''}`}>
@@ -418,7 +418,7 @@ export default function Approvals() {
             const isOpen = !!open[p.id];
             return (
               <Card key={p.id} className="p-5">
-                <div className="text-body font-medium">{p.title}</div>
+                <div className="bidi text-body font-medium">{p.title}</div>
                 {p.money_line && !locked && <div className="mt-0.5 text-small text-neutral-900">{p.money_line}</div>}
                 {locked && (
                   <div className="mt-0.5 inline-flex items-center gap-1.5 text-small text-neutral-900" aria-label="Unlocks with the full report">

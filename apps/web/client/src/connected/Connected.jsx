@@ -81,10 +81,10 @@ function KV({ items }) {
 function Head({ api: apiName, scope, fetchedAt, onRefresh, busy }) {
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <div>
+      <div className="min-w-0">
         <MonoLabel>Read through</MonoLabel>
-        <div className="mt-0.5 text-body font-medium">{apiName}</div>
-        <div className="mt-0.5 font-mono text-tiny text-neutral-900">{scope}</div>
+        <div className="mt-0.5 break-words text-body font-medium">{apiName}</div>
+        <div className="mt-0.5 break-all font-mono text-tiny text-neutral-900">{scope}</div>
       </div>
       <div className="flex items-center gap-3">
         {fetchedAt && <span className="font-mono text-tiny text-neutral-900">fetched {when(fetchedAt)}</span>}

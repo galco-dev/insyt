@@ -119,7 +119,13 @@ export function PerformanceChart({ w = 660, days, checks = [], fixes = [], label
   const h = padT + panelH + gap + panelH + padB;
   const x = (i) => padL + (i / Math.max(n - 1, 1)) * (w - padL - padR);
   const idx = (iso) => { const d = String(iso || '').slice(0, 10); const i = days.findIndex((p) => p.date === d); return i; };
-  const spend = days.map((d) => Number(d.spend_usd || 0));
+  const spendRaw = days.map((d) => Number(d.spend_usd || 0));
+  // An outlier day (a spike several times the next highest) would flatten the
+  // other 27 into a line at zero: clamp it to the chart and label it instead.
+  const sortedSpend = [...spendRaw].sort((a, b) => b - a);
+  const cap = sortedSpend.length > 2 && sortedSpend[0] > sortedSpend[1] * 4 ? sortedSpend[1] * 1.6 : null;
+  const spend = cap ? spendRaw.map((v) => Math.min(v, cap)) : spendRaw;
+  const clipped = cap ? spendRaw.map((v, i) => (v > cap ? i : -1)).filter((i) => i >= 0) : [];
   const conv = days.map((d) => Number(d.conversions || 0));
   const top = { t: padT, b: padT + panelH };
   const bot = { t: padT + panelH + gap, b: padT + panelH + gap + panelH };
@@ -151,6 +157,12 @@ export function PerformanceChart({ w = 660, days, checks = [], fixes = [], label
         </line>
       ))}
       {panel(spend, ysT, SERIES[0], 'Cost', labelMoney)}
+      {clipped.map((i) => (
+        <g key={`clip${i}`}>
+          <line x1={x(i)} x2={x(i)} y1={top.t} y2={ysT.y(cap)} stroke={SERIES[0]} strokeWidth={1.8} strokeDasharray="3 3" />
+          <Txt x={Math.min(x(i), w - padR - 90)} y={top.t + 10} size={10} fill={SERIES[0]} weight={600}>{`off the chart: ${labelMoney(spendRaw[i])}`}</Txt>
+        </g>
+      ))}
       {panel(conv, ysB, SERIES[1], 'Results', (v) => fmt(v))}
       {fixMarks.map((f, k) => {
         const color = VERDICT[f.state] || STATUS.neutral;

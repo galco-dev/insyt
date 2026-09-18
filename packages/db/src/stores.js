@@ -1065,7 +1065,7 @@ function dashStore(db, deps = {}) {
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,size_band,price_usd,status&limit=1`, { single: true }),
         db.select('autopilot_settings', `tenant_id=eq.${q(tenantId)}&select=categories`, { single: true }),
         db.select('users', `tenant_id=eq.${q(tenantId)}&select=id,email&limit=1`, { single: true }).catch(() => null),
-        db.select('tenants', `id=eq.${q(tenantId)}&select=business_name,website_url,size_band,timezone,email_reports,assistant_enabled`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=business_name,website_url,size_band,timezone,email_reports,assistant_enabled,sandbox`, { single: true }).catch(() => null),
         store.runs(tenantId).catch(() => []),
         db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null),
       ]);
@@ -1084,7 +1084,7 @@ function dashStore(db, deps = {}) {
       // The date in Gulf time, not UTC, so a Saturday night never reads as Saturday.
       const nextRun = new Date(nowMs + 4 * 3600_000); nextRun.setUTCDate(nextRun.getUTCDate() + nextDays);
       return {
-        plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : 'Free check - no plan yet',
+        plan_line: sub ? `${sub.tier[0].toUpperCase()}${sub.tier.slice(1)} · $${sub.price_usd}/mo (${sub.status})` : (tenant && tenant.sandbox ? 'Sandbox account: every gate open, nothing to pay.' : 'Free check - no plan yet'),
         autopilot: (auto && auto.categories) || {},
         connection_status: (conn && CONNECTION_LINE[conn.status]) || 'Google connection pending.',
         assistant_enabled: await store.assistantEnabled(tenantId),

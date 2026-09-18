@@ -255,7 +255,7 @@ function Accounts({ accounts, site }) {
             <div className="min-w-0 flex-1">
               <MonoLabel>{a.label}</MonoLabel>
               <div className="truncate text-body">
-                {a.name ? <Link to={a.href} className="underline-offset-2 hover:underline">{a.name}</Link> : <span className="text-small text-neutral-900">{a.status === 'unused' ? UNUSED_LINE[a.kind] : 'Not matched to your site yet.'}</span>}
+                {a.name ? <Link to={a.href} className="bidi block truncate underline-offset-2 hover:underline" title={a.name}>{a.name}</Link> : <span className="text-small text-neutral-900">{a.status === 'unused' ? UNUSED_LINE[a.kind] : 'Not matched to your site yet.'}</span>}
               </div>
             </div>
             <div className="shrink-0 text-right text-tiny text-neutral-900">
@@ -541,8 +541,8 @@ export default function Home() {
           <div className="mt-3 flex flex-col gap-2">
             {pending.slice(0, 3).map((p, i) => (
               <Card key={p.id} className="rise lift flex items-center justify-between gap-3 p-4" style={{ '--rise-i': i }}>
-                <div>
-                  <div className="text-body font-medium">{p.title}</div>
+                <div className="min-w-0">
+                  <div className="bidi line-clamp-3 text-body font-medium" title={p.title}>{p.title}</div>
                   {p.money_line && access && access.level !== 'locked' && <div className="mt-0.5 text-small text-neutral-900">{p.money_line}</div>}
                 </div>
                 <Link to="/app/approvals"><Button variant="secondary" className="!px-4 !py-2">Review</Button></Link>
