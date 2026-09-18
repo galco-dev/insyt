@@ -115,17 +115,23 @@ const draftModel = process.env.ANTHROPIC_API_KEY ? {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: MODEL_ID, max_tokens: 900, system, messages: [{ role: 'user', content: prompt }] }),
+      // Thinking is always on for this model family and its tokens count against
+      // max_tokens, so the cap leaves room; low effort keeps a chat reply quick.
+      body: JSON.stringify({ model: MODEL_ID, max_tokens: 4000, output_config: { effort: 'low' }, system, messages: [{ role: 'user', content: prompt }] }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(`anthropic: ${res.status}`);
+    if (body.stop_reason === 'refusal') throw new Error('anthropic: refusal');
     const usage = body.usage || {};
     if (tenantId) {
       const { createTelemetry, modelCost } = require('../../../packages/shared/src/telemetry');
       const { MODEL_PRICE_IN_PER_MTOK, MODEL_PRICE_OUT_PER_MTOK } = require('../../../packages/shared/src/model-config');
       createTelemetry({ db }).modelUsage({ tenantId, inputTokens: Number(usage.input_tokens || 0), outputTokens: Number(usage.output_tokens || 0), costUsd: modelCost({ inputTokens: Number(usage.input_tokens || 0), outputTokens: Number(usage.output_tokens || 0), priceIn: MODEL_PRICE_IN_PER_MTOK, priceOut: MODEL_PRICE_OUT_PER_MTOK }) });
     }
-    return body.content[0].text;
+    // The first block is thinking on current models; the reply is the first text block.
+    const text = (body.content || []).filter((b) => b && b.type === 'text').map((b) => b.text).join('').trim();
+    if (!text) throw new Error('anthropic: empty reply');
+    return text;
   },
 } : null;
 // §5.1: Insyt creates the missing GA4 property / GTM container on the write grant.

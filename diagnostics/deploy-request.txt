@@ -39,3 +39,4 @@ deploy request: visual audit fixes (long names clamp, right-to-left names, repor
 deploy request: Approvals composer reads the currency formatter from the gate (blank page fix) - 2026-09-18T09:50:17Z
 deploy request: chart outlier label moves to the left, clear of the spike - 2026-09-18T09:55:04Z
 deploy request: a sandbox account has the assistant on - 2026-09-18T10:02:40Z
+deploy request: the assistant reads its reply from the first text block (thinking models put a thinking block first), never answers 'undefined' - 2026-09-18T10:10:51Z

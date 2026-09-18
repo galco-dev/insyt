@@ -143,7 +143,8 @@ function createAssistant({ db, generate = null, modelId = null, tools, dashStore
       references = { tools: picks };
       const past = await history(convId, 6);
       const prompt = `DATA:\n${JSON.stringify(data)}\n\nRECENT CONVERSATION:\n${past.map((m) => `${m.role}: ${m.text}`).join('\n')}\n\nQUESTION: ${clean}`;
-      try { reply = String(await gen({ system: ANSWER_SYSTEM, prompt })).trim(); } catch { reply = 'Something went wrong on our side; your dashboard has all of this. Try again in a moment.'; }
+      try { reply = String((await gen({ system: ANSWER_SYSTEM, prompt })) || '').trim(); } catch { reply = ''; }
+      if (!reply || reply === 'undefined') reply = 'Something went wrong on our side; your dashboard has all of this. Try again in a moment.';
       if (/cannot|can't|do not have|don't have|not (yet )?(available|in the data)/i.test(reply)) await tel.unanswered({ tenantId, source: 'chat', text: clean });
     }
 
