@@ -177,6 +177,12 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
           {access.credit_applies && (
             <p className="mt-4 rounded border border-neutral-300 bg-neutral-50 px-3 py-2 text-small">Your ${access.credit_usd || 20} audit is taken off the first month.</p>
           )}
+          <p className="mt-4 text-small text-neutral-900">
+            {cadence === 'annual'
+              ? `Stripe takes $${annual(primaryTier)} today for the year${access.credit_applies ? `, minus your $${access.credit_usd || 20} audit` : ''}, and the same again in twelve months.`
+              : `Stripe takes $${priceOf(primaryTier)} today${access.credit_applies ? `, minus your $${access.credit_usd || 20} audit` : ''}, then $${priceOf(primaryTier)} on the same day each month.`}
+            {' '}Cancel from Settings any time; nothing else is ever charged.
+          </p>
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Button onClick={() => subscribe(primaryTier)} disabled={!!busy} className="!px-6 !py-3">
               {busy ? 'Opening checkout' : cadence === 'annual' ? `Start ${TIER_LABEL[primaryTier]}, $${annual(primaryTier)}/year` : `Start ${TIER_LABEL[primaryTier]}, $${priceOf(primaryTier)}/month`}
@@ -216,6 +222,7 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
             })}
           </div>
           {access.credit_applies && <p className="mt-3 text-small text-neutral-900">Your $20 audit is taken off the first month, whichever plan you pick.</p>}
+          <p className="mt-3 text-small text-neutral-900">Stripe takes the first {cadence === 'annual' ? 'year' : 'month'} today and the same on each renewal. Cancel from Settings any time; nothing else is ever charged.</p>
         </div>
       )}
       {note && <p className={`mt-3 text-small ${/^Sent to/.test(note) ? 'text-success' : 'text-critical'}`}>{note}</p>}

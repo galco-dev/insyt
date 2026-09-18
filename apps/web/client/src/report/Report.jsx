@@ -13,6 +13,7 @@ import { useAccess, fmtMoney } from '../lib/access.jsx';
 import { useBatchApprove } from '../lib/batch.jsx';
 import { needsWriteStep, goWriteStep, FIX_ACCESS_LINE } from '../lib/fix-access.js';
 import { Link, useRouter } from '../lib/router.jsx';
+import { Receipt } from '../lib/ui.jsx';
 import {
   COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState, Button, Chip,
 } from '../lib/ui.jsx';
@@ -321,7 +322,7 @@ function RealReport({ reportId }) {
   const [pending, setPending] = useState([]);
   const [receipts, setReceipts] = useState({});
   const [error, setError] = useState(null);
-  const { gate, level, access, version } = useAccess();
+  const { gate, level, access, version, paidNow } = useAccess();
   useEffect(() => { api(`/api/app/report/${reportId}`).then((d) => { setReport(d.report); setPending(d.pending || []); setReceipts(d.receipts || {}); }).catch((e) => setError(e.message)); }, [reportId, version]);
 
   if (error) return <div className="mx-auto max-w-l2 px-5 pt-14"><ErrorNote message={error} /></div>;
@@ -389,6 +390,11 @@ function RealReport({ reportId }) {
   return (
     <div className={clsx('pb-32', locked && 'locked')}>
       <main className="mx-auto max-w-l2 px-5">
+        {paidNow && !locked && (
+          <div className="pt-6">
+            <Receipt to="/app/approvals" linkLabel="Go to approvals">Unlocked. Every row, every verdict and every fix below is open now. Each fix still waits for your tap, and your $20 comes off the first month if you start a plan. Changed your mind within 7 days? Email us and it is refunded.</Receipt>
+          </div>
+        )}
         <section className="flex flex-col gap-8 pt-10 sm:flex-row sm:items-center">
           {health != null && <HealthDial score={health} label={healthLabel} />}
           <div>

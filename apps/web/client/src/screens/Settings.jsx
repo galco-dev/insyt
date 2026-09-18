@@ -7,7 +7,7 @@ import clsx from 'clsx';
 import { api, isDemo } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
 import { useAccess } from '../lib/access.jsx';
-import { MonoLabel, Card, Spinner, Button, ErrorNote } from '../lib/ui.jsx';
+import { MonoLabel, Card, Spinner, Button, ErrorNote, Receipt } from '../lib/ui.jsx';
 
 const AUTOPILOT_LABEL = {
   negatives: 'Excluding money-wasting searches',
@@ -91,10 +91,15 @@ function WeeklyCheck({ weekly }) {
 function Emails({ emails, onChange }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [ok, setOk] = useState(null);
   if (!emails) return null;
   async function flip() {
-    setBusy(true); setNote(null);
-    try { const r = await api('/api/app/emails', { method: 'POST', body: { reports: !emails.reports } }); onChange({ ...emails, reports: !!r.reports }); }
+    setBusy(true); setNote(null); setOk(null);
+    try {
+      const r = await api('/api/app/emails', { method: 'POST', body: { reports: !emails.reports } });
+      onChange({ ...emails, reports: !!r.reports });
+      setOk(r.reports ? 'Weekly report emails are on. Each report lands in your inbox as well as here.' : 'Weekly report emails are off. Reports still appear here, and alerts about breakage still reach you.');
+    }
     catch (e) { setNote(e.message); }
     setBusy(false);
   }
@@ -119,6 +124,7 @@ function Emails({ emails, onChange }) {
             </div>
           </div>
           <p className="mt-2 text-tiny text-neutral-900">Alerts protect your money, so they always reach you.</p>
+          {ok && <div className="mt-2"><Receipt>{ok}</Receipt></div>}
           {note && <p className="mt-2 text-tiny text-critical">{note}</p>}
         </div>
       </div>
@@ -137,7 +143,7 @@ function Business({ business, money, onSaved }) {
   const dirty = name !== (business.name || '') || website !== (business.website || '');
   async function save() {
     setBusy(true); setNote(null);
-    try { const r = await api('/api/app/business', { method: 'POST', body: { name, website } }); onSaved({ ...business, name: r.business_name ?? name, website: r.website_url ?? website }); setNote('Saved.'); }
+    try { const r = await api('/api/app/business', { method: 'POST', body: { name, website } }); onSaved({ ...business, name: r.business_name ?? name, website: r.website_url ?? website }); setNote({ ok: true, text: 'Saved. Your reports and emails use the new details from the next check.' }); }
     catch (e) { setNote(e.message); }
     setBusy(false);
   }
@@ -158,8 +164,9 @@ function Business({ business, money, onSaved }) {
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Button variant="secondary" onClick={save} disabled={busy || !dirty} className="!px-4 !py-2">{busy ? 'Saving…' : 'Save'}</Button>
-            {note && <span className="text-tiny text-neutral-900">{note}</span>}
+            {note && !note.ok && <span className="text-tiny text-critical">{note}</span>}
           </div>
+          {note && note.ok && <div className="mt-3"><Receipt>{note.text}</Receipt></div>}
           <p className="mt-3 text-tiny text-neutral-900">
             Money shows in {business.currency || 'USD'}{money ? `, like ${money(1250)}` : ''}. Your plan is sized for {BAND_LINE[business.band] || BAND_LINE['4k']}, which sets the price you see.
           </p>
@@ -258,15 +265,16 @@ function Pause({ access, onChange }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
   const paused = access && access.paused_until;
+  const [ok, setOk] = useState(null);
   async function pause() {
-    setBusy(true); setNote(null);
-    try { const r = await api('/api/app/pause', { method: 'POST', body: { until: `${until}T00:00:00Z` } }); onChange(r.paused_until); }
+    setBusy(true); setNote(null); setOk(null);
+    try { const r = await api('/api/app/pause', { method: 'POST', body: { until: `${until}T00:00:00Z` } }); onChange(r.paused_until); setOk('Paused. Nothing runs and nothing is billed until then. Resume here whenever you like.'); }
     catch (e) { setNote(e.message); }
     setBusy(false);
   }
   async function resume() {
-    setBusy(true); setNote(null);
-    try { await api('/api/app/resume', { method: 'POST' }); onChange(null); } catch (e) { setNote(e.message); }
+    setBusy(true); setNote(null); setOk(null);
+    try { await api('/api/app/resume', { method: 'POST' }); onChange(null); setOk('Back on. The next check runs on schedule and billing resumes from today.'); } catch (e) { setNote(e.message); }
     setBusy(false);
   }
   return (
@@ -285,6 +293,7 @@ function Pause({ access, onChange }) {
           <Button variant="secondary" onClick={pause} disabled={busy} className="!px-4 !py-2">Pause</Button>
         </div>
       )}
+      {ok && <div className="mt-2"><Receipt>{ok}</Receipt></div>}
       {note && <p className="mt-2 text-tiny text-critical">{note}</p>}
     </div>
   );
@@ -366,6 +375,7 @@ export default function Settings() {
   const [settings, setSettings] = useState(null);
   const [error, setError] = useState(null);
   const [note, setNote] = useState(null);
+  const [ok, setOk] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
   const { access, level, gate, openSheet, goUnlock, money, setAccess } = useAccess();
   useEffect(() => {
@@ -402,12 +412,16 @@ export default function Settings() {
   async function flip(key) {
     if (level === 'active' && access && !onAutopilotPlan) { openSheet({ mode: 'upgrade', title: AUTOPILOT_LABEL[key] }); return; }
     const next = { ...autopilot, [key]: !autopilot[key] };
+    setNote(null); setOk(null);
     const run = async () => {
       setBusyKey(key);
       // Optimistic: the switch answers immediately; a failure rolls it back.
       setSettings((s) => ({ ...s, autopilot: next }));
       try {
         await api('/api/app/autopilot', { method: 'POST', body: { categories: next } });
+        setOk(next[key]
+          ? `Autopilot is on for ${AUTOPILOT_LABEL[key].toLowerCase()}. We apply those fixes ourselves, tell you after, and keep the one-tap undo on every one.`
+          : `Autopilot is off for ${AUTOPILOT_LABEL[key].toLowerCase()}. From now on we ask before every change there.`);
       } catch (e) {
         setSettings((s) => ({ ...s, autopilot }));
         throw e;
@@ -503,6 +517,7 @@ export default function Settings() {
                 </div>
               ))}
             </div>
+            {ok && <div className="mt-3"><Receipt to="/app/ledger" linkLabel="See it in History">{ok}</Receipt></div>}
           </div>
         </div>
       </Card>

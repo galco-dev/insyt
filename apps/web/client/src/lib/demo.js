@@ -56,15 +56,15 @@ const ledger = [
   { id: 'l6', event: 'watch_triggered', actor: 'system', summary_text: 'We started a 48-hour watch on your latest fixes.', created_at: daysAgo(3, 9) },
   { id: 'l5', event: 'fix_applied', actor: 'system', change_id: 'chg-0', money_impact_usd: 430, summary_text: 'Excluded 14 searches from your ads. Reversible with one tap.', created_at: daysAgo(3, 9) },
   { id: 'l4', event: 'approval', actor: 'user', summary_text: 'You approved 2 fixes from your inbox.', created_at: daysAgo(3, 8) },
-  { id: 'l3', event: 'report_sent', actor: 'system', summary_text: 'Weekly report delivered - 7 findings, about $1,240 a month at stake.', created_at: '2026-08-17T07:00:00Z' },
-  { id: 'l2', event: 'tag_verified', actor: 'system', summary_text: 'Your tracking is live - checked 12 pages, firing correctly.', created_at: '2026-08-12T15:20:00Z' },
-  { id: 'l1', event: 'connection_changed', actor: 'user', summary_text: 'Google connected - read access granted.', created_at: '2026-08-12T15:04:00Z' },
+  { id: 'l3', event: 'report_sent', actor: 'system', summary_text: 'Weekly report delivered - 7 findings, about $1,240 a month at stake.', created_at: daysAgo(1, 7) },
+  { id: 'l2', event: 'tag_verified', actor: 'system', summary_text: 'Your tracking is live - checked 12 pages, firing correctly.', created_at: daysAgo(6, 10) },
+  { id: 'l1', event: 'connection_changed', actor: 'user', summary_text: 'Google connected - read access granted.', created_at: daysAgo(13, 15) },
 ];
 
 const reports = [
-  { id: 'rep-3', type: 'weekly', created_at: '2026-08-17T07:00:00Z', viewed_at: null, summary: { health_score: 58, waste_monthly_usd: 1240 } },
-  { id: 'rep-2', type: 'weekly', created_at: '2026-08-10T07:00:00Z', viewed_at: '2026-08-10T09:14:00Z', summary: { health_score: 52, waste_monthly_usd: 1610 } },
-  { id: 'rep-1', type: 'audit', created_at: '2026-08-05T11:30:00Z', viewed_at: '2026-08-05T11:41:00Z', summary: { health_score: 41, waste_monthly_usd: 2380 } },
+  { id: 'rep-3', type: 'weekly', created_at: daysAgo(1, 7), viewed_at: null, summary: { health_score: 58, waste_monthly_usd: 1240 } },
+  { id: 'rep-2', type: 'weekly', created_at: daysAgo(8, 7), viewed_at: daysAgo(8, 9), summary: { health_score: 52, waste_monthly_usd: 1610 } },
+  { id: 'rep-1', type: 'audit', created_at: daysAgo(13, 11), viewed_at: daysAgo(13, 11), summary: { health_score: 41, waste_monthly_usd: 2380 } },
 ];
 
 const DEMO = {
@@ -72,10 +72,10 @@ const DEMO = {
     health: {
       score: 58,
       trend: [
-        { at: '2026-07-27T07:00:00Z', score: 41 },
-        { at: '2026-08-03T07:00:00Z', score: 44 },
-        { at: '2026-08-10T07:00:00Z', score: 52 },
-        { at: '2026-08-17T07:00:00Z', score: 58 },
+        { at: daysAgo(22, 7), score: 41 },
+        { at: daysAgo(15, 7), score: 44 },
+        { at: daysAgo(8, 7), score: 52 },
+        { at: daysAgo(1, 7), score: 58 },
       ],
     },
     pending,
@@ -108,7 +108,7 @@ const DEMO = {
       { id: 'a4', kind: 'ga4_property', external_id: '2207114', display_name: 'Old site (2023)', linked: false },
     ],
     doors: {
-      ads_account: { state: 'choose', matched: [], suggested: 'a1', candidates: [
+      ads_account: { state: 'matched', matched: [{ id: 'a1', kind: 'ads_account', external_id: '642-459-1230', display_name: 'Glow Studio - Ads' }], suggested: null, candidates: [
         { id: 'a1', kind: 'ads_account', external_id: '642-459-1230', display_name: 'Glow Studio - Ads', spend_30d_usd: 1240, test_account: false },
         { id: 'a5', kind: 'ads_account', external_id: '901-220-4471', display_name: 'Glow Studio (old)', spend_30d_usd: 0, test_account: false },
       ] },
@@ -214,7 +214,7 @@ function demoReport(s, level, id) {
     return { finding_id: `f-${i}`, severity: f.severity, title: f.title, explanation: f.body, money_impact_monthly_usd: usd ? Number(usd[1].replace(/,/g, '')) : 0, payload: { fix_detail: f.fix, locked: true }, status: 'open' };
   });
   return {
-    id, type: id === 'rep-1' ? 'signup' : 'weekly', created_at: '2026-08-17T07:00:00Z', unlocked: level !== 'locked',
+    id, type: id === 'rep-1' ? 'signup' : 'weekly', created_at: daysAgo(id === 'rep-1' ? 13 : 1, 7), unlocked: level !== 'locked',
     summary: { currency: 'USD', waste_monthly_usd: audit.wasteMonthly, health_score: audit.health, counts: audit.counts, exec_summary: 'We checked your ads, your tracking and your counting, line by line. This is the sample account.' },
     findings_snapshot: snapshot,
   };
@@ -335,7 +335,7 @@ function customerDemo(path, method, body) {
           plain: { headline: 'Your ad: Gel nails', who_sees_it: 'This shows to people searching for what you offer near you.', what_it_says: '', what_you_pay: 'Up to $25 a day. You only pay when someone clicks. It starts switched off - nothing spends until you say go.', safety_line: 'We checked your setup first, so every click gets counted correctly from day one.' },
           gates: { ok: true, blockers: [], steps: [] },
           ad_groups: [{ name: 'Gel nails', rsa: { headlines: ['Gel Nails Near You', 'Book Gel Nails Today', 'Glow Studio - Gel Nails', 'See Prices & Availability', 'Rated by Real Customers', 'Fast, Friendly Service', 'Easy Online Booking', 'Get a Quote in Minutes'], descriptions: ['Looking for gel nails near you? Glow Studio makes booking simple - clear prices, real reviews.', 'Book online in under a minute, or message us with any question.', 'Local, reliable and rated by customers like you.'], pinned: {} } }],
-          created_at: '2026-08-26T09:00:00Z' }];
+          created_at: daysAgo(0, 9) }];
       }
       return { drafts: s.drafts };
     }
@@ -347,7 +347,7 @@ function customerDemo(path, method, body) {
     if (p.startsWith('/api/app/revert-preview/')) return { summary_text: 'Excluded 14 searches from your ads', then_line: 'Puts it back to: your ads show for those 14 searches again', now_line: null, can_undo: true };
     if (p === '/api/app/exceptions') {
       if (!s.exceptions) {
-        s.exceptions = [{ id: 'ex1', summary_text: 'Excluded 3 wasted searches from "Brand"', target: 'campaign:11:negatives', created_from: 'revert', created_at: '2026-08-20T09:12:00Z' }];
+        s.exceptions = [{ id: 'ex1', summary_text: 'Excluded 3 wasted searches from "Brand"', target: 'campaign:11:negatives', created_from: 'revert', created_at: daysAgo(2, 9) }];
       }
       return { exceptions: s.exceptions };
     }

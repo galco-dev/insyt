@@ -5,8 +5,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Lock01 as Lock } from '@untitledui/icons';
 import clsx from 'clsx';
 import { api } from '../lib/api.js';
-import { useAccess } from '../lib/access.jsx';
-import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote } from '../lib/ui.jsx';
+import { useAccess, fmtMoney } from '../lib/access.jsx';
+import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote, Receipt } from '../lib/ui.jsx';
 import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
 import { needsWriteStep, goWriteStep, FIX_ACCESS_LINE } from '../lib/fix-access.js';
 
@@ -196,7 +196,7 @@ function YourAds() {
     api('/api/app/drafts').then((d) => setDrafts(d.drafts || [])).catch(() => setDrafts([]));
     api('/api/app/setup').then(setSetup).catch(() => setSetup(null));
   }, []);
-  const { gate } = useAccess();
+  const { gate, access } = useAccess();
   if (!drafts || !drafts.length) return null;
   const stepsLeft = setup && setup.steps ? setup.steps.filter((s) => !s.done) : [];
 
@@ -206,15 +206,21 @@ function YourAds() {
     // Without one the Plan sheet opens with this draft as the pending action.
     if (action === 'approve' || action === 'enable') {
       const d = (drafts || []).find((x) => x.id === id);
-      const ran = await gate(() => run(), { kind: `draft.${action}`, id, title: d ? d.plain.headline : 'Your ad', run: () => run() }).catch((e) => { setNote(e.message); return true; });
+      const ran = await gate(() => run(), { kind: `draft.${action}`, id, title: d ? d.plain.headline : 'Your ad', run: () => run() }).catch((e) => { setNote({ tone: 'error', text: e.message }); return true; });
       if (!ran) setBusy(null);
       return;
     }
-    try { await run(); } catch (e) { setNote(e.message); setBusy(null); }
+    try { await run(); } catch (e) { setNote({ tone: 'error', text: e.message }); setBusy(null); }
     async function run() {
       const r = await api(`/api/app/drafts/${id}/${action}`, { method: 'POST', body: body || {} });
-      if (r.status === 'staged') setNote('Your campaign is ready. It waits behind the setup steps below; it switches to "create" the moment they clear.');
-      if (r.warnings && r.warnings.length) setNote(r.warnings.join(' '));
+      const d = (drafts || []).find((x) => x.id === id);
+      const name = d && d.plain ? d.plain.headline : 'Your ad';
+      if (action === 'approve') setNote({ tone: 'success', text: `Done. "${name}" is created in your Google Ads and switched off. Nothing spends until you switch it on here.` });
+      if (action === 'enable') setNote({ tone: 'success', text: `Switched on. "${name}" is live from today${d && d.budget_daily_usd ? ` at up to ${fmtMoney(d.budget_daily_usd, (access && access.currency) || 'USD')} a day` : ''}. Pause it any time from History.` });
+      if (action === 'dismiss') setNote({ tone: 'info', text: `Fine. "${name}" is set aside; nothing was created.` });
+      if (action === 'edit') setNote({ tone: 'success', text: `Saved. "${name}" carries your wording now; nothing is live until you create it.` });
+      if (r.status === 'staged') setNote({ tone: 'info', text: 'Your campaign is ready. It waits behind the setup steps below; it switches to "create" the moment they clear.' });
+      if (r.warnings && r.warnings.length) setNote({ tone: 'error', text: r.warnings.join(' ') });
       setDrafts((xs) => xs.map((d) => (d.id === id ? { ...d, status: r.status || d.status, gates: r.blockers ? { ok: false, blockers: r.blockers, steps: r.steps } : d.gates, ...(r.spec ? { ad_groups: r.spec.ad_groups.map((g) => ({ name: g.name, rsa: g.rsa })) } : {}) } : d)).filter((d) => d.status !== 'dismissed'));
       if (action === 'edit') setEditing((e) => ({ ...e, [id]: false }));
       setBusy(null);
@@ -225,9 +231,9 @@ function YourAds() {
     try {
       const r = await api('/api/app/setup/provision', { method: 'POST' });
       const done = [r.ga4 && 'visit tracking', r.gtm && 'the tracking code'].filter(Boolean);
-      setNote(done.length ? `Done: we set up ${done.join(' and ')} for you.` : (r.guides && r.guides.length ? r.guides[0].detail : 'Nothing left for us to set up.'));
+      setNote({ tone: done.length ? 'success' : 'info', text: done.length ? `Done: we set up ${done.join(' and ')} for you.` : (r.guides && r.guides.length ? r.guides[0].detail : 'Nothing left for us to set up.') });
       api('/api/app/setup').then(setSetup).catch(() => {});
-    } catch (e) { setNote(e.message); }
+    } catch (e) { setNote({ tone: 'error', text: e.message }); }
     setBusy(null);
   }
 
@@ -288,7 +294,7 @@ function YourAds() {
           );
         })}
       </div>
-      {note && <div className="mt-3"><ErrorNote message={note} /></div>}
+      {note && <div className="mt-3">{note.tone === 'error' ? <ErrorNote message={note.text} /> : <Receipt tone={note.tone} to="/app/ledger" linkLabel="See it in History">{note.text}</Receipt>}</div>}
     </div>
   );
 }
@@ -325,14 +331,16 @@ export default function Approvals() {
         await api(`/api/app/approve-part/${id}`, { method: 'POST', body: { keep } });
       } else if (kind === 'later') {
         const r = await api(`/api/app/snooze/${id}`, { method: 'POST', body: { days: 7 } });
-        setNote(`Fine. We will bring it back${r && r.until ? ` on ${new Date(r.until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ' in a week'}.`);
+        setNote({ tone: 'info', text: `Fine. "${p.title}" is parked; we bring it back${r && r.until ? ` on ${new Date(r.until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ' in a week'}. Nothing was changed.` });
       } else if (kind === 'fence') {
         await api('/api/app/exceptions', { method: 'POST', body: { target: p.fence.target, summary_text: p.fence.summary_text, change_id: id } });
-        setNote(`Done. ${p.fence.summary_text}. Change your mind any time in Settings.`);
+        setNote({ tone: 'success', text: `Done. ${p.fence.summary_text}. We will not suggest changes there; change your mind any time in Settings.` });
       } else {
         const body = kind === 'dismiss' ? { expanded_first: !!open[id] } : undefined;
         await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
       }
+      if (kind === 'approve') setNote({ tone: 'success', text: `Done. "${p.title}"${partial ? ` (${keep.length} of ${p.list.length})` : ''} goes to your Google account within the hour, then we watch it for 48 hours. Undo with one tap from History.` });
+      if (kind === 'dismiss') setNote({ tone: 'info', text: `Fine. "${p.title}" stays as it is and we will not raise it again. Nothing was changed.` });
       setPending((prev) => (prev || []).filter((x) => x.id !== id));
     };
     try {
@@ -342,7 +350,7 @@ export default function Approvals() {
         // Analytics and tracking fixes: Google's write consent, once, right now.
         if (ran && needsWriteStep([p], access)) { goWriteStep('/app/approvals'); return; }
       } else await run();
-    } catch (e) { setError(e.message); }
+    } catch (e) { setNote({ tone: 'error', text: e.message }); }
     setBusy(null);
   }
 
@@ -374,7 +382,10 @@ export default function Approvals() {
   async function approveSafe() {
     if (!batchArmed) { setBatchArmed(true); return; }
     setBatchBusy(true); setBatchArmed(false);
-    try { await batch(safe, `${safe.length} safe fixes`); } catch (e) { setError(e.message); }
+    try {
+      const ran = await batch(safe, `${safe.length} safe fixes`);
+      if (ran) setNote({ tone: 'success', text: `Done. ${safe.length} fixes go to your Google account within the hour, then we watch each one for 48 hours. Undo any of them with one tap from History.` });
+    } catch (e) { setNote({ tone: 'error', text: e.message }); }
     setBatchBusy(false);
   }
 
@@ -402,7 +413,7 @@ export default function Approvals() {
         </div>
       )}
 
-      {note && <p className="mt-3 text-small text-success">{note}</p>}
+      {note && <div className="mt-3">{note.tone === 'error' ? <ErrorNote message={note.text} /> : <Receipt tone={note.tone} to="/app/ledger" linkLabel="See it in History">{note.text}</Receipt>}</div>}
       {pending.length === 0 ? (
         <div className="mt-6">
           <EmptyState title="All clear" body="Every suggested fix has been handled. Anything you said Later to comes back on its day; the next weekly check may bring more." />

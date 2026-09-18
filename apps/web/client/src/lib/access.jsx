@@ -30,6 +30,7 @@ export function AccessProvider({ children }) {
   const [sheet, setSheet] = useState(null); // null | { mode, action, title }
   // Bumped when a plan activates and finishes an action, so open screens reload their lists.
   const [version, setVersion] = useState(0);
+  const [paidNow, setPaidNow] = useState(false); // back from the $20 checkout this visit: the report answers back
   const bump = useCallback(() => setVersion((v) => v + 1), []);
   const { path, navigate } = useRouter();
   const pendingRef = useRef(null);
@@ -96,6 +97,7 @@ export function AccessProvider({ children }) {
       const action = remembered && remembered.id ? remembered : pa ? { kind: 'approve', id: pa, title: null } : null;
       setSheet({ mode: 'activating', action, title: null });
     } else if (params.get('paid') === '1') {
+      setPaidNow(true);
       params.delete('paid');
       window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params}` : ''}`);
       refresh();
@@ -104,10 +106,10 @@ export function AccessProvider({ children }) {
   }, []);
 
   const value = useMemo(() => ({
-    access, level, setAccess, refresh, gate, openSheet, closeSheet, sheet, goUnlock, path, version, bump,
+    access, level, setAccess, refresh, gate, openSheet, closeSheet, sheet, goUnlock, path, version, bump, paidNow,
     money: (n) => fmtMoney(n, access ? access.currency : 'USD'),
     pendingAction: () => pendingRef.current,
-  }), [access, level, setAccess, refresh, gate, openSheet, closeSheet, sheet, goUnlock, path, version, bump]);
+  }), [access, level, setAccess, refresh, gate, openSheet, closeSheet, sheet, goUnlock, path, version, bump, paidNow]);
 
   return <AccessCtx.Provider value={value}>{children}</AccessCtx.Provider>;
 }

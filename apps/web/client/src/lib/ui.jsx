@@ -369,6 +369,21 @@ export function ErrorNote({ message }) {
   );
 }
 
+// The line after an action: what just happened, what happens next, where to
+// undo. One shape everywhere so a yes, a save or a pause always answers back.
+export function Receipt({ children, tone = 'success', to = null, linkLabel = null, className }) {
+  const Icon = tone === 'success' ? CheckCircle : InfoCircle;
+  return (
+    <div role="status" aria-live="polite" className={clsx('flex items-start gap-2 rounded p-4 text-small text-strong ring-1 ring-inset', tone === 'success' ? 'bg-success-tint ring-success/25' : 'bg-info-tint ring-info/25', className)}>
+      <Icon size={15} className={clsx('mt-0.5 shrink-0', tone === 'success' ? 'text-success' : 'text-info')} aria-hidden />
+      <span>
+        {children}
+        {to && linkLabel && <> <RouterLink to={to} className="underline underline-offset-2">{linkLabel}</RouterLink></>}
+      </span>
+    </div>
+  );
+}
+
 export function SectionHead({ kicker, title, right }) {
   return (
     <div className="mt-10 mb-4 flex items-end justify-between gap-4">

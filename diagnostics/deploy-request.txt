@@ -49,3 +49,4 @@ deploy request: the assistant reads its reply from the first text block (thinkin
 2026-09-18T13:14:04Z Glow Studio sample and demo are location agnostic
 2026-09-18T13:16:20Z sample page leaves room for its bar on phones
 2026-09-18T13:37:43Z signed-out telemetry dropped with 204
+2026-09-18T13:52:43Z receipts after every action, plan sheet charge line, demo dates follow today, home leads with the next action

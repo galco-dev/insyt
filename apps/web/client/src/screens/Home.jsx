@@ -499,6 +499,32 @@ export default function Home() {
 
       <NextStep access={access} pending={pending} latest={latest} money={accessMoney} goUnlock={goUnlock} openSheet={openSheet} />
       {overview && <WaitingCard waiting={overview.waiting} access={access} />}
+      {overview && <Alerts alerts={overview.alerts} onAck={(id) => setOverview((o) => (o ? { ...o, alerts: o.alerts.map((a) => (a.id === id ? { ...a, acked: true } : a)) } : o))} />}
+      <div className="mt-8">
+        <div className="flex items-end justify-between">
+          <h2 className="text-h4">Waiting for your yes</h2>
+          {pending.length > 0 && <Link to="/app/approvals" className="text-small underline underline-offset-2">See all</Link>}
+        </div>
+        <NeedsYouHead pending={pending} access={access} money={accessMoney} />
+        {pending.length === 0 ? (
+          <div className="mt-3">
+            <EmptyState title={latest ? 'Nothing waiting' : 'Your first check is on its way'} body={latest ? 'Your next weekly check will bring anything worth fixing straight here.' : 'Anything worth fixing will appear here the moment the first check finishes.'} />
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-col gap-2">
+            {pending.slice(0, 3).map((p, i) => (
+              <Card key={p.id} className="rise lift flex items-center justify-between gap-3 p-4" style={{ '--rise-i': i }}>
+                <div className="min-w-0">
+                  <div className="bidi line-clamp-3 text-body font-medium" title={p.title}>{p.title}</div>
+                  {p.money_line && access && access.level !== 'locked' && <div className="mt-0.5 text-small text-neutral-900">{p.money_line}</div>}
+                </div>
+                <Link to="/app/approvals"><Button variant="secondary" className="!px-4 !py-2">Review</Button></Link>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
 
       {showGraduation && (
         <Card accent="info" className="mt-3 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -527,34 +553,8 @@ export default function Home() {
         </div>
       )}
 
-      <div className="mt-8">
-        <div className="flex items-end justify-between">
-          <h2 className="text-h4">Waiting for your yes</h2>
-          {pending.length > 0 && <Link to="/app/approvals" className="text-small underline underline-offset-2">See all</Link>}
-        </div>
-        <NeedsYouHead pending={pending} access={access} money={accessMoney} />
-        {pending.length === 0 ? (
-          <div className="mt-3">
-            <EmptyState title={latest ? 'Nothing waiting' : 'Your first check is on its way'} body={latest ? 'Your next weekly check will bring anything worth fixing straight here.' : 'Anything worth fixing will appear here the moment the first check finishes.'} />
-          </div>
-        ) : (
-          <div className="mt-3 flex flex-col gap-2">
-            {pending.slice(0, 3).map((p, i) => (
-              <Card key={p.id} className="rise lift flex items-center justify-between gap-3 p-4" style={{ '--rise-i': i }}>
-                <div className="min-w-0">
-                  <div className="bidi line-clamp-3 text-body font-medium" title={p.title}>{p.title}</div>
-                  {p.money_line && access && access.level !== 'locked' && <div className="mt-0.5 text-small text-neutral-900">{p.money_line}</div>}
-                </div>
-                <Link to="/app/approvals"><Button variant="secondary" className="!px-4 !py-2">Review</Button></Link>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-
       {overview && <Performance performance={overview.performance} money={accessMoney} />}
       {overview && <Accounts accounts={overview.accounts} site={overview.site} />}
-      {overview && <Alerts alerts={overview.alerts} onAck={(id) => setOverview((o) => (o ? { ...o, alerts: o.alerts.map((a) => (a.id === id ? { ...a, acked: true } : a)) } : o))} />}
     </div>
   );
 }
