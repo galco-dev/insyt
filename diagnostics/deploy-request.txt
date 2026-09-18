@@ -33,3 +33,4 @@ deploy request: QA report fixes (storage never blanks the app, badge refreshes a
 deploy request: approvals confirm once before a yes (single and batch), the sample History records every decision, plain-language notes on the Connected Data screens - 2026-09-18T07:26:15Z
 deploy request: QA-010, the Autopilot switches say what a tap does at each level - 2026-09-18T07:58:32Z
 deploy request: ad account currency everywhere (report headline and performance, alert titles, rule explanations, drift and undo lines, campaign builder, agency console per account, size band via USD equivalent, one client display rule) - 2026-09-18T08:40:41Z
+deploy request: no currency conversion anywhere; the size band and the budget floor use the account's own figures - 2026-09-18T08:55:29Z

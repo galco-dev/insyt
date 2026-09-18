@@ -349,8 +349,9 @@ function buildStages({ google, crawler, model, store }) {
         // The band sets itself (fix plan move 11): terms and spend, never a guess.
         if (store.setSizeBand && ctx.ads) {
           const terms = Array.isArray(ctx.ads.search_terms) ? ctx.ads.search_terms.length : 0;
-          // Spend is in the account's own currency; the band thresholds are USD.
-          const spend = require('../../../packages/shared/src/money').toUsd(Number(ctx.ads.spend_30d_usd || 0), ctx.ads.currency_code || ctx.ads.currency || 'USD');
+          // Never converted: spend only counts towards the band when the account is in USD; search terms decide otherwise.
+          const isUsd = String(ctx.ads.currency_code || ctx.ads.currency || 'USD').toUpperCase() === 'USD';
+          const spend = isUsd ? Number(ctx.ads.spend_30d_usd || 0) : 0;
           const band = terms > 15_000 || spend > 15_000 ? '25k' : terms > 6_000 || spend > 6_000 ? '10k' : '4k';
           await store.setSizeBand(ctx.run.tenant_id, band).catch(() => {});
         }
