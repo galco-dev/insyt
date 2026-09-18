@@ -338,3 +338,14 @@ test('api: a signed-out telemetry event is dropped with 204, not answered with a
     assert.equal(other.status, 401);
   });
 });
+
+test('api: /api/app/first-ad answers from the store, and a draft approve says when it was the first yes', async () => {
+  const ds = dashStore();
+  ds.firstAd = async () => ({ business: 'Smile Dental', website: 'smile.com', trade: 'dentists', service: 'Dentist', launch: true, campaigns_count: 0, drafts_count: 0 });
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const r = await (await fetch(`${base}/api/app/first-ad`, { headers: { cookie: authedCookie() } })).json();
+    assert.deepStrictEqual({ service: r.service, launch: r.launch, campaigns: r.campaigns_count }, { service: 'Dentist', launch: true, campaigns: 0 });
+    const anon = await fetch(`${base}/api/app/first-ad`);
+    assert.equal(anon.status, 401);
+  });
+});

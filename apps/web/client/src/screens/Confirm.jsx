@@ -162,7 +162,8 @@ export default function Confirm() {
       pushDL('confirm', { accounts_count: link.length + (doors.ads_account.state === 'matched' ? 1 : 0) + (doors.ga4_property.state === 'matched' ? 1 : 0) + (doors.gtm_container.state === 'matched' ? 1 : 0), has_ads: doors.ads_account.state === 'matched' || !!chosen.ads_account });
       // No tracking on the site at all: the first thing to fix is the setup, so land there (fix plan move 3).
       const noTracking = doors.gtm_container.state === 'unused' && doors.ga4_property.state !== 'matched';
-      navigate(noTracking ? '/app/journey' : '/app');
+      // Nothing running yet: the first ad comes before anything else (launch journey).
+      navigate(!noAccess && campaigns.length === 0 ? '/app/first-ad' : noTracking ? '/app/journey' : '/app');
     } catch (e) { setError(e.message); setBusy(false); }
   }
 

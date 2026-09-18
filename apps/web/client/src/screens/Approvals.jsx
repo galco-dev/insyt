@@ -186,7 +186,7 @@ function RequestComposer() {
 // paused on the first yes; switched on by a second, separate yes. A draft
 // that cannot ship yet is staged behind the setup checklist (§5.1) - never
 // a dead end.
-function YourAds() {
+export function YourAds() {
   const [drafts, setDrafts] = useState(null);
   const [setup, setSetup] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -216,6 +216,7 @@ function YourAds() {
       const d = (drafts || []).find((x) => x.id === id);
       const name = d && d.plain ? d.plain.headline : 'Your ad';
       if (action === 'approve') setNote({ tone: 'success', text: `Done. "${name}" is created in your Google Ads and switched off. Nothing spends until you switch it on here.` });
+      if (action === 'approve' && r.first_approval) pushDL('first_fix_approved', { plan: access && access.plan ? access.plan.tier : null });
       if (action === 'enable') setNote({ tone: 'success', text: `Switched on. "${name}" is live from today${d && d.budget_daily_usd ? ` at up to ${fmtMoney(d.budget_daily_usd, (access && access.currency) || 'USD')} a day` : ''}. Pause it any time.` });
       if (action === 'dismiss') setNote({ tone: 'info', text: `Fine. "${name}" is set aside; nothing was created.` });
       if (action === 'edit') setNote({ tone: 'success', text: `Saved. "${name}" carries your wording now; nothing is live until you create it.` });

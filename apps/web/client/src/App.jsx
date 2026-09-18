@@ -18,6 +18,7 @@ import Home from './screens/Home.jsx';
 import Approvals from './screens/Approvals.jsx';
 import History from './screens/Ledger.jsx';
 import Journey from './screens/Journey.jsx';
+import FirstAd from './screens/FirstAd.jsx';
 import Settings from './screens/Settings.jsx';
 import Report from './report/Report.jsx';
 import Agency from './agency/Agency.jsx';
@@ -258,6 +259,7 @@ function Routes() {
   if (path === '/app/ledger') return <Frame withNav><History view="activity" /></Frame>;
   if (path === '/app/reports') return <Frame withNav><History view="reports" /></Frame>;
   if (path === '/app/journey') return <Frame withNav><Journey /></Frame>;
+  if (path === '/app/first-ad') return <Frame withNav><FirstAd /></Frame>;
   if (path === '/app/settings') return <Frame withNav><Settings /></Frame>;
   // Connected data: what each granted Google permission returns for this account.
   if (path === '/app/connected') return <Frame withNav><Connected tab="ads" /></Frame>;

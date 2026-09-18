@@ -329,6 +329,7 @@ function customerDemo(path, method, body) {
       if (!s.chat) s.chat = [];
       return { conversation_id: 'demo', messages: s.chat, usage: { pct: 12, consented: false, included_usd: 30 } };
     }
+    if (p === '/api/app/first-ad') return { business: 'Glow Studio', website: 'glowstudio.com', trade: null, service: 'Gel nails', launch: false, campaigns_count: 3, drafts_count: 1 };
     if (p === '/api/app/drafts') {
       if (!s.drafts) {
         s.drafts = [{ id: 'd1', status: 'draft', template: 'generic', name: 'Gel nails', budget_daily_usd: 25,

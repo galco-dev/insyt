@@ -52,3 +52,4 @@ deploy request: the assistant reads its reply from the first text block (thinkin
 2026-09-18T13:52:43Z receipts after every action, plan sheet charge line, demo dates follow today, home leads with the next action
 2026-09-18T13:57:44Z receipt copy tidy, demo history newest first
 2026-09-18T18:36:35Z tracking: Tag Manager in the app, funnel and payment events, conversion backstop
+2026-09-18T19:34:24Z launch journey: first-ad screen for accounts with nothing running

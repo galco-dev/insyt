@@ -471,7 +471,7 @@ export default function Home() {
           </div>
           {!latest && <p className="mt-1 text-small text-neutral-900">{firstCheckLine}</p>}
           {latest && overview && overview.spend === null && overview.this_week && overview.this_week.findings === 0 && (
-            <p className="mt-1 text-small text-neutral-900">Nothing is running. Switch a campaign on and the first check runs the next morning.</p>
+            <p className="mt-1 text-small text-neutral-900">Nothing is running yet. <Link to="/app/first-ad" className="underline underline-offset-2">Draft your first ad</Link>; it starts switched off, and the first check runs the morning after it goes live.</p>
           )}
           {overview && overview.cadence === 'monthly' && access && access.level !== 'active' && (
             <p className="mt-1 text-small text-neutral-900">Checks are monthly until you start a plan.{access.credit_applies ? ` Your $${access.credit_usd || 20} comes off the first month.` : ''}</p>

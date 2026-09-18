@@ -415,6 +415,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub.startsWith('/revert-preview/')) { const p = dashStore.revertPreview ? await dashStore.revertPreview(t, sub.split('/')[2]) : null; return json(res, p ? 200 : 404, p || { error: 'Not found.' }); }
           // §5 consumer door + §5.1 setup checklist
           if (sub === '/drafts') return json(res, 200, { drafts: dashStore.drafts ? await dashStore.drafts(t) : [] });
+          if (sub === '/first-ad') return json(res, 200, dashStore.firstAd ? await dashStore.firstAd(t) : { business: null, website: null, trade: null, service: null, launch: false, campaigns_count: null, drafts_count: 0 });
           // §7 assistant (per-tenant flag)
           if (sub === '/chat') {
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });

@@ -631,16 +631,45 @@ function dashStore(db, deps = {}) {
   const { createTelemetry } = require('../../shared/src/telemetry');
   const { createDraftService } = require('../../campaigns/src/service');
   const { renderPlain } = require('../../campaigns/src/builder');
+  const { tradeService } = require('../../campaigns/src/trades');
   const tel = createTelemetry({ db });
   const draftsSvc = createDraftService({ db, google: deps.google || null, model: deps.model || null, modelId: deps.modelId || null });
   const plainDraft = (d) => ({ id: d.id, status: d.status, template: d.template, plain: renderPlain(d.spec), gates: d.spec.gates || null, budget_daily_usd: d.spec.budget_daily_usd, name: d.spec.name, ad_groups: d.spec.ad_groups.map((g) => ({ name: g.name, rsa: g.rsa })), created_at: d.created_at });
   const store = {
     // ---- §5 consumer door: "your ad" drafts in the customer register.
     drafts: async (tenantId) => (await db.select('campaign_drafts', `tenant_id=eq.${q(tenantId)}&agency_id=is.null&status=neq.dismissed&select=*&order=created_at.desc&limit=20`).catch(() => [])).map(plainDraft),
-    createDraft: async (tenantId, { template, inputs }) => plainDraft(await draftsSvc.create({ tenantId, template, inputs: inputs || {} })),
+    createDraft: async (tenantId, { template, inputs }) => {
+      const input = { ...(inputs || {}) };
+      // A launch visitor's trade names the service when the customer typed none.
+      if (!(Array.isArray(input.services) && input.services.length)) {
+        const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=attribution`, { single: true }).catch(() => null);
+        const svc = tradeService(t && t.attribution && t.attribution.trade);
+        if (svc) input.services = [svc];
+      }
+      return plainDraft(await draftsSvc.create({ tenantId, template, inputs: input }));
+    },
+    // The first-ad screen (launch journey): what we know before the customer types anything.
+    firstAd: async (tenantId) => {
+      const [t, camps, drafts] = await Promise.all([
+        db.select('tenants', `id=eq.${q(tenantId)}&select=business_name,website_url,attribution`, { single: true }).catch(() => null),
+        db.select('campaigns', `tenant_id=eq.${q(tenantId)}&select=id&limit=1`).catch(() => []),
+        db.select('campaign_drafts', `tenant_id=eq.${q(tenantId)}&agency_id=is.null&status=neq.dismissed&select=id&limit=1`).catch(() => []),
+      ]);
+      const a = (t && t.attribution) || {};
+      return {
+        business: (t && t.business_name) || null, website: (t && t.website_url) || null,
+        trade: a.trade || null, service: tradeService(a.trade), launch: a.src === 'launch',
+        campaigns_count: (camps || []).length, drafts_count: (drafts || []).length,
+      };
+    },
     draftAction: async (tenantId, draftId, action, body = {}) => {
       if (action === 'edit') return draftsSvc.edit({ tenantId, draftId, adGroups: body.ad_groups || [] });
-      if (action === 'approve') return draftsSvc.approve({ tenantId, draftId, actor: 'user' });
+      if (action === 'approve') {
+        // The first yes of the account is an event (tracking brief B3); a draft's create counts as one.
+        const before = (await db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(approved,applied,failed,reverted)&select=id&limit=2`).catch(() => [])).length;
+        const r = await draftsSvc.approve({ tenantId, draftId, actor: 'user' });
+        return r && !r.error && r.status === 'created_paused' ? { ...r, first_approval: before === 0 } : r;
+      }
       if (action === 'enable') return draftsSvc.enable({ tenantId, draftId, actor: 'user' });
       if (action === 'dismiss') return draftsSvc.dismiss({ tenantId, draftId });
       return { error: `Unknown action ${action}.` };
@@ -872,7 +901,7 @@ function dashStore(db, deps = {}) {
       const [paid, sub, tenant, pricing, report, pending, ads, owner] = await Promise.all([
         db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&refunded_at=is.null&select=id,kind,refunded_at,amount_usd&limit=1`, { single: true }).catch(() => null),
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status,price_usd,stripe_customer_id,canceled_at&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
-        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band,paused_until,sandbox`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band,paused_until,sandbox,attribution`, { single: true }).catch(() => null),
         db.select('pricing_config', 'select=matrix&order=effective_from.desc&limit=1', { single: true }).catch(() => null),
         db.select('reports', `tenant_id=eq.${q(tenantId)}&select=summary,findings_snapshot&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=money_impact_usd,finding:findings(money_impact_monthly_usd)`).catch(() => []),
@@ -884,7 +913,7 @@ function dashStore(db, deps = {}) {
       const conn = owner ? await db.select('google_connections', `user_id=eq.${q(owner.id)}&select=status,scope_level&limit=1`, { single: true }).catch(() => null) : null;
       const fix_access = !conn || conn.status !== 'valid' ? 'reconnect' : (conn.scope_level === 'write' || conn.scope_level === 'create' ? 'ready' : 'ask');
       // tenant_id rides for the dataLayer's user_id (tracking brief B2): an internal id, never an email or a Google id.
-      const base = { ...accessFrom({ paid, sub, tenant, pricing, report, pending, ads }), fix_access, tenant_id: tenantId };
+      const base = { ...accessFrom({ paid, sub, tenant, pricing, report, pending, ads }), fix_access, tenant_id: tenantId, launch: !!(tenant && tenant.attribution && tenant.attribution.src === 'launch') };
       // A sandbox tenant (migration 37): every gate open, nothing to pay, for testing on the live stack.
       if (tenant && tenant.sandbox) {
         return { ...base, level: 'active', has_customer: true, credit_applies: false, credit_usd: 0, sandbox: true,
