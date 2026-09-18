@@ -104,3 +104,33 @@ test('webhook: a completed unlock writes the receipt (History line and email) wh
   await handleWebhook({ type: 'checkout.session.completed', data: { object: { id: 'cs_1', mode: 'payment', payment_intent: 'pi_1', amount_total: 2000, metadata: { tenant_id: 't1', kind: 'audit_unlock' }, customer_details: { email: 'o@x.ae' } } } }, store);
   assert.deepStrictEqual(receipts, [['t1', { amountUsd: 20, kind: 'audit_unlock', email: 'o@x.ae' }]]);
 });
+
+test('webhooks: a paid tenant with a Google click id gets one conversion row per Stripe id, renewals excluded (tracking Part C)', async () => {
+  const store = mkStore();
+  const conversions = [];
+  const paidInvoices = [];
+  store.tenantAttribution = async () => ({ src: 'launch', trade: 'dentists', gclid: 'Cj0abc' });
+  store.recordConversion = async (r) => { if (conversions.some((c) => c.conversion_name === r.conversion_name && c.stripe_id === r.stripe_id)) return; conversions.push(r); };
+  store.invoicePaidBefore = async (tenantId, sub, invoice) => paidInvoices.some((p) => p.sub === sub && p.invoice !== invoice);
+  store.audit = (e) => { if (e.event === 'invoice_paid') paidInvoices.push({ sub: e.detail.subscription, invoice: e.detail.invoice }); store.calls.audit.push(e); };
+
+  const unlock = { type: 'checkout.session.completed', data: { object: { mode: 'payment', customer: 'cus_1', payment_intent: 'pi_9', amount_total: 0, amount_subtotal: 2000, metadata: { kind: 'audit_unlock' }, id: 'cs_9', created: 1789000000 } } };
+  await handleWebhook(unlock, store);
+  await handleWebhook(unlock, store); // Stripe retry
+  assert.strictEqual(conversions.length, 1);
+  assert.deepStrictEqual({ name: conversions[0].conversion_name, gclid: conversions[0].gclid, value: conversions[0].value_usd, id: conversions[0].stripe_id, cur: conversions[0].currency },
+    { name: 'report_unlocked', gclid: 'Cj0abc', value: 20, id: 'pi_9', cur: 'USD' }, 'list price, not the $0 paid; the payment intent is the order id');
+
+  await handleWebhook({ type: 'invoice.paid', data: { object: { customer: 'cus_1', subscription: 'sub_7', id: 'in_1', amount_paid: 10900, subtotal: 12900, billing_reason: 'subscription_create' } } }, store);
+  await handleWebhook({ type: 'invoice.paid', data: { object: { customer: 'cus_1', subscription: 'sub_7', id: 'in_2', amount_paid: 12900, subtotal: 12900, billing_reason: 'subscription_cycle' } } }, store);
+  const subs = conversions.filter((c) => c.conversion_name === 'subscription_started');
+  assert.strictEqual(subs.length, 1, 'the renewal is not a second conversion');
+  assert.deepStrictEqual({ id: subs[0].stripe_id, value: subs[0].value_usd }, { id: 'sub_7', value: 129 }, 'recurring list price before the $20 credit');
+
+  // No click id: nothing recorded, and the webhook still succeeds.
+  const quiet = mkStore();
+  quiet.tenantAttribution = async () => ({ src: 'blog' });
+  quiet.recordConversion = async () => { throw new Error('should not be called'); };
+  const r = await handleWebhook(unlock, quiet);
+  assert.strictEqual(r.handled, true);
+});

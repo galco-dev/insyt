@@ -402,6 +402,20 @@ function billingStore(db) {
       return { queued: true };
     },
     upsertSubscription: async (row) => { await db.upsert('subscriptions', [row], 'stripe_subscription_id'); },
+    // Tracking brief Part C: the landing attribution the sign-in copied onto the tenant.
+    tenantAttribution: async (tenantId) => {
+      const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=attribution`, { single: true }).catch(() => null);
+      return (t && t.attribution) || null;
+    },
+    // One row per conversion and Stripe id; a webhook retry is not a second conversion.
+    recordConversion: async (row) => {
+      try { await db.insert('ad_conversions', [row], { returning: false }); } catch (e) { if (!/duplicate|23505|409/.test(String(e && e.message))) throw e; }
+    },
+    // The first paid invoice of a subscription starts it; later ones are renewals.
+    invoicePaidBefore: async (tenantId, subscriptionId, invoiceId) => {
+      const rows = await db.select('audit_log', `tenant_id=eq.${q(tenantId)}&event=eq.invoice_paid&select=detail&order=created_at.asc&limit=20`).catch(() => []);
+      return (rows || []).some((r) => r.detail && r.detail.subscription === subscriptionId && r.detail.invoice !== invoiceId);
+    },
     markSubscription: async (stripeSubId, patch) => {
       await db.update('subscriptions', `stripe_subscription_id=eq.${q(stripeSubId)}`, patch);
     },

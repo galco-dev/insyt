@@ -10,6 +10,24 @@
 
 const GRACE_RETRY_DAYS = [3, 5, 7]; // §10 grace ladder
 
+// Tracking brief Part C: a customer who pays and closes the tab is still
+// counted. When the tenant carries a Google click id, the conversion is
+// recorded here with the Stripe id as the order id; nothing is uploaded to
+// Google Ads yet. Best effort: a failure here never fails the webhook.
+const CONVERSION_FOR = { audit_unlock: 'report_unlocked', large_audit: 'report_unlocked', large_audit_xl: 'report_unlocked', setup_bundle: 'launch_bundle_purchased' };
+async function recordConversion(store, { tenantId, name, valueUsd, stripeId, at }) {
+  if (!store.tenantAttribution || !store.recordConversion || !stripeId) return false;
+  try {
+    const a = await store.tenantAttribution(tenantId);
+    if (!a || !(a.gclid || a.gbraid || a.wbraid)) return false;
+    await store.recordConversion({
+      tenant_id: tenantId, conversion_name: name, gclid: a.gclid || null, gbraid: a.gbraid || null, wbraid: a.wbraid || null,
+      value_usd: Number(valueUsd || 0), currency: 'USD', converted_at: at || new Date().toISOString(), stripe_id: stripeId,
+    });
+    return true;
+  } catch { return false; }
+}
+
 // Tenant resolution: checkout.js stamps metadata.tenant_id (and
 // client_reference_id) on everything it creates, so fresh customers resolve
 // before any subscriptions row exists; customer lookup is the fallback.
@@ -44,6 +62,8 @@ async function handleWebhook(event, store) {
           ...(obj.customer ? { stripe_customer_id: obj.customer } : {}),
         });
         await store.audit({ tenant_id: tenantId, event: 'checkout_completed', detail: { kind, session: obj.id } });
+        // Value is the list price of what was bought (the $0 internal promotion still counts as the list price; the upload step decides).
+        await recordConversion(store, { tenantId, name: CONVERSION_FOR[kind || 'audit_unlock'] || 'report_unlocked', valueUsd: (obj.amount_subtotal != null ? obj.amount_subtotal : obj.amount_total || 0) / 100, stripeId: obj.payment_intent || obj.id, at: obj.created ? new Date(obj.created * 1000).toISOString() : null });
         // The receipt (audit scenario): a History line and the unlock_receipt email, once.
         if (store.unlockReceipt) await store.unlockReceipt(tenantId, { amountUsd: (obj.amount_total || 0) / 100, kind: kind || 'audit_unlock', email: obj.customer_details && obj.customer_details.email }).catch(() => {});
       }
@@ -102,7 +122,12 @@ async function handleWebhook(event, store) {
       // created outside the app) are acknowledged, not retried forever.
       if (!tenantId) return { handled: false, reason: 'no tenant' };
       if (obj.subscription) await store.markSubscription(obj.subscription, { status: 'active' });
-      await store.audit({ tenant_id: tenantId, event: 'invoice_paid', detail: { invoice: obj.id, amount_usd: (obj.amount_paid || 0) / 100 } });
+      // The first paid invoice of a subscription is the conversion; renewals are not.
+      if (obj.subscription) {
+        const renewal = store.invoicePaidBefore ? await store.invoicePaidBefore(tenantId, obj.subscription, obj.id).catch(() => false) : (obj.billing_reason && obj.billing_reason !== 'subscription_create');
+        if (!renewal) await recordConversion(store, { tenantId, name: 'subscription_started', valueUsd: (obj.subtotal != null ? obj.subtotal : obj.amount_paid || 0) / 100, stripeId: obj.subscription, at: obj.created ? new Date(obj.created * 1000).toISOString() : null });
+      }
+      await store.audit({ tenant_id: tenantId, event: 'invoice_paid', detail: { invoice: obj.id, subscription: obj.subscription || null, amount_usd: (obj.amount_paid || 0) / 100 } });
       return { handled: true };
     }
     case 'invoice.payment_failed': {
