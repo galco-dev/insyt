@@ -95,7 +95,7 @@ test('chat turn: request → card with the user\'s words + ledger; question → 
   };
   const a = createAssistant({ db, generate, modelId: 'claude-fable-5', tools: createReadTools({ db }) });
   const r = await a.turn({ tenantId: 't1', text: 'set the Brand budget to 22 a day' });
-  assert.strictEqual(r.card.summary, 'Lower "Brand - Dubai" daily budget $25 → $22');
+  assert.strictEqual(r.card.summary, 'Lower the "Brand - Dubai" budget from $25 to $22 a day');
   const ch = db.writes.find((w) => w.table === 'changes').rows[0];
   assert.deepStrictEqual({ st: ch.status, actor: ch.actor, req: ch.request_text }, { st: 'proposed', actor: 'user_via_chat', req: 'set the Brand budget to 22 a day' });
   assert.ok(db.writes.some((w) => w.table === 'ledger' && w.rows[0].event === 'change_requested'));

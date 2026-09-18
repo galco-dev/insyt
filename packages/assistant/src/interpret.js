@@ -85,7 +85,7 @@ function mapIntent(intent, ctx, text) {
       target: `campaign:${c.id}:budget`, category: 'budgets',
       before: { line: `"${c.name}" runs on ${usd(c.budget_daily_usd)} a day` },
       after: { line: `"${c.name}" runs on ${usd(bounded)} a day${clipped ? ` (you asked for ${usd(target)}; we move budgets at most ${BOUNDS.budget_max_pct_per_change}% at a time, so this is the first step)` : ''}` },
-      summary: `${bounded > c.budget_daily_usd ? 'Raise' : 'Lower'} "${c.name}" daily budget ${usd(c.budget_daily_usd)} → ${usd(bounded)}`,
+      summary: `${bounded > c.budget_daily_usd ? 'Raise' : 'Lower'} the "${c.name}" budget from ${usd(c.budget_daily_usd)} to ${usd(bounded)} a day`,
     };
     return { draft, reply: clipped ? `Drafted: ${draft.summary}. You asked for ${usd(target)}; budgets move at most ${BOUNDS.budget_max_pct_per_change}% per change, so this is the first step and we can go again next week. The card is in your approvals.` : `Drafted: ${draft.summary}. The card is in your approvals; nothing changes until you tap it.` };
   }

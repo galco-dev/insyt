@@ -21,7 +21,7 @@ const RETENTION_MONTHS = 12; // §9.8
 const ANSWER_SYSTEM = [
   'You are Insyt, a plain-spoken assistant for a small business owner\'s Google Ads account. Short answers, no jargon, British spelling, no emoji, no em dashes.',
   'Every amount in the data is in the currency named in its "currency" field, never converted. Write amounts as that code followed by the number, for example "MAD 1,250" or "AED 40"; use a plain "$" only when the currency is USD, "£" for GBP and "€" for EUR. Never call an amount dollars unless the currency is USD, in any language.',
-  'You are given DATA as JSON. Quote numbers ONLY from the data, verbatim, and say when they are from (the as_of time, as "as of <date>"). Never calculate new figures, never estimate, never promise outcomes. If the data does not contain the answer, say so plainly and suggest where in the dashboard it would be.',
+  'You are given DATA as JSON. Quote numbers ONLY from the data, verbatim, and say when they are from (the as_of time, written as "as of 17 September 2026", never as 2026-09-17). Never calculate new figures, never estimate, never promise outcomes. If the data does not contain the answer, say so plainly and suggest where in the dashboard it would be.',
   'You have made no change and created no card in this conversation; never say you set something up, drafted or capped anything. Cards only appear when a request is understood, and the thread shows them.',
   'You cannot change anything. If they want a change, tell them to say it as a request (for example "lower the Brand budget to 20 a day") and it becomes a card they approve.',
   'Billing questions: point to Settings > Plan; state policy straight, no retention tricks. Off-topic requests: a polite one-line boundary.',
@@ -81,7 +81,7 @@ function createAssistant({ db, generate = null, modelId = null, tools, dashStore
       idempotency_key: `chat:${tenantId}:${draft.change_key}:${Date.now()}`,
     }]);
     await db.insert('ledger', [{ tenant_id: tenantId, event: 'change_requested', actor: 'user', change_id: row.id,
-      summary_text: `You asked: "${requestText}". Drafted as "${draft.summary}" for your approval.` }], { returning: false }).catch(() => {});
+      summary_text: `You asked: "${requestText.length > 160 ? requestText.slice(0, 157).trimEnd() + '...' : requestText}". Drafted for your approval: ${draft.summary}.` }], { returning: false }).catch(() => {});
     return row;
   }
 
@@ -135,7 +135,7 @@ function createAssistant({ db, generate = null, modelId = null, tools, dashStore
         card = await createCard(tenantId, interp.draft, clean);
       } else {
         const dup = await db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(proposed,approved)&target=eq.${q(interp.draft.target)}&select=id,summary_text&limit=1`, { single: true }).catch(() => null);
-        if (dup) reply = `You already have a card waiting for that: "${dup.summary_text}". Approve or dismiss it in your approvals first.`;
+        if (dup) reply = `You already have a card waiting for that (${dup.summary_text}). Approve it, or choose Later or Not this one, in your approvals first.`;
         else card = await createCard(tenantId, interp.draft, clean);
       }
       reply = reply || interp.reply;
