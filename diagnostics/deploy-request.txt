@@ -34,3 +34,4 @@ deploy request: approvals confirm once before a yes (single and batch), the samp
 deploy request: QA-010, the Autopilot switches say what a tap does at each level - 2026-09-18T07:58:32Z
 deploy request: ad account currency everywhere (report headline and performance, alert titles, rule explanations, drift and undo lines, campaign builder, agency console per account, size band via USD equivalent, one client display rule) - 2026-09-18T08:40:41Z
 deploy request: no currency conversion anywhere; the size band and the budget floor use the account's own figures - 2026-09-18T08:55:29Z
+deploy request: sandbox tenants (migration 37): a flagged test tenant is active with nothing to pay, for audits on the live stack - 2026-09-18T09:13:57Z

@@ -858,7 +858,7 @@ function dashStore(db, deps = {}) {
       const [paid, sub, tenant, pricing, report, pending, ads, owner] = await Promise.all([
         db.select('payments', `tenant_id=eq.${q(tenantId)}&kind=in.(audit_unlock,large_audit,setup_bundle)&refunded_at=is.null&select=id,kind,refunded_at,amount_usd&limit=1`, { single: true }).catch(() => null),
         db.select('subscriptions', `tenant_id=eq.${q(tenantId)}&select=tier,status,price_usd,stripe_customer_id,canceled_at&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
-        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band,paused_until`, { single: true }).catch(() => null),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=size_band,paused_until,sandbox`, { single: true }).catch(() => null),
         db.select('pricing_config', 'select=matrix&order=effective_from.desc&limit=1', { single: true }).catch(() => null),
         db.select('reports', `tenant_id=eq.${q(tenantId)}&select=summary,findings_snapshot&order=created_at.desc&limit=1`, { single: true }).catch(() => null),
         db.select('changes', `tenant_id=eq.${q(tenantId)}&status=eq.proposed&select=money_impact_usd,finding:findings(money_impact_monthly_usd)`).catch(() => []),
@@ -870,6 +870,11 @@ function dashStore(db, deps = {}) {
       const conn = owner ? await db.select('google_connections', `user_id=eq.${q(owner.id)}&select=status,scope_level&limit=1`, { single: true }).catch(() => null) : null;
       const fix_access = !conn || conn.status !== 'valid' ? 'reconnect' : (conn.scope_level === 'write' || conn.scope_level === 'create' ? 'ready' : 'ask');
       const base = { ...accessFrom({ paid, sub, tenant, pricing, report, pending, ads }), fix_access };
+      // A sandbox tenant (migration 37): every gate open, nothing to pay, for testing on the live stack.
+      if (tenant && tenant.sandbox) {
+        return { ...base, level: 'active', has_customer: true, credit_applies: false, credit_usd: 0, sandbox: true,
+          plan: base.plan || { tier: 'core', status: 'active', label: 'Sandbox, nothing to pay', price_usd: 0 } };
+      }
       // The client's app knows (agency plan move 11): a managed tenant is
       // active on the agency's tier, never asked to pay, and says who looks after it.
       const managed = await managedBy(db, tenantId);
