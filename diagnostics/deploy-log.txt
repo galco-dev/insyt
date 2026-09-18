@@ -1,5 +1,5 @@
-deploy transcript 2026-09-16T07:46:45Z
-railway 5.57.2
+deploy transcript 2026-09-18T06:54:21Z
+railway 5.57.9
 
 
 Workspace:       Galco Dev's Projects
@@ -19,7 +19,7 @@ Linked service
 All resources
 
     Services
-      - web: ● Online · Deploying (51s) · https://app.tryinsyt.com
+      - web: ● Online · Building (33s) · https://app.tryinsyt.com
       - worker: ● Online
       - cron: ● Online
       - poller: ● Online
@@ -30,19 +30,19 @@ All resources
 ===== web =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=74c57e88-214a-48c9-bf8f-63b79fec1a0f&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/90b0649c-00a5-42a7-a76a-e02284ddcf8e?id=920a8228-b872-4522-9841-811b4f492372&
 
 ===== worker =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=4520641c-3b2b-4f38-96ea-c43c8488cca0&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/4276ae96-e23b-428c-bba2-d02cf82aa3d1?id=9037fb2c-e6cb-432e-9d08-d4226ae3c68e&
 
 ===== poller =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=feb14c33-310b-4cd9-ab77-2485fda81095&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/8903485c-afcb-40fe-bda0-9ac8907f0e05?id=8e537746-d456-4d9e-934c-5b2195da51bf&
 
 ===== cron =====
 Indexing...
 Uploading...
-  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=11c0746a-dd3f-49a2-bbde-0710f39fc3cc&
+  Build Logs: https://railway.com/project/d6255fed-897f-4f9d-a600-08c2c62aca74/service/51c88e84-f8e6-4233-bfa0-af4e07ae7b51?id=0075f4e0-c8f6-4814-93ff-7478371ba751&
