@@ -460,9 +460,9 @@ export default function Settings() {
             <MonoLabel>Google connection</MonoLabel>
             <div className="mt-0.5 text-body">{settings.connection_status}</div>
             <LookAgain />
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap items-center gap-3">
               <Link to="/app/connected"><Button variant="secondary" className="!px-4 !py-2">See what Insyt reads</Button></Link>
-              <span className="ml-3 text-tiny text-neutral-900">Every account, campaign, report and tag we can see through your Google permissions, live.</span>
+              <span className="text-tiny text-neutral-900">Every account, campaign, report and tag we can see through your Google permissions, live.</span>
             </div>
             <p className="mt-2 text-tiny text-neutral-900">
               To cut off our access at any time, remove Insyt at{' '}

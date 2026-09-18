@@ -29,3 +29,4 @@ deploy request: bug test fixes (removed rows render, add-account admin-only, CSV
 deploy request: discount codes on both Checkout pages (allow_promotion_codes; the audit credit wins when it applies) - 2026-09-16T07:17:12Z
 deploy request: webhook accepts a $0 checkout (no PaymentIntent on a 100% code), logs failures instead of a silent 500, tolerates Stripe retries; migration 36 applied - 2026-09-16T07:33:30Z
 deploy request: live run fixes (paid tenants get an unlocked web report, the credit sentence says what was paid, receipt email and History line on unlock, em dashes swept from all copy) - 2026-09-16T07:45:50Z
+deploy request: QA report fixes (storage never blanks the app, badge refreshes after every answer, link pages carry a dashboard button, plan copy follows the billing cycle, requests land in History, Settings spacing) - 2026-09-18T06:53:45Z

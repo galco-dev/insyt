@@ -875,6 +875,19 @@ test('adversarial: an am at agency A cannot read, approve, target, draft or undo
   assert.strictEqual(await ag.accountDetail('ag1', 'acc-b', null), null);
 });
 
+test('dashStore.requestChange (QA-009): the ask lands in History whether the assistant drafts a change or only replies', async () => {
+  const { dashStore } = require('../src/stores');
+  const f = routedFetch({ ledger: [], audit_log: [], unanswered_log: [], telemetry_heartbeat: [], events: [] });
+  const drafted = dashStore(mkDb(f), { assistant: { turn: async () => ({ card: { id: 'chg-9' }, reply: 'Drafted.' }) } });
+  assert.deepStrictEqual((await drafted.requestChange('t1', 'keep my spend under $40 a day')).drafted, true);
+  const line = f.calls.filter((c) => c.method === 'POST' && /ledger/.test(c.url)).at(-1).body[0];
+  assert.deepStrictEqual([line.event, line.actor], ['change_requested', 'user']);
+  assert.match(line.summary_text, /^You asked: "keep my spend under \$40 a day"\. It is drafted and waiting/);
+  const replied = dashStore(mkDb(f), { assistant: { turn: async () => ({ card: null, reply: 'That one needs a person.' }) } });
+  await replied.requestChange('t1', 'call my accountant');
+  assert.match(f.calls.filter((c) => c.method === 'POST' && /ledger/.test(c.url)).at(-1).body[0].summary_text, /^You asked: "call my accountant"\. That one needs a person\./);
+});
+
 test('workerStore.saveSnapshots: campaigns + spend_daily upserts, draft placeholders skipped', async () => {
   const f = routedFetch({ campaigns: [], spend_daily: [], asset_perf_snapshots: [], telemetry_heartbeat: [] });
   const s = workerStore(mkDb(f));

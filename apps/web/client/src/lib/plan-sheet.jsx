@@ -29,8 +29,9 @@ const REPLAY = {
   'draft.enable': (id) => api(`/api/app/drafts/${id}/enable`, { method: 'POST', body: {} }),
 };
 
-function headline(access, money) {
-  const price = `$${access.price_usd}/month`;
+function headline(access, money, cadence = 'monthly') {
+  // The sentence follows the cycle the person picked (QA-008): annual is ten months for twelve.
+  const price = cadence === 'annual' ? `$${Math.round(access.price_usd * 10)} a year, two months free` : `$${access.price_usd}/month`;
   if (access.waste_monthly_usd != null && access.waste_monthly_usd > 0) {
     const waste = money(access.waste_monthly_usd);
     // The customer's own number does the selling when it is the bigger one;
@@ -165,7 +166,7 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
   ) : (
     <div className="p-6 sm:p-8">
       <MonoLabel className="block break-words pr-8">{kicker}</MonoLabel>
-      <h2 className="mt-2 text-h4 tracking-tight">{upgradeTo ? <>Autopilot is ${priceOf('autopilot')}/month. It applies the routine fixes for you and tells you after.</> : headline(access, money)}</h2>
+      <h2 className="mt-2 text-h4 tracking-tight">{upgradeTo ? <>Autopilot is ${priceOf('autopilot')}/month. It applies the routine fixes for you and tells you after.</> : headline(access, money, cadence)}</h2>
       {!compare && (
         <>
           <ul className="mt-4 flex flex-col gap-2 text-small">
@@ -178,7 +179,7 @@ export function PlanOffer({ inline = false, initialCompare = false, upgradeTo = 
           )}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Button onClick={() => subscribe(primaryTier)} disabled={!!busy} className="!px-6 !py-3">
-              {busy ? 'Opening checkout' : `Start ${TIER_LABEL[primaryTier]}, $${priceOf(primaryTier)}/month`}
+              {busy ? 'Opening checkout' : cadence === 'annual' ? `Start ${TIER_LABEL[primaryTier]}, $${annual(primaryTier)}/year` : `Start ${TIER_LABEL[primaryTier]}, $${priceOf(primaryTier)}/month`}
             </Button>
             <button type="button" onClick={() => { setCompare(true); track('gate.compare_open', {}); }} className="text-small underline underline-offset-2">Compare plans</button>
           </div>

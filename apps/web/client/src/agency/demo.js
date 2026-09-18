@@ -157,7 +157,7 @@ function demoRole() {
   try {
     const p = new URLSearchParams(window.location.search);
     const r = p.get('role');
-    if (r) sessionStorage.setItem('insyt_demo_role', r);
+    if (r) { try { sessionStorage.setItem('insyt_demo_role', r); } catch { return r; } }
     return sessionStorage.getItem('insyt_demo_role') || 'admin';
   } catch { return 'admin'; }
 }

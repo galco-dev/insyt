@@ -964,11 +964,16 @@ function dashStore(db, deps = {}) {
     // it is on the record immediately; with the assistant wired it is drafted
     // into a card right away, otherwise it waits for the team.
     requestChange: async (tenantId, text) => {
+      const clean = String(text || '').slice(0, 500);
       if (deps.assistant) {
         const r = await deps.assistant.turn({ tenantId, text });
+        // The ask itself is on the record (QA-009), whether or not a change was drafted.
+        await db.insert('ledger', [{
+          tenant_id: tenantId, event: 'change_requested', actor: 'user',
+          summary_text: r.card ? `You asked: "${clean}". It is drafted and waiting for your yes in Approvals.` : `You asked: "${clean}". ${r.reply ? String(r.reply).slice(0, 200) : 'We will draft it as a change for your approval.'}`,
+        }], { returning: false }).catch(() => {});
         return { drafted: !!r.card, reply: r.reply, card: r.card };
       }
-      const clean = String(text || '').slice(0, 500);
       await db.insert('ledger', [{
         tenant_id: tenantId, event: 'change_requested', actor: 'user',
         summary_text: `You asked: "${clean}". We will draft it as a change for your approval.`,

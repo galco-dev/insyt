@@ -307,10 +307,10 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               : `This invite to ${who} has ${r.reason === 'used' ? 'already been used' : 'expired'}. Ask an admin at ${who} to resend it from Settings, Seats.`;
             return html(res, 410, `<p style="font-family:sans-serif">${msg}</p>`);
           }
-          const msg = r.reason === 'expired' ? 'This link has expired. Request a fresh one from your latest email.'
+          const msg = r.reason === 'expired' ? 'This link has expired. Request a fresh one from your latest email, or sign in.'
             : r.reason === 'used' ? 'This link was already used. Open your dashboard instead.'
               : 'This link is not valid.';
-          return html(res, 410, `<p style="font-family:sans-serif">${msg}</p>`);
+          return html(res, 410, `<div style="font-family:sans-serif;max-width:36em;margin:48px auto;padding:0 20px;line-height:1.5"><p>${msg}</p><p><a href="/app" style="display:inline-block;padding:10px 18px;border-radius:6px;background:#2563EB;color:#fff;text-decoration:none;font-weight:500">Open your dashboard</a></p><p style="color:#565b63;font-size:14px">Signed out? The dashboard asks you to sign in with Google, then lands where the link was going.</p></div>`);
         }
         // Agency joins (fix plan move 14) do not sign anyone in: they set a short
         // join cookie and start the Google sign-in, which binds the identity.

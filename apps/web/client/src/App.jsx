@@ -82,12 +82,19 @@ function useSetupDone(enabled) {
 // so it tracks approvals and dismissals made anywhere in the app.
 function usePendingCount(enabled, path) {
   const [n, setN] = useState(0);
+  const [tick, setTick] = useState(0);
+  // Any write anywhere (approve, later, no, request) bumps the count too.
+  useEffect(() => {
+    const bump = () => setTick((x) => x + 1);
+    window.addEventListener('insyt:work', bump);
+    return () => window.removeEventListener('insyt:work', bump);
+  }, []);
   useEffect(() => {
     if (!enabled) return undefined;
     let alive = true;
     api('/api/app/approvals').then((d) => { if (alive) setN((d.pending || []).length); }).catch(() => {});
     return () => { alive = false; };
-  }, [enabled, path]);
+  }, [enabled, path, tick]);
   return n;
 }
 

@@ -85,7 +85,9 @@ test('magic link: view_report redirects once, then the link is dead', async () =
     assert.ok((await report.text()).includes('report body'));
     const again = await fetch(`${base}/m/${token}`, { redirect: 'manual' });
     assert.strictEqual(again.status, 410);
-    assert.ok((await again.text()).includes('already used'));
+    const gone = await again.text();
+    assert.ok(gone.includes('already used'));
+    assert.match(gone, /href="\/app"/, 'the used-link page carries a real link to the dashboard (QA-006)');
   });
 });
 
