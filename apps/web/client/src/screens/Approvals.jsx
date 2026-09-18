@@ -1,7 +1,7 @@
 // Approvals queue - §11. One card per waiting fix; approve or dismiss.
 // Each card can open to show exactly what changes (the trust layer), and the
 // request composer at the foot lets the owner ask for anything in a sentence.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Lock01 as Lock } from '@untitledui/icons';
 import clsx from 'clsx';
 import { api } from '../lib/api.js';
@@ -53,6 +53,9 @@ function Assistant({ onCard }) {
   const [busy, setBusy] = useState(false);
   const [convId, setConvId] = useState(null);
   const [systemCards, setSystemCards] = useState([]);
+  const threadRef = useRef(null);
+  // The newest line is the one they are waiting for: keep the thread scrolled to it.
+  useEffect(() => { const el = threadRef.current; if (el) el.scrollTop = el.scrollHeight; }, [thread, busy]);
   useEffect(() => {
     api('/api/app/chat').then((d) => { setThread(d.messages || []); setConvId(d.conversation_id || null); if (d.usage && d.usage.pct >= 100 && !d.usage.consented) setSystemCards([{ kind: 'usage_consent', included_usd: d.usage.included_usd, text: `You have used this month's included assistant allowance ($${d.usage.included_usd}). Continue with usage billed to your card on file, at cost?` }]); }).catch(() => setThread([]));
   }, []);
@@ -85,13 +88,14 @@ function Assistant({ onCard }) {
         Ask about your spend, your history, or what a finding means, or say what you would like changed. Changes become cards above; nothing is applied until you approve.
       </p>
       {thread.length > 0 && (
-        <div className="mt-3 flex max-h-[26rem] flex-col gap-2 overflow-y-auto rounded border border-neutral-300 bg-neutral-50 p-3 text-small">
+        <div ref={threadRef} className="mt-3 flex max-h-[26rem] flex-col gap-2 overflow-y-auto rounded border border-neutral-300 bg-neutral-50 p-3 text-small">
           {thread.map((m) => (
-            <div key={m.id} className={clsx('rounded px-3 py-2', m.role === 'user' ? 'self-end bg-page' : m.role === 'system' ? 'border border-neutral-300 bg-neutral-100 text-neutral-900' : 'bg-neutral-100')}>
+            <div key={m.id} className={clsx('bidi max-w-full whitespace-pre-wrap break-words rounded px-3 py-2', m.role === 'user' ? 'self-end bg-page' : m.role === 'system' ? 'border border-neutral-300 bg-neutral-100 text-neutral-900' : 'bg-neutral-100')}>
               {m.text}
               {m.card && <div className="mt-1 font-mono text-tiny uppercase tracking-[0.1em] text-neutral-900">Card added above: {m.card.summary}</div>}
             </div>
           ))}
+          {busy && <div className="rounded bg-neutral-100 px-3 py-2 text-neutral-900" aria-live="polite">Thinking, a few seconds.</div>}
         </div>
       )}
       {systemCards.map((c) => (

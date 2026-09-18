@@ -139,3 +139,14 @@ test('chat: no model configured → honest unavailable reply, nothing else touch
   assert.match(r.reply, /not available/);
   assert.ok(!db.writes.some((w) => w.table === 'changes'));
 });
+
+test('budget_cap: under the ceiling means nothing to change; over it becomes a lower-to card in the account currency', async () => {
+  const cctx = { ...ctx, currency: 'MAD' };
+  const under = await interpretRequest({ text: 'keep my spend under 400 a day on brand', ctx: cctx, generate: gen({ intent: 'budget_cap', campaign: 'Brand - Dubai', amount_usd: 400 }) });
+  assert.equal(under.draft, null);
+  assert.match(under.reply, /already runs on MAD 25 a day, under MAD 400/);
+  const over = await interpretRequest({ text: 'cap brand at 22 a day', ctx: cctx, generate: gen({ intent: 'budget_cap', campaign: 'Brand - Dubai', amount_usd: 22 }) });
+  assert.ok(over.draft);
+  assert.equal(over.draft.params.new_daily_usd, 22);
+  assert.match(over.draft.before.line, /MAD 25 a day/);
+});

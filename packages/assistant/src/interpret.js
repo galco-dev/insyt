@@ -16,7 +16,7 @@
 const { checkBounds, BOUNDS } = require('../../registry/src/bounds');
 const { changeKey } = require('../../registry/src/drafts');
 
-const INTENTS = ['budget_set', 'budget_change', 'pause_campaign', 'enable_campaign', 'add_negatives', 'autopilot_off', 'autopilot_on', 'question', 'unknown'];
+const INTENTS = ['budget_set', 'budget_cap', 'budget_change', 'pause_campaign', 'enable_campaign', 'add_negatives', 'autopilot_off', 'autopilot_on', 'question', 'unknown'];
 const { fmtMoney } = require('../../shared/src/money');
 let CUR = 'USD';
 const usd = (n) => fmtMoney(n, CUR);
@@ -24,7 +24,7 @@ const usd = (n) => fmtMoney(n, CUR);
 const SYSTEM = [
   'You turn a small-business owner\'s request about their Google Ads into ONE structured intent. You never decide what to do; code does.',
   'Return ONLY JSON: {"intent": one of ' + JSON.stringify(INTENTS) + ', "campaign": string|null, "amount_usd": number|null, "direction": "up"|"down"|null, "percent": number|null, "terms": [string], "category": "negatives"|"budgets"|"counting"|"all"|null, "question": string|null}',
-  'budget_set = a specific daily amount; budget_change = up/down by amount or percent; add_negatives = stop showing for words/searches; pause/enable a named campaign; autopilot_off/on with a category or "all"; question = they are asking, not asking for a change; unknown otherwise.',
+  'budget_set = a specific daily amount; budget_cap = keep spend under, no more than, or cap at a daily amount; budget_change = up/down by amount or percent; add_negatives = stop showing for words/searches; pause/enable a named campaign; autopilot_off/on with a category or "all"; question = they are asking, not asking for a change; unknown otherwise.',
   'Use the campaign names from the list verbatim when the request clearly refers to one; null if unclear. Never invent numbers.',
 ].join('\n');
 
@@ -57,12 +57,18 @@ function mapIntent(intent, ctx, text) {
       reply: 'Turning autopilot on expands what can happen without you, so it needs your tap; the card is in your approvals.',
     };
   }
-  if (intent.intent === 'budget_set' || intent.intent === 'budget_change') {
+  if (intent.intent === 'budget_set' || intent.intent === 'budget_cap' || intent.intent === 'budget_change') {
     const c = one(intent.campaign);
     if (!c) return { reply: campaigns.length ? askWhich : 'We do not see any campaigns on this account yet.' };
     if (!(c.budget_daily_usd > 0) || !c.budget_resource) return { reply: `We do not have "${c.name}"'s budget details from Google yet; the next weekly check will pick them up.` };
     let target;
-    if (intent.intent === 'budget_set') target = Number(intent.amount_usd);
+    if (intent.intent === 'budget_cap') {
+      // A ceiling, not a level: already under it means nothing to change.
+      const cap = Number(intent.amount_usd);
+      if (!Number.isFinite(cap) || cap <= 0) return { reply: `What daily amount should "${c.name}" stay under? It is ${usd(c.budget_daily_usd)} a day now.` };
+      if (c.budget_daily_usd <= cap) return { reply: `"${c.name}" already runs on ${usd(c.budget_daily_usd)} a day, under ${usd(cap)}, so there is nothing to change. We will keep it there unless you ask otherwise.` };
+      target = cap;
+    } else if (intent.intent === 'budget_set') target = Number(intent.amount_usd);
     else if (intent.percent != null) target = c.budget_daily_usd * (1 + (intent.direction === 'down' ? -1 : 1) * Number(intent.percent) / 100);
     else if (intent.amount_usd != null) target = c.budget_daily_usd + (intent.direction === 'down' ? -1 : 1) * Number(intent.amount_usd);
     if (!Number.isFinite(target) || target <= 0) return { reply: `What daily amount would you like for "${c.name}"? It is ${usd(c.budget_daily_usd)} a day now.` };

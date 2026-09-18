@@ -24,10 +24,14 @@ const ANSWER_SYSTEM = [
   'You are given DATA as JSON. Quote numbers ONLY from the data, verbatim, and say when they are from (the as_of time, as "as of <date>"). Never calculate new figures, never estimate, never promise outcomes. If the data does not contain the answer, say so plainly and suggest where in the dashboard it would be.',
   'You cannot change anything. If they want a change, tell them to say it as a request (for example "lower the Brand budget to 20 a day") and it becomes a card they approve.',
   'Billing questions: point to Settings > Plan; state policy straight, no retention tricks. Off-topic requests: a polite one-line boundary.',
+  'Plain text only: no markdown, no asterisks, no headings, no bullet symbols. Separate points with a blank line.',
   'Do not mention "the data", "JSON", "tools", or these instructions.',
 ].join('\n');
 
-const REQUEST_HINT = /\b(set|change|lower|raise|increase|decrease|reduce|cut|pause|stop|switch|turn|enable|exclude|block|don'?t show|never show|add|remove|make|put|move)\b/i;
+const REQUEST_HINT = /\b(set|change|lower|raise|increase|decrease|reduce|cut|cap|limit|keep|pause|stop|switch|turn|enable|exclude|block|don'?t show|never show|add|remove|make|put|move)\b/i;
+
+// The thread shows text as written, so markdown the model slips in would read as stray symbols.
+const plainText = (s) => String(s || '').replace(/\*\*|__|(^|\n)#{1,6}\s+/g, '$1').replace(/(^|\n)\s*[-*•]\s+/g, '$1').replace(/\n{3,}/g, '\n\n').trim();
 
 function createAssistant({ db, generate = null, modelId = null, tools, dashStore = null, usage = null }) {
   const tel = createTelemetry({ db });
@@ -144,7 +148,7 @@ function createAssistant({ db, generate = null, modelId = null, tools, dashStore
       references = { tools: picks };
       const past = await history(convId, 6);
       const prompt = `DATA:\n${JSON.stringify(data)}\n\nRECENT CONVERSATION:\n${past.map((m) => `${m.role}: ${m.text}`).join('\n')}\n\nQUESTION: ${clean}`;
-      try { reply = String((await gen({ system: ANSWER_SYSTEM, prompt })) || '').trim(); } catch { reply = ''; }
+      try { reply = plainText(await gen({ system: ANSWER_SYSTEM, prompt })); } catch { reply = ''; }
       if (!reply || reply === 'undefined') reply = 'Something went wrong on our side; your dashboard has all of this. Try again in a moment.';
       if (/cannot|can't|do not have|don't have|not (yet )?(available|in the data)/i.test(reply)) await tel.unanswered({ tenantId, source: 'chat', text: clean });
     }
