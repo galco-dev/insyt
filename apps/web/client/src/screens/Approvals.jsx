@@ -124,6 +124,7 @@ function Assistant({ onCard }) {
 }
 
 function RequestComposer() {
+  const { money } = useAccess();
   const [text, setText] = useState('');
   const [state, setState] = useState('idle'); // idle | busy | sent | error
   const [errMsg, setErrMsg] = useState(null);
