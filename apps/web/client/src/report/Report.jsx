@@ -12,7 +12,7 @@ import { api, isDemo } from '../lib/api.js';
 import { useAccess, fmtMoney } from '../lib/access.jsx';
 import { useBatchApprove } from '../lib/batch.jsx';
 import { needsWriteStep, goWriteStep, FIX_ACCESS_LINE } from '../lib/fix-access.js';
-import { Link } from '../lib/router.jsx';
+import { Link, useRouter } from '../lib/router.jsx';
 import {
   COLOR, MonoLabel, SeverityBadge, severityMeta, verdictMeta, Spinner, ErrorNote, EmptyState, Button, Chip,
 } from '../lib/ui.jsx';
@@ -452,7 +452,9 @@ function RealReport({ reportId }) {
 
 export default function Report({ reportId = null }) {
   if (reportId) return <RealReport reportId={reportId} />;
-  const locked = !new URLSearchParams(window.location.search).get('unlocked');
+  // The sample is the paid view in full: its job is to show what they get.
+  // The locked view belongs on a visitor's own report after the free check.
+  const locked = false;
   const chips = [
     ['critical', audit.counts.critical], ['warning', audit.counts.warning], ['info', audit.counts.info],
   ];
@@ -648,7 +650,46 @@ export default function Report({ reportId = null }) {
         </footer>
       </main>
 
-      <UnlockBar visible={locked} />
+      <SampleBar />
+    </div>
+  );
+}
+
+// The sample's only call: their own address, into the same free check the
+// start page runs. Paying comes after Google is connected, because the paid
+// report is built from their account and there is nothing to unlock before that.
+function SampleBar() {
+  const { navigate } = useRouter();
+  const [site, setSite] = useState('');
+  const [error, setError] = useState(null);
+  function go(e) {
+    e.preventDefault();
+    const v = site.trim();
+    if (!v) { setError('Type your website address, like glowstudio.ae'); return; }
+    navigate(`/app/start?url=${encodeURIComponent(v)}`);
+  }
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-300 bg-page/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      <form onSubmit={go} className="mx-auto flex max-w-l2 flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-body font-semibold">This is Glow Studio, a made-up salon. Yours takes about a minute.</div>
+          <div className="mt-0.5 text-small text-neutral-900">{error || 'Your free check shows the headline and the counts. $20 opens every line, like this one.'}</div>
+        </div>
+        <div className="flex w-full shrink-0 overflow-hidden rounded ring-1 ring-inset ring-neutral-300 sm:w-auto">
+          <input
+            value={site}
+            onChange={(e) => { setSite(e.target.value); setError(null); }}
+            placeholder="yourwebsite.com"
+            aria-label="Your website address"
+            inputMode="url"
+            autoCapitalize="none"
+            className="min-w-0 flex-1 bg-page px-3 py-3 text-small outline-none sm:w-56"
+          />
+          <button type="submit" className="inline-flex shrink-0 items-center gap-2 bg-gradient-to-b from-(--ui-cta-a) to-(--ui-cta-b) px-5 py-3 text-small font-medium text-(--ui-cta-ink)">
+            Unlock yours <ArrowRight size={15} aria-hidden />
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
