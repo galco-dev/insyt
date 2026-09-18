@@ -216,7 +216,7 @@ function YourAds() {
       const d = (drafts || []).find((x) => x.id === id);
       const name = d && d.plain ? d.plain.headline : 'Your ad';
       if (action === 'approve') setNote({ tone: 'success', text: `Done. "${name}" is created in your Google Ads and switched off. Nothing spends until you switch it on here.` });
-      if (action === 'enable') setNote({ tone: 'success', text: `Switched on. "${name}" is live from today${d && d.budget_daily_usd ? ` at up to ${fmtMoney(d.budget_daily_usd, (access && access.currency) || 'USD')} a day` : ''}. Pause it any time from History.` });
+      if (action === 'enable') setNote({ tone: 'success', text: `Switched on. "${name}" is live from today${d && d.budget_daily_usd ? ` at up to ${fmtMoney(d.budget_daily_usd, (access && access.currency) || 'USD')} a day` : ''}. Pause it any time.` });
       if (action === 'dismiss') setNote({ tone: 'info', text: `Fine. "${name}" is set aside; nothing was created.` });
       if (action === 'edit') setNote({ tone: 'success', text: `Saved. "${name}" carries your wording now; nothing is live until you create it.` });
       if (r.status === 'staged') setNote({ tone: 'info', text: 'Your campaign is ready. It waits behind the setup steps below; it switches to "create" the moment they clear.' });
@@ -339,7 +339,7 @@ export default function Approvals() {
         const body = kind === 'dismiss' ? { expanded_first: !!open[id] } : undefined;
         await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
       }
-      if (kind === 'approve') setNote({ tone: 'success', text: `Done. "${p.title}"${partial ? ` (${keep.length} of ${p.list.length})` : ''} goes to your Google account within the hour, then we watch it for 48 hours. Undo with one tap from History.` });
+      if (kind === 'approve') setNote({ tone: 'success', text: `Done. "${p.title}"${partial ? ` (${keep.length} of ${p.list.length})` : ''} goes to your Google account within the hour, then we watch it for 48 hours. Undo is one tap.` });
       if (kind === 'dismiss') setNote({ tone: 'info', text: `Fine. "${p.title}" stays as it is and we will not raise it again. Nothing was changed.` });
       setPending((prev) => (prev || []).filter((x) => x.id !== id));
     };
@@ -384,7 +384,7 @@ export default function Approvals() {
     setBatchBusy(true); setBatchArmed(false);
     try {
       const ran = await batch(safe, `${safe.length} safe fixes`);
-      if (ran) setNote({ tone: 'success', text: `Done. ${safe.length} fixes go to your Google account within the hour, then we watch each one for 48 hours. Undo any of them with one tap from History.` });
+      if (ran) setNote({ tone: 'success', text: `Done. ${safe.length} fixes go to your Google account within the hour, then we watch each one for 48 hours. Undo any of them with one tap.` });
     } catch (e) { setNote({ tone: 'error', text: e.message }); }
     setBatchBusy(false);
   }

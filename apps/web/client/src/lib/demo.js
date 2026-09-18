@@ -310,7 +310,7 @@ function customerDemo(path, method, body) {
     if (p === '/api/app/runs') return { runs: demoRuns() };
     if (p === '/api/app/businesses') return { businesses: [{ tenant_id: 'demo', name: 'Glow Studio', website: 'glowstudio.com', current: true }], role: 'owner' };
     if (p === '/api/app/approvals') return { pending: gatedPending(s, access.level), access };
-    if (p === '/api/app/ledger') return { entries: access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event)), pending: gatedPending(s, access.level), receipts: access.level === 'active' ? structuredClone(RECEIPTS) : {}, access };
+    if (p === '/api/app/ledger') return { entries: (access.level === 'active' ? s.ledger : s.ledger.filter((e) => !/applied|reverted/.test(e.event))).slice().sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))), pending: gatedPending(s, access.level), receipts: access.level === 'active' ? structuredClone(RECEIPTS) : {}, access };
     if (p === '/api/app/settings') {
       const base = structuredClone(DEMO['GET /api/app/settings']);
       base.settings.autopilot = { ...s.autopilot };
