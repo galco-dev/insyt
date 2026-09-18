@@ -13,7 +13,9 @@
 // }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const money = (n) => `$${Math.round(n || 0).toLocaleString('en-US')}`;
+// Every figure is in the ad account's own currency; the symbol comes from the envelope.
+let SYM = '$';
+const money = (n) => `${SYM}${Math.round(n || 0).toLocaleString('en-US')}`;
 
 function rowsFor(perf) {
   const t = perf.targets || {};
@@ -61,7 +63,8 @@ function rowsFor(perf) {
  * renderPerformanceSection(perf, TOKENS) -> html string | '' when no targets.
  * TOKENS injected by the caller (render.js) to avoid a circular require.
  */
-function renderPerformanceSection(perf, TOKENS) {
+function renderPerformanceSection(perf, TOKENS, currencySymbol = '$') {
+  SYM = currencySymbol || '$';
   const rows = rowsFor(perf || {});
   if (!rows.length) return '';
   const cells = rows.map((r) => {

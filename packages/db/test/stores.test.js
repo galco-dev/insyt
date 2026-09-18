@@ -808,10 +808,11 @@ test('agency plan push 5 (the small things): snoozed filtered on the server, one
   });
   const db = mkDb(f);
   const ag = agencyStore(db);
+  const lastChanges = () => decodeURIComponent(f.calls.filter((c) => /rest\/v1\/changes/.test(c.url)).at(-1).url);
   await ag.triage('ag1', null, { now: '2026-09-14T09:00:00Z' });
-  assert.match(decodeURIComponent(f.calls.at(-1).url), /or=\(snoozed_until\.is\.null,snoozed_until\.lt\.2026-09-14T09:00:00Z\)/);
+  assert.match(lastChanges(), /or=\(snoozed_until\.is\.null,snoozed_until\.lt\.2026-09-14T09:00:00Z\)/);
   await ag.triage('ag1', null, { snoozed: true, now: '2026-09-14T09:00:00Z' });
-  assert.match(decodeURIComponent(f.calls.at(-1).url), /snoozed_until=gt\.2026-09-14T09:00:00Z/);
+  assert.match(lastChanges(), /snoozed_until=gt\.2026-09-14T09:00:00Z/);
   assert.deepStrictEqual(await ag.counts('ag1'), { triage: 0, alerts: 0, review: 0 });
   await ag.auditLog('ag1', { accountId: 'acc-1', before: '2026-09-01T00:00:00Z', limit: 50 });
   assert.match(decodeURIComponent(f.calls.at(-1).url), /detail->>account_id=eq\.acc-1&created_at=lt\.2026-09-01T00:00:00Z&select=.*&limit=50$/);

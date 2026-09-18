@@ -18,9 +18,11 @@ const AccessCtx = createContext(null);
 export const LEVELS = { locked: 'locked', unlocked: 'unlocked', active: 'active' };
 
 // Money in the account's currency; USD keeps the $ sign.
+const SYMBOL = { USD: '$', GBP: '£', EUR: '€', AUD: 'A$', CAD: 'C$', NZD: 'NZ$' };
 export function fmtMoney(n, code = 'USD') {
-  const v = Math.round(Number(n || 0)).toLocaleString();
-  return code === 'USD' ? `$${v}` : `${code} ${v}`;
+  const c = String(code || 'USD').toUpperCase();
+  const v = Math.round(Number(n || 0)).toLocaleString('en-US');
+  return SYMBOL[c] ? `${SYMBOL[c]}${v}` : `${c} ${v}`;
 }
 
 export function AccessProvider({ children }) {

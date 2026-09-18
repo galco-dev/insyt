@@ -50,3 +50,14 @@ test('hitting targets reads on-target; envelope wires section into the report', 
   const report = renderReport(env, { mode: 'web' });
   assert.ok(report.includes('Against your goals'));
 });
+
+test('performance section and money headline follow the envelope currency', () => {
+  const performance = { month_label: 'August', spend_usd: 1230, conversions: 30, conversion_value_usd: 4230, targets: { monthly_budget_usd: 1900, cpa_target_usd: 45, roas_target: 3.2 }, pacing: { projected: 1907, deltaPct: 0.4, status: 'on_pace' } };
+  const html = renderPerformanceSection(performance, TOKENS, 'MAD ');
+  assert.ok(html.includes('MAD 1,230') && html.includes('MAD 1,900'), 'no dollar signs on a MAD account');
+  assert.ok(!html.includes('$1,230'));
+  const env = assembleEnvelope({ run, findings: [{ id: 'f1', rule_id: 'x', layer: 4, severity: 'warning', status: 'open', title: 'T', explanation: 'E', money: { impact_monthly_usd: 430, direction: 'waste', confidence: 'measured', currency: 'MAD' } }], ledgerCumulative: null, narrativeSlots: {}, performance, currencyCode: 'MAD' });
+  const report = renderReport(env, { mode: 'web' });
+  assert.ok(report.includes('MAD 430'), 'the money headline uses the account currency');
+  assert.ok(!/\$430/.test(report));
+});

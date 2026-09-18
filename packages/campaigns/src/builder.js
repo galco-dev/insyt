@@ -1,3 +1,4 @@
+const { fmtMoney } = require('../../shared/src/money');
 // Campaign builder - creation as the biggest possible "change"
 // (before: nothing → after: this spec). One engine, two registers:
 // renderBrief() speaks full technical vocabulary for the agency console,
@@ -85,6 +86,7 @@ function buildCampaignSpec(input) {
   const business = slug(input.business) || 'Your business';
   const location = input.location ? slug(input.location) : null;
   const budget = Number(input.budget_daily_usd) > 0 ? Number(input.budget_daily_usd) : 10;
+  const currency = input.currency || 'USD';
 
   let name;
   let adGroups;
@@ -138,6 +140,7 @@ function buildCampaignSpec(input) {
     name,
     channel,
     budget_daily_usd: budget,
+    currency,
     bidding,
     conversion_goal: input.conversion_goal || null,
     final_url: input.final_url || null,
@@ -190,7 +193,7 @@ function validateSpec(spec, health = {}) {
 function renderBrief(spec) {
   const lines = [];
   lines.push(`CAMPAIGN BUILD BRIEF - ${spec.name}`);
-  lines.push(`Channel: ${spec.channel} · Budget: $${spec.budget_daily_usd}/day · Bidding: ${spec.bidding}${spec.conversion_goal ? ` → ${spec.conversion_goal}` : ''}`);
+  lines.push(`Channel: ${spec.channel} · Budget: ${fmtMoney(spec.budget_daily_usd, spec.currency || 'USD')}/day · Bidding: ${spec.bidding}${spec.conversion_goal ? ` → ${spec.conversion_goal}` : ''}`);
   lines.push(`Settings: geo ${spec.settings.geo} · networks ${spec.settings.networks.join('+')} · CREATE PAUSED`);
   for (const ag of spec.ad_groups) {
     lines.push('');
@@ -219,7 +222,7 @@ function renderPlain(spec) {
     headline: `Your ad: ${spec.name}`,
     who_sees_it: `This shows to ${who}.`,
     what_it_says: example ? `${example.rsa.headlines[0]} - ${example.rsa.descriptions[0]}` : '',
-    what_you_pay: `Up to $${spec.budget_daily_usd} a day. You only pay when someone clicks. It starts switched off - nothing spends until you say go.`,
+    what_you_pay: `Up to ${fmtMoney(spec.budget_daily_usd, spec.currency || 'USD')} a day. You only pay when someone clicks. It starts switched off - nothing spends until you say go.`,
     safety_line: 'We checked your setup first, so every click gets counted correctly from day one.',
   };
 }
@@ -231,7 +234,7 @@ function renderPlain(spec) {
  *   − standing exceptions − known negatives
  * Returns { keywords: [{ text, match, source }], excluded: [{ text, reason }] }.
  */
-function sourceKeywords({ business, services = [], location = null, searchTerms = [], cpaTargetUsd = null, accountMedianCpaUsd = null, exceptions = [], negatives = [] }) {
+function sourceKeywords({ business, services = [], location = null, searchTerms = [], cpaTargetUsd = null, accountMedianCpaUsd = null, exceptions = [], negatives = [], currency = 'USD' }) {
   const kw = (t, match, source) => ({ text: match === 'exact' ? `[${t}]` : match === 'phrase' ? `"${t}"` : t, match, source });
   const out = []; const excluded = [];
   const seen = new Set();
@@ -253,7 +256,7 @@ function sourceKeywords({ business, services = [], location = null, searchTerms 
     const conv = t.conversions_90d || 0; const spend = t.spend_90d_usd || 0;
     if (conv <= 0) continue;
     const cpa = spend / conv;
-    if (target != null && cpa > target) { excluded.push({ text: t.term, reason: `cost per result $${Math.round(cpa)} above target $${Math.round(target)}` }); continue; }
+    if (target != null && cpa > target) { excluded.push({ text: t.term, reason: `cost per result ${fmtMoney(cpa, currency)} above target ${fmtMoney(target, currency)}` }); continue; }
     if (isBlocked(t.term)) { excluded.push({ text: t.term, reason: 'matches a standing exception or negative' }); continue; }
     push(t.term, 'exact', 'winner');
   }

@@ -54,7 +54,7 @@ function healthScoreBlock(score) {
 function moneyHeadline(envelope) {
   const w = envelope.totals.waste_monthly_usd;
   const text = w > 0
-    ? fill(COPY.money_headline_waste, { amount: `$${w.toLocaleString('en-US')}` })
+    ? fill(COPY.money_headline_waste, { amount: `${envelope.currency_symbol || '$'}${w.toLocaleString('en-US')}` })
     : COPY.money_headline_clean;
   return `<div style="font-family:${TOKENS.font};font-size:24px;font-weight:600;color:${TOKENS.accent};text-align:center;padding:8px 16px 24px 16px;">${text}</div>`;
 }
@@ -245,7 +245,7 @@ function renderReport(envelope, { unlocked = false, healthScore = null, mode = '
     ${healthScore != null ? healthScoreBlock(healthScore) : ''}
     ${envelope.narrative_slots.exec_summary ? `<div style="font-family:${TOKENS.font};font-size:15px;color:#333;text-align:center;padding:0 8px 16px 8px;">${esc(envelope.narrative_slots.exec_summary)}</div>` : ''}
     ${moneyHeadline(envelope)}
-    ${envelope.performance ? renderPerformanceSection(envelope.performance, TOKENS) : ''}
+    ${envelope.performance ? renderPerformanceSection(envelope.performance, TOKENS, envelope.currency_symbol || '$') : ''}
     ${degraded}
     ${unlockCta}${approveCta}
     ${cards}

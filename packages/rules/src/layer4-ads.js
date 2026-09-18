@@ -328,7 +328,7 @@ const rules = [
               locked: true,
               entities: [{ kind: 'campaign', value: c.name }],
               fix_detail: zero
-                ? `"${c.name}" spent $${Math.round(c.spend_30d_usd)} last month and brought in nothing measurable. Cut its budget or pause it.`
+                ? `"${c.name}" spent ${require('../../shared/src/money').fmtMoney(c.spend_30d_usd, ads.currency_code || ads.currency || 'USD')} last month and brought in nothing measurable. Cut its budget or pause it.`
                 : `"${c.name}" pays over ${cpaMultiple}× your average for each customer. Rein its budget in.`,
             },
             fix: { params_ref: 'changes.params', risk: 'medium', reversible: true, approval_scope: 'change' },

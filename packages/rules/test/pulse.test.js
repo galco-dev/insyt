@@ -36,3 +36,11 @@ test('pulse: tiny accounts do not page; thresholds are config', () => {
   assert.deepStrictEqual(judgePulse({ pulse: tiny, now }), []);
   assert.strictEqual(judgePulse({ pulse: tiny, now, thresholds: { spike_min_usd: 10 } })[0].kind, 'spend_spike');
 });
+
+test('pulse: alert titles speak the account currency, not dollars', () => {
+  const spike = { days: days([100, 100, 100, 100, 100, 100, 100, 260, 0], [2, 2, 2, 2, 2, 2, 2, 2, 0]), disapproved: [] };
+  assert.match(judgePulse({ pulse: spike, now, currency: 'MAD' })[0].title, /^Spend jumped to MAD 260 yesterday \(usually about MAD 100 a day\)/);
+  assert.match(judgePulse({ pulse: spike, now, currency: 'GBP' })[0].title, /£260/);
+  assert.match(judgePulse({ pulse: { ...spike, currency_code: 'AED' }, now })[0].title, /AED 260/, 'the pulse itself carries the code when the fetch knows it');
+  assert.match(judgePulse({ pulse: spike, now })[0].title, /\$260/);
+});

@@ -72,3 +72,12 @@ test('renderPlain speaks the customer register - no trade vocabulary', () => {
     assert.ok(plain.what_you_pay.includes('starts switched off'));
   }
 });
+
+test('builder: budget lines and excluded-term reasons use the account currency', () => {
+  const { buildCampaignSpec, renderBrief: briefFromSpec, sourceKeywords } = require('../src/builder');
+  const spec = buildCampaignSpec({ template: 'brand', business: 'Marina Dental', services: [], location: 'Dubai', budget_daily_usd: 40, currency: 'AED', existing_campaign_names: [], final_url: 'https://marina.ae', sourced_keywords: [] });
+  assert.strictEqual(spec.currency, 'AED');
+  assert.match(briefFromSpec(spec), /Budget: AED 40\/day/);
+  const sourced = sourceKeywords({ business: 'Marina Dental', services: ['implants'], searchTerms: [{ term: 'implants dubai', conversions_90d: 2, spend_90d_usd: 900 }], accountMedianCpaUsd: 100, currency: 'AED' });
+  assert.match(sourced.excluded[0].reason, /cost per result AED 450 above target AED 100/);
+});

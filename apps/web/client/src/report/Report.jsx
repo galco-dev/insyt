@@ -9,7 +9,7 @@ import { LineChart, StackedBarsH, Histogram, HourProfile, ShareBars } from './ch
 import { CheckCircle as CheckCircle2, AlertTriangle, Lock01 as Lock, ArrowRight, FlipBackward as Undo2, Eye } from '@untitledui/icons';
 import { audit, deep } from './data.js';
 import { api, isDemo } from '../lib/api.js';
-import { useAccess } from '../lib/access.jsx';
+import { useAccess, fmtMoney } from '../lib/access.jsx';
 import { useBatchApprove } from '../lib/batch.jsx';
 import { needsWriteStep, goWriteStep, FIX_ACCESS_LINE } from '../lib/fix-access.js';
 import { Link } from '../lib/router.jsx';
@@ -333,7 +333,7 @@ function RealReport({ reportId }) {
   const changeByFinding = new Map(pending.filter((c) => c.finding_id).map((c) => [c.finding_id, c]));
   const summary = report.summary || {};
   const code = summary.currency || 'USD';
-  const money = (n) => (code === 'USD' ? `$${Math.round(n).toLocaleString()}` : `${code} ${Math.round(n).toLocaleString()}`);
+  const money = (n) => fmtMoney(n, code);
   const ORDER = { critical: 0, warning: 1, opportunity: 2, info: 3 };
   const snapshot = (report.findings_snapshot || []).filter((f) => f.status !== 'dismissed' && f.status !== 'resolved');
   const findings = snapshot.map((f) => {

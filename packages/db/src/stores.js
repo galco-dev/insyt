@@ -892,7 +892,7 @@ function dashStore(db, deps = {}) {
         const a = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null);
         return (a && a.currency) || 'USD';
       })();
-      const sym = cur === 'USD' ? '$' : `${cur} `;
+      const { fmtMoney: fmtCur } = require('../../shared/src/money');
       const nowIso = new Date().toISOString();
       const [rows, camps] = await Promise.all([
         db.select('changes',
@@ -912,7 +912,7 @@ function dashStore(db, deps = {}) {
         finding_id: r.finding_id || null,
         title: r.summary_text ? asProposal(r.summary_text) : ((r.finding && r.finding.title) || 'A fix is ready'),
         money_line: (r.money_impact_usd || (r.finding && r.finding.money_impact_monthly_usd))
-          ? `about ${sym}${Math.round(r.money_impact_usd || r.finding.money_impact_monthly_usd)} a month` : null,
+          ? `about ${fmtCur(r.money_impact_usd || r.finding.money_impact_monthly_usd, cur)} a month` : null,
         category: r.category || null,
         ask_reason: r.ask_reason || null,
         // Analytics and tracking changes need the write grant; Ads and settings do not.
@@ -1429,7 +1429,11 @@ function dashStore(db, deps = {}) {
       let now_line = null;
       if (ch.tool_id === 'ads.adjust_budget' && ch.params && ch.params.campaign_id) {
         const c = await db.select('campaigns', `tenant_id=eq.${q(tenantId)}&google_campaign_id=eq.${q(String(ch.params.campaign_id))}&select=budget_daily_usd,name`, { single: true }).catch(() => null);
-        if (c && c.budget_daily_usd != null) now_line = `It runs on $${Number(c.budget_daily_usd)} a day today${Number(c.budget_daily_usd) !== Number(ch.params.new_daily_usd) ? ', which is not what we set' : ''}.`;
+        if (c && c.budget_daily_usd != null) {
+          const a = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null);
+          const { fmtMoney: fm } = require('../../shared/src/money');
+          now_line = `It runs on ${fm(c.budget_daily_usd, (a && a.currency) || 'USD')} a day today${Number(c.budget_daily_usd) !== Number(ch.params.new_daily_usd) ? ', which is not what we set' : ''}.`;
+        }
       }
       return {
         summary_text: ch.summary_text || null,
@@ -1579,6 +1583,14 @@ function agencyStore(db, deps = {}) {
     const a = await db.select('agencies', `id=eq.${q(agencyId)}&select=name`, { single: true }).catch(() => null);
     return (a && a.name) || 'Your agency';
   };
+  // The ad account's own currency per client tenant (every money figure is in it).
+  const currenciesFor = async (tenantIds) => {
+    if (!tenantIds.length) return {};
+    const rows = await db.select('assets', `tenant_id=in.(${tenantIds.map(q).join(',')})&kind=eq.ads_account&select=tenant_id,currency,linked`).catch(() => []);
+    const out = {};
+    for (const r of rows || []) if (r.currency && (!out[r.tenant_id] || r.linked)) out[r.tenant_id] = r.currency;
+    return out;
+  };
   // Connection state per client tenant: connected | reconnect | none.
   const connectionsFor = async (tenantIds) => {
     if (!tenantIds.length) return {};
@@ -1616,7 +1628,7 @@ function agencyStore(db, deps = {}) {
       ]);
       const by = (rows) => rows.reduce((m, r) => ((m[r.tenant_id] = m[r.tenant_id] || []).push(r), m), {});
       const f = by(findings); const c = by(changes); const r = by(reports);
-      const conn = await connectionsFor(accounts.map((a) => a.tenant_id));
+      const [conn, curs] = await Promise.all([connectionsFor(accounts.map((a) => a.tenant_id)), currenciesFor(accounts.map((a) => a.tenant_id))]);
       return accounts.map((a) => {
         const own = f[a.tenant_id] || [];
         const latest = (r[a.tenant_id] || [])[0];
@@ -1624,6 +1636,7 @@ function agencyStore(db, deps = {}) {
           id: a.id,
           tenant_id: a.tenant_id,
           name: a.display_name,
+          currency: curs[a.tenant_id] || 'USD',
           connection: conn[a.tenant_id] || 'none',
           manager: a.seat ? a.seat.name : null,
           brief_only: a.brief_only,
@@ -1647,10 +1660,14 @@ function agencyStore(db, deps = {}) {
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
       // Snoozed items are filtered here, not in the browser (agency plan move 12).
       const snoozeFilter = snoozed ? `&snoozed_until=gt.${q(now)}` : `&or=(snoozed_until.is.null,snoozed_until.lt.${q(now)})`;
-      const rows = await db.select('changes',
-        `tenant_id=in.(${ids})&status=eq.proposed${snoozeFilter}&select=id,tenant_id,before,after,snoozed_until,snooze_reason,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name,payload)&order=created_at.asc&limit=200`);
+      const [rows, curs] = await Promise.all([
+        db.select('changes',
+          `tenant_id=in.(${ids})&status=eq.proposed${snoozeFilter}&select=id,tenant_id,before,after,snoozed_until,snooze_reason,finding:findings(title,explanation,severity,money_impact_monthly_usd,rule_id,layer,campaign_ref,campaign_name,payload)&order=created_at.asc&limit=200`),
+        currenciesFor(accounts.map((a) => a.tenant_id)),
+      ]);
       return rows.map((r) => ({
         id: r.id,
+        currency: curs[r.tenant_id] || 'USD',
         snoozed_until: r.snoozed_until || null,
         snooze_reason: r.snooze_reason || null,
         account: nameByTenant[r.tenant_id] ? nameByTenant[r.tenant_id].display_name : r.tenant_id,
@@ -1699,10 +1716,13 @@ function agencyStore(db, deps = {}) {
       if (!accounts.length) return [];
       const byTenant = Object.fromEntries(accounts.map((a) => [a.tenant_id, a]));
       const ids = accounts.map((a) => a.tenant_id).map(q).join(',');
-      const rows = await db.select('campaign_drafts',
-        `tenant_id=in.(${ids})&status=neq.dismissed&select=*&order=created_at.desc&limit=100`);
+      const [rows, curs] = await Promise.all([
+        db.select('campaign_drafts', `tenant_id=in.(${ids})&status=neq.dismissed&select=*&order=created_at.desc&limit=100`),
+        currenciesFor(accounts.map((a) => a.tenant_id)),
+      ]);
       return rows.map((d) => ({
         ...d,
+        currency: (d.spec && d.spec.currency) || curs[d.tenant_id] || 'USD',
         account_id: byTenant[d.tenant_id] ? byTenant[d.tenant_id].id : null,
         account: byTenant[d.tenant_id] ? byTenant[d.tenant_id].display_name : null,
       }));
@@ -1754,6 +1774,7 @@ function agencyStore(db, deps = {}) {
         db.select('spend_daily', `tenant_id=in.(${ids})&date=gte.${q(monthStart)}&select=tenant_id,date,spend_usd,conversions,conversion_value_usd`),
       ]);
       const tByTenant = Object.fromEntries((targets || []).map((t) => [t.tenant_id, t]));
+      const curs = await currenciesFor(accounts.map((a) => a.tenant_id));
       const rows = accounts.map((a) => {
         const days = (spend || []).filter((s) => s.tenant_id === a.tenant_id);
         const sum = (k, from) => days.filter((s) => !from || s.date >= from).reduce((n, s) => n + Number(s[k] || 0), 0);
@@ -1761,6 +1782,7 @@ function agencyStore(db, deps = {}) {
         return {
           account_id: a.id,
           account: a.display_name,
+          currency: curs[a.tenant_id] || 'USD',
           targets: { monthly_budget_usd: t.monthly_budget_usd || null, cpa_target_usd: t.cpa_target_usd || null, roas_target: t.roas_target || null },
           pacing: pace({ monthlyBudgetUsd: Number(t.monthly_budget_usd) || null, mtdSpendUsd: sum('spend_usd'), last7SpendUsd: sum('spend_usd', sevenAgo), nowIso: now }),
           performance: targetStatus({
@@ -2131,6 +2153,7 @@ function agencyStore(db, deps = {}) {
         dashStore(db).receipts(t).catch(() => ({ by_change: {} })),
       ]);
       const connection = conn[t] || 'none';
+      const currency = (await currenciesFor([t]))[t] || 'USD';
       const activity = (changes || []).map((c) => {
         const r = receipts.by_change[c.id] || null;
         let state = c.status;
@@ -2151,7 +2174,7 @@ function agencyStore(db, deps = {}) {
         };
       });
       return {
-        account: { id: acc.id, tenant_id: t, display_name: acc.display_name, status: acc.status, brief_only: acc.brief_only, report_register: acc.report_register, seat_id: acc.seat_id, seat: acc.seat, review_reports: acc.review_reports !== false, client_mode: acc.client_mode || 'shared', client_copy: !!acc.client_copy, request_email: acc.request_email, request_sent_at: acc.request_sent_at, removed_at: acc.removed_at, created_at: acc.created_at },
+        account: { id: acc.id, tenant_id: t, display_name: acc.display_name, currency, status: acc.status, brief_only: acc.brief_only, report_register: acc.report_register, seat_id: acc.seat_id, seat: acc.seat, review_reports: acc.review_reports !== false, client_mode: acc.client_mode || 'shared', client_copy: !!acc.client_copy, request_email: acc.request_email, request_sent_at: acc.request_sent_at, removed_at: acc.removed_at, created_at: acc.created_at },
         tenant: tenant ? { business_name: tenant.business_name, website_url: tenant.website_url, status: tenant.status, paused_until: tenant.paused_until } : null,
         connection,
         latest_report: report ? { id: report.id, type: report.type, created_at: report.created_at, review_status: report.review_status || null, url: `/r/${report.id}` } : null,

@@ -11,7 +11,8 @@ const { executorStore } = require('../../../packages/db/src/stores');
 const { planWatch } = require('../../../packages/registry/src/watches');
 
 async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }) {
-  const q = (s) => encodeURIComponent(s);
+  const { fmtMoney } = require('../../../packages/shared/src/money');
+const q = (s) => encodeURIComponent(s);
   // changes has no run_id column - the run comes through the finding.
   const rows = await db.select('changes',
     `status=eq.approved&applied_at=is.null&select=id,tenant_id,tool_id,params,finding_id,actor,summary_text,money_impact_usd,change_key,target,category,watch_plan,reverts_change_id,finding:findings(run_id)&order=created_at.asc&limit=${limit}`);
@@ -47,6 +48,7 @@ async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }
 
     // Drift (fix plan move 9): a budget the owner already moved since the
     // draft becomes a fresh proposal instead of being moved again.
+    const cur = (ctx && ctx.account && ctx.account.currency_code) || 'USD';
     const ready = [];
     for (const c of changes) {
       const p = c.params || {};
@@ -56,9 +58,9 @@ async function scanAndApply({ db, makeApi, makeCtx, now = Date.now, limit = 50 }
         if (liveBudget != null && Math.abs(liveBudget - Number(p.previous_daily_usd)) > 0.01) {
           await db.update('changes', `id=eq.${q(c.id)}`, {
             status: 'proposed', changeset_id: null,
-            ask_reason: `You changed this to $${liveBudget} since we drafted it. Still want $${p.new_daily_usd}?`,
+            ask_reason: `You changed this to ${fmtMoney(liveBudget, cur)} since we drafted it. Still want ${fmtMoney(p.new_daily_usd, cur)}?`,
             params: { ...p, previous_daily_usd: liveBudget },
-            before: { ...(c.before || {}), line: `Runs on $${liveBudget} a day today` },
+            before: { ...(c.before || {}), line: `Runs on ${fmtMoney(liveBudget, cur)} a day today` },
           }).catch(() => {});
           continue;
         }

@@ -30,6 +30,15 @@ const NAV = [
 
 const SEV = { critical: 'critical', warning: 'warning', info: 'info' };
 
+// Every client figure is in that client's ad account currency. Insyt's own
+// fees (the Accounts billing cards) stay in USD.
+const CUR_SYMBOL = { USD: '$', GBP: '£', EUR: '€', AUD: 'A$', CAD: 'C$', NZD: 'NZ$' };
+const cur = (n, code = 'USD') => {
+  const c = String(code || 'USD').toUpperCase();
+  const v = Math.round(Number(n) || 0).toLocaleString('en-US');
+  return CUR_SYMBOL[c] ? `${CUR_SYMBOL[c]}${v}` : `${c} ${v}`;
+};
+
 // Errors have a sentence (agency plan move 3). Every write in the console
 // used to swallow its failure; now each card says what happened, and a
 // blocked build lists its steps.
@@ -304,7 +313,7 @@ function Portfolio() {
                     {paceById[a.id].pacing.deltaPct != null && paceById[a.id].pacing.status !== 'no_budget' ? ` ${paceById[a.id].pacing.deltaPct > 0 ? '+' : ''}${paceById[a.id].pacing.deltaPct}%` : ''}
                   </span>
                 )}
-                <PerfChip perf={paceById[a.id].performance} />
+                <PerfChip perf={paceById[a.id].performance} currency={paceById[a.id].currency || a.currency} />
               </div>
             )}
             {a.connection && a.connection !== 'connected' && (
@@ -368,7 +377,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
   }
   const brief = [
     `${item.account} - ${item.title}`,
-    `Rule ${item.rule_id} (layer ${item.layer}) · ${item.severity}${item.money_monthly_usd ? ` · ~$${item.money_monthly_usd}/mo` : ''}`,
+    `Rule ${item.rule_id} (layer ${item.layer}) · ${item.severity}${item.money_monthly_usd ? ` · ~${cur(item.money_monthly_usd, item.currency)}/mo` : ''}`,
     '', item.explanation, '',
     `BEFORE: ${JSON.stringify(item.before)}`, `AFTER:  ${JSON.stringify(item.after)}`,
   ].join('\n');
@@ -422,7 +431,7 @@ function TriageItem({ item, index, onDone, selected = false, onSelect = null, fo
           )}
           <span className="font-mono text-tiny uppercase tracking-wide text-neutral-900">{item.rule_id} · L{item.layer}</span>
         </div>
-        {item.money_monthly_usd && <span className="text-small font-semibold">~${item.money_monthly_usd}/mo</span>}
+        {item.money_monthly_usd && <span className="text-small font-semibold">~{cur(item.money_monthly_usd, item.currency)}/mo</span>}
       </div>
       <h3 className="mt-2 text-h5">{item.title}</h3>
       <p className="mt-1 text-small text-neutral-900">{item.explanation}</p>
@@ -517,7 +526,11 @@ function Triage() {
   const toggle = (id) => setSel((s) => ({ ...s, [id]: !s[id] }));
   const selIds = Object.keys(sel).filter((id) => sel[id] && !batched.has(id));
   const allItems = [...queue, ...(accountWide || [])];
-  const selMoney = selIds.reduce((n, id) => n + ((allItems.find((i) => i.id === id) || {}).money_monthly_usd || 0), 0);
+  const selItems = selIds.map((id) => allItems.find((i) => i.id === id) || {});
+  const selCurrencies = new Set(selItems.map((i) => i.currency || 'USD'));
+  // A total only means something in one currency; mixed selections show the count alone.
+  const selMoney = selCurrencies.size === 1 ? selItems.reduce((n, i) => n + (i.money_monthly_usd || 0), 0) : 0;
+  const selCur = [...selCurrencies][0] || 'USD';
 
   async function approveSelected() {
     setBusy(true); setBatchErr(null); setBatchNote(null);
@@ -549,7 +562,7 @@ function Triage() {
       </p>
       {selIds.length > 0 && (
         <div className="sticky top-[105px] z-20 mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-500 bg-(--ui-well) px-4 py-2.5 shadow-sm">
-          <span className="text-small font-semibold">{selIds.length} selected{selMoney ? ` · ~$${selMoney}/mo total` : ''}</span>
+          <span className="text-small font-semibold">{selIds.length} selected{selMoney ? ` · ~${cur(selMoney, selCur)}/mo total` : ''}</span>
           <Button onClick={approveSelected} disabled={busy} className="!px-4 !py-2">Approve {selIds.length} selected</Button>
           <button type="button" onClick={() => setSel({})} className="text-small text-neutral-900 underline underline-offset-2">Clear</button>
         </div>
@@ -630,11 +643,11 @@ function StatusChip({ st, className }) {
   );
 }
 
-function PerfChip({ perf }) {
+function PerfChip({ perf, currency = 'USD' }) {
   if (!perf || perf.status === 'no_target') return null;
   const hit = perf.status === 'hitting';
   const label = perf.cpaTargetUsd != null
-    ? `CPA $${perf.cpa ?? ' - '} vs $${perf.cpaTargetUsd} target`
+    ? `CPA ${perf.cpa != null ? cur(perf.cpa, currency) : ' - '} vs ${cur(perf.cpaTargetUsd, currency)} target`
     : `ROAS ${perf.roas ?? ' - '} vs ${perf.roasTarget} target`;
   return (
     <span className={clsx('rounded-full px-2 py-0.5 font-mono text-tiny', hit ? 'bg-success-tint text-success' : 'bg-critical-tint text-critical')}>
@@ -676,7 +689,7 @@ function TargetEditor({ row, onClose }) {
   );
   return (
     <div className="mt-3 flex flex-wrap items-end gap-3 rounded bg-neutral-50 p-3">
-      {field('Monthly budget $', 'monthly_budget_usd', 'e.g. 3000')}
+      {field(`Monthly budget (${row.currency || 'USD'})`, 'monthly_budget_usd', 'e.g. 3000')}
       {field('CPA target $', 'cpa_target_usd', 'optional')}
       {field('ROAS target', 'roas_target', 'optional')}
       <Button onClick={save} disabled={busy} className="!px-4 !py-2">Save targets</Button>
@@ -699,7 +712,7 @@ function PacingRow({ row, index }) {
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="text-body font-semibold">{row.account}</span>
           <StatusChip st={st} />
-          <PerfChip perf={row.performance} />
+          <PerfChip perf={row.performance} currency={row.currency} />
           {saved && <span className="font-mono text-tiny text-success">targets saved</span>}
         </div>
         <button type="button" onClick={() => { setEditing((e) => !e); setSaved(false); }} className="text-small text-neutral-900 underline underline-offset-2">
@@ -709,9 +722,9 @@ function PacingRow({ row, index }) {
       {p.budget ? (
         <>
           <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-small text-neutral-900">
-            <span><strong className="text-strong">${p.mtd.toLocaleString()}</strong> of ${p.budget.toLocaleString()} spent</span>
-            <span>day {p.dayOfMonth} of {p.daysInMonth} - even pace would be ${Math.round(p.expectedToDate).toLocaleString()}</span>
-            <span>projected <strong className={p.status === 'over' || p.status === 'at_risk' ? 'text-critical' : 'text-strong'}>${Math.round(p.projected).toLocaleString()}</strong> ({p.deltaPct > 0 ? '+' : ''}{p.deltaPct}%)</span>
+            <span><strong className="text-strong">{cur(p.mtd, row.currency)}</strong> of {cur(p.budget, row.currency)} spent</span>
+            <span>day {p.dayOfMonth} of {p.daysInMonth} - even pace would be {cur(p.expectedToDate, row.currency)}</span>
+            <span>projected <strong className={p.status === 'over' || p.status === 'at_risk' ? 'text-critical' : 'text-strong'}>{cur(p.projected, row.currency)}</strong> ({p.deltaPct > 0 ? '+' : ''}{p.deltaPct}%)</span>
           </div>
           <div className="relative mt-2 h-2 rounded-full bg-neutral-100">
             <div className={clsx('h-2 rounded-full', barTone)} style={{ width: `${spentPct}%` }} />
@@ -720,7 +733,7 @@ function PacingRow({ row, index }) {
         </>
       ) : (
         <p className="mt-3 text-small text-neutral-900">
-          ${p.mtd.toLocaleString()} spent this month with no budget target set - set one so pacing can watch this account.
+          {cur(p.mtd, row.currency)} spent this month with no budget target set - set one so pacing can watch this account.
         </p>
       )}
       {editing && <TargetEditor row={row} onClose={(ok) => { setEditing(false); if (ok) setSaved(true); }} />}
@@ -828,7 +841,7 @@ function Alerts() {
 function briefFromSpec(spec) {
   const lines = [
     `CAMPAIGN BUILD BRIEF - ${spec.name}`,
-    `Channel: ${spec.channel} · Budget: $${spec.budget_daily_usd}/day · Bidding: ${spec.bidding}${spec.conversion_goal ? ` → ${spec.conversion_goal}` : ''}`,
+    `Channel: ${spec.channel} · Budget: ${cur(spec.budget_daily_usd, spec.currency)}/day · Bidding: ${spec.bidding}${spec.conversion_goal ? ` → ${spec.conversion_goal}` : ''}`,
     `Settings: geo ${spec.settings.geo} · networks ${(spec.settings.networks || []).join('+')} · CREATE PAUSED`,
   ];
   for (const ag of spec.ad_groups || []) {
@@ -903,7 +916,7 @@ function DraftCard({ d, index }) {
           <span className="text-body font-semibold">{spec.name}</span>
           <StatusChip st={st} />
         </div>
-        <span className="font-mono text-tiny text-neutral-900">${spec.budget_daily_usd}/day · {spec.bidding}</span>
+        <span className="font-mono text-tiny text-neutral-900">{cur(spec.budget_daily_usd, d.currency || spec.currency)}/day · {spec.bidding}</span>
       </div>
       <div className="mt-2 text-small text-neutral-900">
         {spec.channel} · {groups.length} ad group{groups.length === 1 ? '' : 's'} · {groups.reduce((n, g) => n + ((g.keywords || []).length), 0)} keywords · goal {spec.conversion_goal || ' - '}
@@ -1040,7 +1053,7 @@ function Build() {
           <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Dubai" className={clsx(sel, 'w-28')} />
         </label>
         <label className="flex flex-col gap-1">
-          <MonoLabel>Budget $/day</MonoLabel>
+          <MonoLabel>Budget per day (account currency)</MonoLabel>
           <input type="number" min="1" value={form.budget_daily_usd} onChange={(e) => setForm({ ...form, budget_daily_usd: e.target.value })} placeholder="10" className={clsx(sel, 'w-24')} />
         </label>
         <Button onClick={create} disabled={busy || !form.account_id} className="!px-4 !py-2.5">
@@ -1602,7 +1615,7 @@ const ACT_STATE = {
   reverted: { label: 'undone', cls: 'bg-neutral-100 text-neutral-900' },
 };
 
-function ActivityRow({ item, accountId, onChanged }) {
+function ActivityRow({ item, accountId, onChanged, currency = 'USD' }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [confirm, setConfirm] = useState(false);
@@ -1621,7 +1634,7 @@ function ActivityRow({ item, accountId, onChanged }) {
           <div className="text-body font-medium">{item.title}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-tiny text-neutral-900">
             <span className={clsx('rounded-full px-2 py-0.5 font-mono', st.cls)}>{st.label}</span>
-            {item.money_monthly_usd ? <span>~${item.money_monthly_usd}/mo</span> : null}
+            {item.money_monthly_usd ? <span>~{cur(item.money_monthly_usd, currency)}/mo</span> : null}
             <span>approved {new Date(item.approved_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
             {item.applied_at && <span>· applied {new Date(item.applied_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
             {item.verified_at && <span>· verified {new Date(item.verified_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
@@ -1745,7 +1758,7 @@ function AccountPage({ id }) {
         {activity.length === 0 ? (
           <div className="mt-2"><EmptyState title="Nothing approved yet" body="Every change you approve for this account lands here with what happened next: applied, verified, refused, or waiting." /></div>
         ) : (
-          <div className="mt-2 flex flex-col gap-2">{activity.map((it) => <ActivityRow key={it.change_id} item={it} accountId={account.id} onChanged={() => setVersion((v) => v + 1)} />)}</div>
+          <div className="mt-2 flex flex-col gap-2">{activity.map((it) => <ActivityRow key={it.change_id} item={it} accountId={account.id} currency={account.currency} onChanged={() => setVersion((v) => v + 1)} />)}</div>
         )}
       </div>
 

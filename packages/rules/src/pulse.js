@@ -18,8 +18,11 @@ const DEFAULTS = {
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
-function judgePulse({ pulse, thresholds = {}, now = Date.now() }) {
+const { fmtMoney } = require('../../shared/src/money');
+
+function judgePulse({ pulse, thresholds = {}, now = Date.now(), currency = 'USD' }) {
   const t = { ...DEFAULTS, ...thresholds };
+  const m = (n) => fmtMoney(n, (pulse && pulse.currency_code) || currency || 'USD');
   const out = [];
   const days = (pulse && pulse.days) || [];
   const today = new Date(now).toISOString().slice(0, 10);
@@ -34,7 +37,7 @@ function judgePulse({ pulse, thresholds = {}, now = Date.now() }) {
     if (yesterday.spend_usd >= t.spike_min_usd && avgSpend > 0 && yesterday.spend_usd >= avgSpend * t.spike_multiple) {
       out.push({
         kind: 'spend_spike', severity: 'warning',
-        title: `Spend jumped to $${Math.round(yesterday.spend_usd)} yesterday (usually about $${Math.round(avgSpend)} a day)`,
+        title: `Spend jumped to ${m(yesterday.spend_usd)} yesterday (usually about ${m(avgSpend)} a day)`,
         detail: { date: yesterday.date, spend_usd: r2(yesterday.spend_usd), avg_7d_usd: r2(avgSpend), multiple: r2(yesterday.spend_usd / avgSpend) },
         campaign_ref: null, trigger_run: true,
       });
@@ -42,7 +45,7 @@ function judgePulse({ pulse, thresholds = {}, now = Date.now() }) {
     if (avgSpend >= t.silence_min_avg_usd && yesterday.spend_usd <= avgSpend * (t.silence_max_pct / 100)) {
       out.push({
         kind: 'spend_silence', severity: 'warning',
-        title: `Ads barely ran yesterday: $${Math.round(yesterday.spend_usd)} against about $${Math.round(avgSpend)} a day`,
+        title: `Ads barely ran yesterday: ${m(yesterday.spend_usd)} against about ${m(avgSpend)} a day`,
         detail: { date: yesterday.date, spend_usd: r2(yesterday.spend_usd), avg_7d_usd: r2(avgSpend) },
         campaign_ref: null, trigger_run: false,
       });
@@ -55,7 +58,7 @@ function judgePulse({ pulse, thresholds = {}, now = Date.now() }) {
     if (tail.every((d) => d.conversions === 0) && spent > 0) {
       out.push({
         kind: 'conv_flatline', severity: 'critical',
-        title: `No conversions counted for ${t.flatline_days} days while $${Math.round(spent)} was spent`,
+        title: `No conversions counted for ${t.flatline_days} days while ${m(spent)} was spent`,
         detail: { days: tail.map((d) => d.date), spend_usd: r2(spent), avg_prior_conversions_per_day: r2(avgConv) },
         campaign_ref: null, trigger_run: true,
       });

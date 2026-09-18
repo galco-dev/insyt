@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Zap, Lock01 as Lock, AlertTriangle, Check } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
-import { useAccess } from '../lib/access.jsx';
+import { useAccess, fmtMoney } from '../lib/access.jsx';
 import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
 import { PerformanceChart } from '../report/charts.jsx';
 import { writeStepHref } from '../lib/fix-access.js';
@@ -423,7 +423,7 @@ export default function Home() {
 
   const { health, pending, reports, streak, plan } = data;
   const code = data.currency || 'USD';
-  const money = (n) => (code === 'USD' ? `$${Math.round(n).toLocaleString()}` : `${code} ${Math.round(n).toLocaleString()}`);
+  const money = (n) => fmtMoney(n, code);
   const latest = reports && reports[0];
   // The first check, with a date on it (fix plan move 8): running, late, or failed.
   const firstCheckLine = (() => {

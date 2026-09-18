@@ -18,6 +18,7 @@ const { draftCopy, validateCopy, diffCopy } = require('./copy');
 const { byId: tools } = require('../../tools/src/catalogue');
 const { createTelemetry } = require('../../shared/src/telemetry');
 
+const { fmtMoney } = require('../../shared/src/money');
 const q = (s) => encodeURIComponent(s);
 
 function createDraftService({ db, google = null, model = null, modelId = null }) {
@@ -63,13 +64,14 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     const business = inputs.business || (tenant && tenant.business_name) || 'Your business';
     const cpas = ads ? (ads.campaigns || []).filter((c) => c.conversions_30d > 0).map((c) => c.spend_30d_usd / c.conversions_30d).sort((a, b) => a - b) : [];
     const median = cpas.length ? cpas[Math.floor(cpas.length / 2)] : null;
+    const currency = (ads && ads.currency_code) || (await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&select=currency&limit=1`, { single: true }).catch(() => null) || {}).currency || 'USD';
     const sourced = sourceKeywords({
-      business, services: inputs.services || [], location: inputs.location || null,
+      business, services: inputs.services || [], location: inputs.location || null, currency,
       searchTerms: ads ? ads.search_terms || [] : [], accountMedianCpaUsd: median,
       exceptions: exceptions.map((e) => e.summary_text), negatives: [],
     });
     const spec = buildCampaignSpec({
-      template, business, services: inputs.services || [], location: inputs.location || null,
+      template, business, services: inputs.services || [], location: inputs.location || null, currency,
       budget_daily_usd: inputs.budget_daily_usd, conversion_goal: inputs.conversion_goal || null,
       existing_campaign_names: (existing || []).map((c) => c.name),
       final_url: inputs.final_url || (tenant && tenant.website_url) || null,
@@ -179,7 +181,7 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     await api['ads.unpause_launch']({ campaign_id: d.google_campaign_id });
     await patch(draftId, { status: 'enabled' });
     await db.update('campaigns', `tenant_id=eq.${q(tenantId)}&google_campaign_id=eq.${q(d.google_campaign_id)}`, { status: 'enabled' }).catch(() => {});
-    await db.insert('ledger', [{ tenant_id: tenantId, event: 'campaign_launched', actor, summary_text: `"${d.spec.name}" is live. Up to $${d.spec.budget_daily_usd} a day; one tap pauses it any time.` }], { returning: false }).catch(() => {});
+    await db.insert('ledger', [{ tenant_id: tenantId, event: 'campaign_launched', actor, summary_text: `"${d.spec.name}" is live. Up to ${fmtMoney(d.spec.budget_daily_usd, d.spec.currency || 'USD')} a day; one tap pauses it any time.` }], { returning: false }).catch(() => {});
     await tel.event({ tenantId, agencyId, seatId, name: 'campaign.enabled', props: { draft_id: draftId }, source: agencyId ? 'agency' : 'server' });
     return { status: 'enabled' };
   }
