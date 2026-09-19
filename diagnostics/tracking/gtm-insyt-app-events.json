@@ -24,54 +24,54 @@
         "type": "googtag",
         "parameter": [
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "tagId",
             "value": "G-3N386NBR6J"
           },
           {
-            "type": "list",
+            "type": "LIST",
             "key": "configSettingsTable",
             "list": [
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "allow_google_signals"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "false"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "allow_ad_personalization_signals"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "false"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "user_id"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - user_id}}"
                   }
@@ -85,7 +85,7 @@
         ],
         "tagFiringOption": "ONCE_PER_EVENT",
         "monitoringMetadata": {
-          "type": "map"
+          "type": "MAP"
         },
         "consentSettings": {
           "consentStatus": "NOT_SET"
@@ -99,17 +99,17 @@
         "type": "gclidw",
         "parameter": [
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableCrossDomain",
             "value": "false"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableCookieOverrides",
             "value": "false"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableUrlPassthrough",
             "value": "false"
           }
@@ -119,7 +119,7 @@
         ],
         "tagFiringOption": "ONCE_PER_EVENT",
         "monitoringMetadata": {
-          "type": "map"
+          "type": "MAP"
         },
         "consentSettings": {
           "consentStatus": "NOT_SET"
@@ -133,304 +133,304 @@
         "type": "gaawe",
         "parameter": [
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "eventName",
             "value": "{{Event}}"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "measurementIdOverride",
             "value": "G-3N386NBR6J"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "sendEcommerceData",
             "value": "false"
           },
           {
-            "type": "list",
+            "type": "LIST",
             "key": "eventSettingsTable",
             "list": [
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "journey"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - journey}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "src"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - src}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "trade"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - trade}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "site_host"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - site_host}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "duration_ms"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - duration_ms}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "findings_count"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - findings_count}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "method"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - method}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "accounts_count"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - accounts_count}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "has_ads"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - has_ads}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "locked"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - locked}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "item"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - item}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "value"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - value}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "currency"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - currency}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "transaction_id"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - transaction_id}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "plan"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - plan}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "cadence"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - cadence}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "amount_paid"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - amount_paid}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "internal_test"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - internal_test}}"
                   }
                 ]
               },
               {
-                "type": "map",
+                "type": "MAP",
                 "map": [
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameter",
                     "value": "user_id"
                   },
                   {
-                    "type": "template",
+                    "type": "TEMPLATE",
                     "key": "parameterValue",
                     "value": "{{DL - user_id}}"
                   }
@@ -444,7 +444,7 @@
         ],
         "tagFiringOption": "ONCE_PER_EVENT",
         "monitoringMetadata": {
-          "type": "map"
+          "type": "MAP"
         },
         "consentSettings": {
           "consentStatus": "NOT_SET"
@@ -458,47 +458,47 @@
         "type": "awct",
         "parameter": [
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "conversionId",
             "value": "18452930063"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "conversionLabel",
             "value": "3p2eCLzbpPwcEI-8hd9E"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "conversionValue",
             "value": "{{DL - value}}"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "currencyCode",
             "value": "{{DL - currency}}"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "orderId",
             "value": "{{DL - transaction_id}}"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableConversionLinker",
             "value": "true"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableNewCustomerReporting",
             "value": "false"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableProductReporting",
             "value": "false"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableEnhancedConversion",
             "value": "false"
           }
@@ -511,7 +511,7 @@
         ],
         "tagFiringOption": "ONCE_PER_EVENT",
         "monitoringMetadata": {
-          "type": "map"
+          "type": "MAP"
         },
         "consentSettings": {
           "consentStatus": "NOT_SET"
@@ -525,47 +525,47 @@
         "type": "awct",
         "parameter": [
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "conversionId",
             "value": "18452930063"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "conversionLabel",
             "value": "riciCM3PqfwcEI-8hd9E"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "conversionValue",
             "value": "{{DL - value}}"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "currencyCode",
             "value": "{{DL - currency}}"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "orderId",
             "value": "{{DL - transaction_id}}"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableConversionLinker",
             "value": "true"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableNewCustomerReporting",
             "value": "false"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableProductReporting",
             "value": "false"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "enableEnhancedConversion",
             "value": "false"
           }
@@ -578,7 +578,7 @@
         ],
         "tagFiringOption": "ONCE_PER_EVENT",
         "monitoringMetadata": {
-          "type": "map"
+          "type": "MAP"
         },
         "consentSettings": {
           "consentStatus": "NOT_SET"
@@ -597,12 +597,12 @@
             "type": "MATCH_REGEX",
             "parameter": [
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg0",
                 "value": "{{_event}}"
               },
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg1",
                 "value": "^(paste|crawl_done|signin|confirm|report_view|begin_checkout|first_fix_approved|report_unlocked|subscription_started)$"
               }
@@ -621,12 +621,12 @@
             "type": "EQUALS",
             "parameter": [
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg0",
                 "value": "{{_event}}"
               },
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg1",
                 "value": "report_unlocked"
               }
@@ -645,12 +645,12 @@
             "type": "EQUALS",
             "parameter": [
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg0",
                 "value": "{{_event}}"
               },
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg1",
                 "value": "subscription_started"
               }
@@ -669,12 +669,12 @@
             "type": "MATCH_REGEX",
             "parameter": [
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg0",
                 "value": "{{_event}}"
               },
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg1",
                 "value": "^(report_unlocked|subscription_started)$"
               }
@@ -686,12 +686,12 @@
             "type": "EQUALS",
             "parameter": [
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg0",
                 "value": "{{DL - internal_test}}"
               },
               {
-                "type": "template",
+                "type": "TEMPLATE",
                 "key": "arg1",
                 "value": "true"
               }
@@ -709,17 +709,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "journey"
           }
@@ -733,17 +733,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "src"
           }
@@ -757,17 +757,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "trade"
           }
@@ -781,17 +781,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "user_id"
           }
@@ -805,17 +805,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "site_host"
           }
@@ -829,17 +829,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "duration_ms"
           }
@@ -853,17 +853,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "findings_count"
           }
@@ -877,17 +877,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "method"
           }
@@ -901,17 +901,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "accounts_count"
           }
@@ -925,17 +925,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "has_ads"
           }
@@ -949,17 +949,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "locked"
           }
@@ -973,17 +973,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "item"
           }
@@ -997,17 +997,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "value"
           }
@@ -1021,17 +1021,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "currency"
           }
@@ -1045,17 +1045,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "transaction_id"
           }
@@ -1069,17 +1069,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "plan"
           }
@@ -1093,17 +1093,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "cadence"
           }
@@ -1117,17 +1117,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "amount_paid"
           }
@@ -1141,17 +1141,17 @@
         "type": "v",
         "parameter": [
           {
-            "type": "integer",
+            "type": "INTEGER",
             "key": "dataLayerVersion",
             "value": "2"
           },
           {
-            "type": "boolean",
+            "type": "BOOLEAN",
             "key": "setDefaultValue",
             "value": "false"
           },
           {
-            "type": "template",
+            "type": "TEMPLATE",
             "key": "name",
             "value": "internal_test"
           }
