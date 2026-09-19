@@ -15,6 +15,14 @@ const TRADES = {
   realestate: { label: 'Real estate', service: 'Real estate agent' },
 };
 
-const tradeService = (trade) => (trade && TRADES[String(trade).toLowerCase()] ? TRADES[String(trade).toLowerCase()].service : null);
+// The pages send the trade as their slug (dentists, hvac, real-estate-agents);
+// letters only, lower case, with the page names that differ from the keys.
+const ALIASES = { realestateagents: 'realestate', realestateagent: 'realestate', estateagents: 'realestate', hvacs: 'hvac' };
+function tradeService(trade) {
+  if (!trade) return null;
+  const k = String(trade).toLowerCase().replace(/[^a-z]/g, '');
+  const key = TRADES[k] ? k : ALIASES[k];
+  return key && TRADES[key] ? TRADES[key].service : null;
+}
 
 module.exports = { TRADES, tradeService };
