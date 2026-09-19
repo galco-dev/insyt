@@ -61,3 +61,4 @@ deploy request: the assistant reads its reply from the first text block (thinkin
 2026-09-19T06:23:45Z launch journey: review fixes (account reads, consent round trip, payment freshness, first approval, hand-off email, billing link)
 2026-09-19T07:30:28Z launch pages send src=launch-<trade>; app reads it as launch plus trade
 2026-09-19T07:31:03Z trade slugs from the profession pages (real-estate-agents)
+2026-09-19T07:48:02Z first ad: chosen place from Google's list, presence only, budget field default 10

@@ -411,3 +411,14 @@ test('api: a draft refusal carries Google\'s billing page, and a Google permissi
     assert.match((await p.json()).error, /accept the invitation/);
   });
 });
+
+test('api: /api/app/locations answers the place suggestions from the store', async () => {
+  const ds = dashStore();
+  ds.suggestLocations = async (t, q) => (q === 'Manch' ? [{ id: '1006886', name: 'Manchester', canonical_name: 'Manchester, England, United Kingdom', type: 'City', country: 'GB' }] : []);
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const r = await (await fetch(`${base}/api/app/locations?q=Manch`, { headers: { cookie: authedCookie() } })).json();
+    assert.equal(r.locations[0].id, '1006886');
+    const none = await (await fetch(`${base}/api/app/locations?q=zz`, { headers: { cookie: authedCookie() } })).json();
+    assert.deepStrictEqual(none.locations, []);
+  });
+});

@@ -76,6 +76,7 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     });
     const spec = buildCampaignSpec({
       template, business, services: inputs.services || [], location: inputs.location || null, currency,
+      geo_target_id: inputs.geo_target_id || null,
       // Clicks until counting is live; the switch to bookings is a later card for their yes.
       bidding: inputs.bidding || (gates.tracking_live ? 'conversions' : 'clicks'),
       budget_daily_usd: inputs.budget_daily_usd, conversion_goal: inputs.conversion_goal || null,

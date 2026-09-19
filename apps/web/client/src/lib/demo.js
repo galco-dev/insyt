@@ -330,6 +330,7 @@ function customerDemo(path, method, body) {
       return { conversation_id: 'demo', messages: s.chat, usage: { pct: 12, consented: false, included_usd: 30 } };
     }
     if (p === '/api/app/tracking') return { started: true, platform: 'wix', stage: 'awaiting_install', verified_at: null, nudges_sent: [], gtm_id: 'GTM-K2P9QX', ga4: true, tag_live: false, website: 'glowstudio.com', business: 'Glow Studio' };
+    if (p.startsWith('/api/app/locations')) { const q = decodeURIComponent((p.split('q=')[1] || '').split('&')[0]).toLowerCase(); return { locations: [{ id: '1006886', name: 'Manchester', canonical_name: 'Manchester, England, United Kingdom', type: 'City', country: 'GB' }, { id: '1018127', name: 'Manchester', canonical_name: 'Manchester, New Hampshire, United States', type: 'City', country: 'US' }].filter((l) => !q || l.name.toLowerCase().startsWith(q)) }; }
     if (p === '/api/app/first-ad') return { business: 'Glow Studio', website: 'glowstudio.com', trade: null, service: 'Gel nails', launch: false, campaigns_count: 3, drafts_count: 1 };
     if (p === '/api/app/drafts') {
       if (!s.drafts) {

@@ -669,6 +669,8 @@ function dashStore(db, deps = {}) {
       await tel.event({ tenantId, name: 'ads_account.created', props: { currency: r.currency }, source: 'server' }).catch(() => {});
       return { ok: true, customer_id: r.formatted, invitation_link: r.invitation_link, currency: r.currency };
     },
+    // Places for the first-ad screen: Google's own list, so the ad targets a chosen place.
+    suggestLocations: async (tenantId, q) => (deps.google && deps.google.suggestLocations ? deps.google.suggestLocations(tenantId, q).catch(() => []) : []),
     // The first-ad screen (launch journey): what we know before the customer types anything.
     firstAd: async (tenantId) => {
       const [t, camps, drafts] = await Promise.all([

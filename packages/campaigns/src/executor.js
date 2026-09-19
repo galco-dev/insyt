@@ -51,6 +51,8 @@ function planMutations(spec, { customerId, finalUrl, geoTargetIds = [], language
       resourceName: campaignTmp, name: spec.name, status: 'PAUSED',
       advertisingChannelType: spec.channel === 'display' ? 'DISPLAY' : 'SEARCH',
       campaignBudget: budgetTmp,
+      // Presence only (Max, 19 Sep 2026): people in the place, not people interested in it.
+      geoTargetTypeSetting: { positiveGeoTargetType: 'PRESENCE', negativeGeoTargetType: 'PRESENCE' },
       ...(spec.bidding === 'Maximise clicks' ? { targetSpend: {} } : { maximizeConversions: {} }),
       networkSettings: spec.channel === 'display' ? { targetContentNetwork: true } : { targetGoogleSearch: true, targetSearchNetwork: false, targetContentNetwork: false, targetPartnerSearchNetwork: false },
       containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING',
@@ -95,10 +97,14 @@ function planMutations(spec, { customerId, finalUrl, geoTargetIds = [], language
 }
 
 async function createCampaignPaused({ spec, adsMutate, adsSearch, customerId, finalUrl, location = spec && spec.settings && spec.settings.geo }) {
-  const geoTargetIds = adsSearch ? await resolveGeo(adsSearch, location) : [];
+  // The place the customer chose from Google's list is used as given; a typed
+  // name is resolved by exact match. No place, no campaign: an ad without a
+  // location shows everywhere, and that is never what a small business meant.
+  const chosen = spec && spec.settings && spec.settings.geo_target_id ? [String(spec.settings.geo_target_id)] : [];
+  const geoTargetIds = chosen.length ? chosen : (adsSearch ? await resolveGeo(adsSearch, location) : []);
+  if (!geoTargetIds.length) throw new Error(`No location for "${location || 'this campaign'}": choose the place its customers are in before creating it.`);
   const plan = planMutations(spec, { customerId, finalUrl, geoTargetIds });
   const warnings = [];
-  if (!geoTargetIds.length && location && location !== 'account default') warnings.push(`Could not resolve "${location}" to a Google location - campaign created without a location limit; set one before enabling.`);
 
   // 1) budget + campaign (+ geo/language) in one atomic request
   const first = await adsMutate('googleAds', plan.campaignOps, { atomic: true });

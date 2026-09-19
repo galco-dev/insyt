@@ -423,6 +423,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           }
           if (sub === '/setup') return json(res, 200, dashStore.setupSteps ? await dashStore.setupSteps(t) : { steps: [] });
           if (sub === '/tracking') return json(res, 200, dashStore.trackingState ? await dashStore.trackingState(t) : { started: false });
+          if (sub === '/locations') return json(res, 200, { locations: dashStore.suggestLocations ? await dashStore.suggestLocations(t, u.searchParams.get('q') || '') : [] });
           if (sub.startsWith('/report/')) {
             const id = sub.split('/')[2];
             if (!id || id === 'null' || id === 'undefined') return json(res, 404, { error: 'Report not found.' });

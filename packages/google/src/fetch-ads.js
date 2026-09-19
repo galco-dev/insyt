@@ -39,6 +39,34 @@ async function search({ auth, tenantId, customerId, developerToken, loginCustome
 const micros = (v) => Number(v || 0) / 1_000_000;
 
 /**
+ * Location suggestions (launch journey): Google's own places matching what the
+ * customer typed, so an ad targets a chosen place, never a guessed one.
+ * Returns [{ id, name, canonical_name, type, country }] (at most 8).
+ */
+async function fetchGeoSuggestions({ auth, tenantId, customerId, developerToken, loginCustomerId, q, accessToken = null }) {
+  const term = String(q || '').trim().replace(/['\\]/g, '').slice(0, 60);
+  if (term.length < 2) return [];
+  const query = `SELECT geo_target_constant.id, geo_target_constant.name, geo_target_constant.canonical_name, geo_target_constant.target_type, geo_target_constant.country_code FROM geo_target_constant WHERE geo_target_constant.name LIKE '${term}%' AND geo_target_constant.status = 'ENABLED' AND geo_target_constant.target_type IN ('City', 'Region', 'State', 'Province', 'County', 'Municipality', 'Borough', 'District', 'Postal Code', 'Territory', 'Country') LIMIT 25`;
+  const rows = accessToken
+    ? await searchWithToken({ accessToken, customerId, developerToken, loginCustomerId, query })
+    : await search({ auth, tenantId, customerId, developerToken, loginCustomerId, query });
+  const pref = ['City', 'Municipality', 'Borough', 'District', 'Postal Code', 'County', 'Region', 'State', 'Province', 'Territory', 'Country'];
+  return rows.map((r) => r.geoTargetConstant).filter(Boolean)
+    .sort((a, b) => pref.indexOf(a.targetType) - pref.indexOf(b.targetType))
+    .slice(0, 8)
+    .map((g) => ({ id: String(g.id), name: g.name, canonical_name: g.canonicalName, type: g.targetType, country: g.countryCode }));
+}
+
+/** One page of GAQL with a ready access token (Insyt's own, for accounts the customer cannot read yet). */
+async function searchWithToken({ accessToken, customerId, developerToken, loginCustomerId, query, fetchImpl = fetch }) {
+  const url = `https://googleads.googleapis.com/${VERSION}/customers/${String(customerId).replace(/-/g, '')}/googleAds:search`;
+  const res = await fetchImpl(url, { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json', 'developer-token': developerToken, ...(loginCustomerId ? { 'login-customer-id': String(loginCustomerId).replace(/-/g, '') } : {}) }, body: JSON.stringify({ query }) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`google ads ${res.status}: ${JSON.stringify(body.error || body).slice(0, 200)}`);
+  return body.results || [];
+}
+
+/**
  * Ad money (launch journey): does the account have an approved billing setup?
  * Google will not serve an ad without one and we cannot add a card for anyone.
  * Returns { has_billing, status } or null when the read fails (unknown, never a gate).
@@ -227,4 +255,4 @@ async function fetchPulse({ auth, tenantId, customerId, developerToken, loginCus
   };
 }
 
-module.exports = { fetchAds, fetchWindow, fetchPulse, search, gaqlDate, micros, VERSION, fetchBillingStatus };
+module.exports = { fetchAds, fetchWindow, fetchPulse, search, gaqlDate, micros, VERSION, fetchBillingStatus, fetchGeoSuggestions, searchWithToken };

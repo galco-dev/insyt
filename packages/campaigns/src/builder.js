@@ -73,7 +73,8 @@ function serviceAdGroup({ business, service, location }) {
  *   template: 'brand' | 'generic' | 'remarketing',
  *   business: 'Glow Studio',
  *   services: ['Gel nails', ...],          // generic template
- *   location: 'Dubai' | null,
+ *   location: 'Manchester, England, United Kingdom' | null,
+ *   geo_target_id: '1006886' | null,       // the place the customer chose from Google's list
  *   budget_daily_usd: number,
  *   bidding: 'conversions' | 'clicks',     // clicks only while nothing is counted
  *   conversion_goal: 'booking_confirmed',  // the key event bidding steers to
@@ -148,6 +149,9 @@ function buildCampaignSpec(input) {
     final_url: input.final_url || null,
     settings: {
       geo: location || 'account default',
+      geo_target_id: input.geo_target_id ? String(input.geo_target_id) : null,
+      // Presence only, always: people in the place, never people merely interested in it.
+      geo_presence_only: true,
       language: 'account default',
       networks: channel === 'search' ? ['search'] : ['display'],
       start_paused: true, // invariant - the executor refuses anything else
@@ -176,6 +180,9 @@ function validateSpec(spec, health = {}) {
   }
   if (spec && spec.settings && spec.settings.start_paused !== true) {
     blockers.push('Campaigns must start paused - enabling is a separate explicit action.');
+  }
+  if (spec && spec.settings && (!spec.settings.geo || spec.settings.geo === 'account default')) {
+    blockers.push('No location chosen - an ad needs the place its customers are in, or it shows everywhere.');
   }
   if (health.conversionGoalHealthy === false && spec && spec.bidding !== 'Maximise clicks') {
     blockers.push('The conversion goal this campaign would bid to is broken or silent - fix tracking first. A campaign born on bad measurement wastes money from hour one.');

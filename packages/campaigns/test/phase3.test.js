@@ -25,20 +25,29 @@ test('executor plan: budget+campaign PAUSED atomic, geo/language criteria, negat
   assert.strictEqual(stripMatch('[gel nails]'), 'gel nails');
 });
 
-test('createCampaignPaused: sequences mutates and returns every resource; unresolved geo is a warning, not a failure', async () => {
+test('createCampaignPaused: sequences mutates and returns every resource; a place is required, presence only', async () => {
   const calls = [];
   const adsMutate = async (path, ops, opts) => {
     calls.push({ path, n: ops.length, opts });
     if (path === 'googleAds') return { mutateOperationResponses: [{ campaignBudgetResult: { resourceName: 'customers/1/campaignBudgets/5' } }, { campaignResult: { resourceName: 'customers/1/campaigns/77' } }] };
     return { results: ops.map((_, i) => ({ resourceName: `customers/1/${path}/${i}` })) };
   };
-  const r = await createCampaignPaused({ spec, adsMutate, adsSearch: async () => [], customerId: '1', finalUrl: spec.final_url });
+  await assert.rejects(() => createCampaignPaused({ spec, adsMutate, adsSearch: async () => [], customerId: '1', finalUrl: spec.final_url }), /No location/, 'no place, no campaign');
+  calls.length = 0;
+  const adsSearch = async () => [{ geoTargetConstant: { id: '1000013', name: 'Dubai', targetType: 'City', canonicalName: 'Dubai, United Arab Emirates' } }];
+  const r = await createCampaignPaused({ spec, adsMutate, adsSearch, customerId: '1', finalUrl: spec.final_url });
   assert.strictEqual(r.campaign_id, '77');
+  const campaignOp = JSON.stringify(planMutations(spec, { customerId: '1', finalUrl: spec.final_url, geoTargetIds: ['1000013'] }).campaignOps);
+  assert.ok(campaignOp.includes('"positiveGeoTargetType":"PRESENCE"') && campaignOp.includes('"negativeGeoTargetType":"PRESENCE"'), 'presence only');
+  const chosen = buildCampaignSpec({ template: 'generic', business: 'Smile', services: ['Dentist'], location: 'Manchester, England, United Kingdom', geo_target_id: '1006886', budget_daily_usd: 20, final_url: 'https://smile.com/' });
+  calls.length = 0;
+  await createCampaignPaused({ spec: chosen, adsMutate, adsSearch: async () => { throw new Error('should not resolve by name when a place was chosen'); }, customerId: '1', finalUrl: chosen.final_url });
+  assert.ok(JSON.stringify(planMutations(chosen, { customerId: '1', finalUrl: chosen.final_url, geoTargetIds: [chosen.settings.geo_target_id] }).campaignOps).includes('geoTargetConstants/1006886'), 'the chosen place is used as given');
   assert.deepStrictEqual(calls.map((c) => c.path), ['googleAds', 'campaignCriteria', 'adGroups', 'adGroupCriteria', 'adGroupAds']);
   assert.strictEqual(calls[0].opts.atomic, true);
   assert.strictEqual(r.resources.ad_groups.length, 1);
   assert.ok(r.resources.keywords.length >= 3 && r.resources.ads.length === 1);
-  assert.match(r.warnings[0], /Could not resolve "Dubai"/);
+  assert.deepStrictEqual(r.warnings, [], "a resolved place leaves no warning");
 });
 
 test('copy validation: lengths, jargon, policy, unwitnessed prices, counts, pins; em dashes normalised', () => {
@@ -134,7 +143,7 @@ test('service.approve: live create records resources + change + ledger; enable i
     'ads.unpause_launch': async () => ({ before: { status: 'paused' }, after: { status: 'enabled' } }),
   };
   const svc = createDraftService({ db, google: { transportsFor: async () => api } });
-  const row = await svc.create({ tenantId: 't1', template: 'brand', inputs: {} });
+  const row = await svc.create({ tenantId: 't1', template: 'brand', inputs: { location: 'Dubai, United Arab Emirates', geo_target_id: '1000013' } });
   state.draft = { id: 'd2', tenant_id: 't1', status: 'draft', spec: row.spec };
   const a = await svc.approve({ tenantId: 't1', draftId: 'd2', actor: 'user' });
   assert.deepStrictEqual({ st: a.status, id: a.campaign_id }, { st: 'created_paused', id: '77' });
@@ -152,7 +161,7 @@ test('service.approve without credentials stays provisional; enable refuses when
   const state = {};
   const db = fakeDb(state);
   const svc = createDraftService({ db });
-  const row = await svc.create({ tenantId: 't1', template: 'brand', inputs: {} });
+  const row = await svc.create({ tenantId: 't1', template: 'brand', inputs: { location: 'Dubai, United Arab Emirates', geo_target_id: '1000013' } });
   state.draft = { id: 'd3', tenant_id: 't1', status: 'draft', spec: row.spec };
   const a = await svc.approve({ tenantId: 't1', draftId: 'd3' });
   assert.deepStrictEqual({ st: a.status, prov: a.provisional }, { st: 'created_paused', prov: true });
@@ -186,7 +195,7 @@ test('service.enable reads the card live: no card refuses with Google\'s billing
   const db = fakeDb(state);
   let has = false;
   const svc = createDraftService({ db, google: { billingStatus: async () => ({ has_billing: has, status: has ? 'approved' : 'none' }) } });
-  const row = await svc.create({ tenantId: 't1', template: 'brand', inputs: {} });
+  const row = await svc.create({ tenantId: 't1', template: 'brand', inputs: { location: 'Dubai, United Arab Emirates', geo_target_id: '1000013' } });
   state.draft = { id: 'd9', tenant_id: 't1', status: 'created_paused', google_campaign_id: 'draft-d9', spec: row.spec };
   state.journey = { journey: 'B', gates: { tag: true, billing: true } };
   const refused = await svc.enable({ tenantId: 't1', draftId: 'd9' });

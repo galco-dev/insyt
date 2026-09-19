@@ -94,7 +94,7 @@ const googleAuth = (googleClientId && googleClientSecret) ? {
 // and the Fable copy path. Both optional - without them drafts stay
 // provisional and copy comes from the deterministic builder.
 const { createGoogleAuth } = require('../../../packages/google/src/client');
-const { fetchAds, fetchBillingStatus } = require('../../../packages/google/src/fetch-ads');
+const { fetchAds, fetchBillingStatus, fetchGeoSuggestions } = require('../../../packages/google/src/fetch-ads');
 const { createTransports } = require('../../../packages/tools/src/transports');
 const { MODEL_ID } = require('../../../packages/shared/src/model-config');
 const qd = (s) => encodeURIComponent(s);
@@ -107,6 +107,20 @@ if (googleAuth && googleAuth.config.developerToken) {
     // Customer's own account acts as itself; the MCC header only for accounts under it.
     // A string under_mcc names the manager account to log in through (fix plan move 17); true means our own.
     fetchAds: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return fetchAds({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? (typeof a.metadata.under_mcc === 'string' ? a.metadata.under_mcc : loginCustomerId) : a.external_id }); },
+    // Places matching what the customer typed. Their own account when it can read; otherwise Insyt's
+    // own account through the manager credentials, since Google's place list is the same everywhere.
+    suggestLocations: async (tenantId, q) => {
+      const a = await adsAsset(tenantId).catch(() => null);
+      if (a) {
+        try { return await fetchGeoSuggestions({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? loginCustomerId : null, q }); } catch { /* fall through */ }
+      }
+      const token = await managerRefreshToken().catch(() => null);
+      if (!token) return [];
+      const { refreshAccessToken } = require('../../../packages/google/src/oauth');
+      const r = await refreshAccessToken({ clientId: googleClientId, clientSecret: googleClientSecret, refreshToken: token });
+      if (r.error) return [];
+      return fetchGeoSuggestions({ accessToken: r.tokens.access_token, customerId: process.env.GOOGLE_ADS_HOME_CUSTOMER_ID || '4426152082', developerToken, loginCustomerId, q });
+    },
     // Ad money (launch journey): null when the read fails, never a gate on its own.
     billingStatus: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) return null; return fetchBillingStatus({ auth, tenantId, customerId: a.external_id, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? (typeof a.metadata.under_mcc === 'string' ? a.metadata.under_mcc : loginCustomerId) : a.external_id }); },
     transportsFor: async (tenantId) => { const a = await adsAsset(tenantId); if (!a) throw new Error('no linked Ads asset'); return createTransports({ auth, tenantId, developerToken, loginCustomerId: a.metadata && a.metadata.under_mcc ? (typeof a.metadata.under_mcc === 'string' ? a.metadata.under_mcc : loginCustomerId) : a.external_id, customerId: a.external_id }); },
