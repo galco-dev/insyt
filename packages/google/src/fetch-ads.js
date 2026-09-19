@@ -54,7 +54,7 @@ async function fetchGeoSuggestions({ auth, tenantId, customerId, developerToken,
   return rows.map((r) => r.geoTargetConstant).filter(Boolean)
     .sort((a, b) => pref.indexOf(a.targetType) - pref.indexOf(b.targetType))
     .slice(0, 8)
-    .map((g) => ({ id: String(g.id), name: g.name, canonical_name: g.canonicalName, type: g.targetType, country: g.countryCode }));
+    .map((g) => ({ id: String(g.id), name: g.name, canonical_name: String(g.canonicalName || g.name).replace(/,(?=\S)/g, ', '), type: g.targetType, country: g.countryCode }));
 }
 
 /** One page of GAQL with a ready access token (Insyt's own, for accounts the customer cannot read yet). */
