@@ -243,7 +243,7 @@ function UnlockBar({ visible }) {
     try {
       // Return to this report once paid (the gate refreshes on ?paid=1).
       const r = await api('/api/checkout/audit', { method: 'POST', body: { kind: 'audit_unlock', next: window.location.pathname } });
-      if (r.url) { pushDL('begin_checkout', { item: 'report', value: 20, currency: 'USD' }); window.location.href = r.url; return; }
+      if (r.url) { pushDL('begin_checkout', { item: 'report', value: 20, currency: 'USD' }); try { sessionStorage.setItem('insyt_checkout_at', String(Date.now())); } catch { /* ignore */ } window.location.href = r.url; return; }
       setNote(isDemo() ? 'Demo mode - checkout opens here once payments are connected.' : 'Payments are almost ready - try again shortly.');
     } catch (e) { setNote(e.status === 401 ? 'Sign in first - run your free check from the start page.' : e.message); }
     setBusy(false);

@@ -663,7 +663,7 @@ function dashStore(db, deps = {}) {
       const r = await deps.adsAccountCreator.create({ descriptiveName: name, currency, timeZone: tz, ownerEmail: owner ? owner.email : null });
       await db.insert('assets', [{
         tenant_id: tenantId, kind: 'ads_account', external_id: r.formatted, display_name: name, currency: r.currency, linked: true, created_by_us: true,
-        metadata: { under_mcc: true, invitation_link: r.invitation_link, time_zone: r.time_zone },
+        metadata: { created_under_manager: true, invitation_link: r.invitation_link, time_zone: r.time_zone },
       }], { returning: false });
       await db.insert('ledger', [{ tenant_id: tenantId, event: 'connection_changed', actor: 'system', summary_text: `We set up your Google Ads account (${r.formatted}). It is yours: sign in to Google Ads once to accept the invitation and add a card. Google charges that card for clicks; Insyt never does.` }], { returning: false }).catch(() => {});
       await tel.event({ tenantId, name: 'ads_account.created', props: { currency: r.currency }, source: 'server' }).catch(() => {});
@@ -689,7 +689,7 @@ function dashStore(db, deps = {}) {
         // The first yes of the account is an event (tracking brief B3); a draft's create counts as one.
         const before = (await db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(approved,applied,failed,reverted)&select=id&limit=2`).catch(() => [])).length;
         const r = await draftsSvc.approve({ tenantId, draftId, actor: 'user' });
-        return r && !r.error && r.status === 'created_paused' ? { ...r, first_approval: before === 0 } : r;
+        return r && !r.error && r.status === 'created_paused' && !r.provisional ? { ...r, first_approval: before === 0 } : r;
       }
       if (action === 'enable') return draftsSvc.enable({ tenantId, draftId, actor: 'user' });
       if (action === 'dismiss') return draftsSvc.dismiss({ tenantId, draftId });
@@ -724,6 +724,13 @@ function dashStore(db, deps = {}) {
       const crawl = host ? await db.select('crawls', `url=ilike.*${q(host)}*&cms_fingerprint=not.is.null&select=cms_fingerprint&order=created_at.desc&limit=1`, { single: true }).catch(() => null) : null;
       const known = ['shopify', 'wordpress', 'webflow', 'wix', 'squarespace'];
       const platform = crawl && known.includes(String(crawl.cms_fingerprint).toLowerCase()) ? String(crawl.cms_fingerprint).toLowerCase() : 'other';
+      const gtm = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.gtm_container&linked=eq.true&select=external_id&limit=1`, { single: true }).catch(() => null);
+      if (!gtm) {
+        // Nothing to paste yet: say why, and do not start checks that can never pass.
+        const guides = (provision && provision.guides) || [];
+        const why = guides.length ? guides.map((g) => g.detail || g.label).join(' ') : (provision && provision.error) ? 'Google did not let us create the tracking code just now. Try again in a minute.' : 'Google did not give us a place to create the tracking code yet.';
+        return { ...(await store.trackingState(tenantId)), provision, guides, started: false, error_line: why };
+      }
       const existing = await db.select('journey_state', `tenant_id=eq.${q(tenantId)}&select=id,gates,tag_install&limit=1`, { single: true }).catch(() => null);
       const issued = !!(existing && existing.tag_install && existing.tag_install.guide_issued_at);
       if (!issued) {
@@ -747,6 +754,9 @@ function dashStore(db, deps = {}) {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return { error: 'That does not look like an email address.' };
       const state = await store.trackingState(tenantId);
       if (!state.gtm_id) return { error: 'Your tracking code is not created yet. Tap "Set up tracking" first.' };
+      const since = new Date(now - 86_400_000).toISOString();
+      const sent = await db.select('emails', `tenant_id=eq.${q(tenantId)}&template_id=eq.tracking_handoff&created_at=gte.${q(since)}&select=id&limit=5`).catch(() => []);
+      if ((sent || []).length >= 5) return { error: 'That is five hand-offs today already. Try again tomorrow, or paste the code yourself from the steps above.' };
       const guide_url = await store.resumeLink(tenantId, now);
       const code = `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${state.gtm_id}');</script>`;
       await db.insert('emails', [{ tenant_id: tenantId, template_id: 'tracking_handoff', to_email: to, stream: 'transactional', status: 'queued', payload: { business: state.business, site: state.website, code, guide_url } }], { returning: false });
@@ -1038,7 +1048,7 @@ function dashStore(db, deps = {}) {
       const fees = m.audit_fees || {};
       const listOf = (kind) => (kind === 'setup_bundle' ? Number(m.bundle_usd || 199) : kind === 'large_audit_xl' ? Number(fees.xl || fees.large || 20) : kind === 'large_audit' ? Number(fees.large || 20) : Number(fees.standard || 20));
       let invoice = null;
-      if (sub) invoice = await db.select('audit_log', `tenant_id=eq.${q(tenantId)}&event=eq.invoice_paid&created_at=gte.${q(sub.created_at)}&select=detail&order=created_at.asc&limit=1`, { single: true }).catch(() => null);
+      if (sub) invoice = await db.select('audit_log', `tenant_id=eq.${q(tenantId)}&event=eq.invoice_paid&detail->>subscription=eq.${q(sub.stripe_subscription_id)}&select=detail&order=created_at.asc&limit=1`, { single: true }).catch(() => null);
       const paidSub = invoice && invoice.detail && invoice.detail.amount_usd != null ? Number(invoice.detail.amount_usd) : null;
       return {
         payment: pay ? {
@@ -1052,8 +1062,9 @@ function dashStore(db, deps = {}) {
       };
     },
     // How many fixes have ever been approved (tracking brief B3: the first one is an event).
-    approvedCount: async (tenantId) => {
-      const rows = await db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(approved,applied,failed,reverted)&select=id&limit=2`).catch(() => []);
+    approvedCount: async (tenantId, excludeIds = []) => {
+      const ex = (excludeIds || []).filter(Boolean).map(String);
+      const rows = await db.select('changes', `tenant_id=eq.${q(tenantId)}&status=in.(approved,applied,failed,reverted)${ex.length ? `&id=not.in.(${ex.map(q).join(',')})` : ''}&select=id&limit=2`).catch(() => []);
       return (rows || []).length;
     },
     pendingApprovals: async (tenantId) => {

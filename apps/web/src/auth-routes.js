@@ -139,7 +139,7 @@ async function handleGoogleAuth(req, res, u, session, deps) {
         // trade, Google click ids); it moves to the tenant once, at sign-in.
         if (t && !t.attribution) {
           const host = String(st.site).replace(/^https?:\/\//i, '').replace(/^www\./, '').replace(/\/.*$/, '');
-          const c = await db.select('crawls', `url=ilike.*${q(host)}*&attribution=not.is.null&select=attribution&order=created_at.desc&limit=1`, { single: true }).catch(() => null);
+          const c = await db.select('crawls', `or=(url.ilike.https://${q(host)}/*,url.ilike.https://www.${q(host)}/*,url.ilike.http://${q(host)}/*,url.ilike.http://www.${q(host)}/*)&attribution=not.is.null&select=attribution&order=created_at.desc&limit=1`, { single: true }).catch(() => null);
           if (c && c.attribution) await db.update('tenants', `id=eq.${q(st.tenantId)}`, { attribution: c.attribution }).catch(() => {});
         }
       }

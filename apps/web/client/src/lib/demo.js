@@ -146,7 +146,7 @@ const DEMO = {
     journey: {
       journey: 'A',
       stage: 'active',
-      gates: { tag: true, approval: true, billing: true },
+      gates: { tag: false, approval: true, billing: true },
       instruction_line: 'Everything is set up - your weekly checks run automatically.',
     },
   },

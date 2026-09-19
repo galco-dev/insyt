@@ -394,3 +394,20 @@ test('api: discovery says whether we can create a Google Ads account, and the cr
     assert.equal(r.status, 501);
   });
 });
+
+test('api: a draft refusal carries Google\'s billing page, and a Google permission refusal explains the invitation', async () => {
+  const ds = dashStore();
+  ds.draftAction = async (t, id, action) => {
+    if (id === 'd-billing') return { error: 'Google needs a card for the clicks before this switches on.', steps: [], billing_url: 'https://ads.google.com/aw/billing/summary' };
+    const e = new Error('google api 403: USER_PERMISSION_DENIED'); e.code = 'PERMISSION_DENIED'; throw e;
+  };
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const h = { cookie: authedCookie(), 'content-type': 'application/json' };
+    const r = await fetch(`${base}/api/app/drafts/d-billing/enable`, { method: 'POST', headers: h, body: '{}' });
+    assert.equal(r.status, 409);
+    assert.match((await r.json()).billing_url, /ads\.google\.com/);
+    const p = await fetch(`${base}/api/app/drafts/d-new/approve`, { method: 'POST', headers: h, body: '{}' });
+    assert.equal(p.status, 409);
+    assert.match((await p.json()).error, /accept the invitation/);
+  });
+});

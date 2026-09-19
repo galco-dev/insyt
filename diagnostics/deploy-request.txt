@@ -58,3 +58,4 @@ deploy request: the assistant reads its reply from the first text block (thinkin
 2026-09-19T04:31:23Z launch journey: check on tag verified, live card read before switch-on
 2026-09-19T04:33:57Z launch journey: Google Ads account creation on confirm, behind the manager credentials
 2026-09-19T05:48:47Z launch journey: manager credentials from Insyt's own sign-in
+2026-09-19T06:23:45Z launch journey: review fixes (account reads, consent round trip, payment freshness, first approval, hand-off email, billing link)

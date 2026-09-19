@@ -3,7 +3,7 @@
 // the same two taps every ad gets - create it switched off, then switch it on.
 // The plan starts on the first tap; nothing spends until the second.
 import React, { useEffect, useState } from 'react';
-import { api } from '../lib/api.js';
+import { api, safeStorage } from '../lib/api.js';
 import { useAccess } from '../lib/access.jsx';
 import { MonoLabel, Card, Button, Spinner, ErrorNote, Receipt } from '../lib/ui.jsx';
 import { YourAds } from './Approvals.jsx';
@@ -24,13 +24,21 @@ export default function FirstAd() {
   const [trackingKey, setTrackingKey] = useState(0);
   const { money, access } = useAccess();
   // Back from Google's write consent with ?tracking=1: finish what the tick box started.
+  // Back from Google's write consent: the tick box was remembered for the tab, so finish it now.
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    if (p.get('tracking') === '1') {
-      window.history.replaceState({}, '', window.location.pathname);
-      api('/api/app/tracking/start', { method: 'POST', body: {} }).then(() => setTrackingKey((k) => k + 1)).catch((e) => setNote({ tone: 'error', text: e.message }));
-    }
-  }, []);
+    if (safeStorage.get('insyt_tracking_pending') !== '1') return;
+    safeStorage.del('insyt_tracking_pending');
+    if (/[?&]fix_access=1/.test(window.location.search)) window.history.replaceState({}, '', window.location.pathname);
+    startTracking();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function startTracking() {
+    try {
+      const r = await api('/api/app/tracking/start', { method: 'POST', body: {} });
+      if (r && r.started === false) setNote({ tone: 'error', text: r.error_line || 'Google did not let us set up tracking just now. Try again in a minute.' });
+      setTrackingKey((k) => k + 1);
+    } catch (e) { setNote({ tone: 'error', text: e.message }); }
+  }
   useEffect(() => {
     api('/api/app/first-ad').then((d) => { setInfo(d); if (d && d.service) setService(d.service); }).catch((e) => setError(e.message));
   }, []);
@@ -53,9 +61,8 @@ export default function FirstAd() {
       setNote({ tone: 'success', text: `Drafted. Read it below and change any wording you like. Nothing is created in Google until you tap "Create it, switched off", and nothing spends until you switch it on.` });
       if (tracking) {
         // Creating things in their Google account needs Google's write consent, asked once, then back here.
-        if (access && access.fix_access === 'ask') { goWriteStep('/app/first-ad?tracking=1'); return; }
-        await api('/api/app/tracking/start', { method: 'POST', body: {} });
-        setTrackingKey((k) => k + 1);
+        if (access && access.fix_access === 'ask') { safeStorage.set('insyt_tracking_pending', '1'); goWriteStep('/app/first-ad'); return; }
+        await startTracking();
       }
     } catch (err) { setNote({ tone: 'error', text: err.message }); }
     setBusy(false);

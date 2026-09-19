@@ -579,7 +579,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                   if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
                   const ids = Array.isArray(parsed.ids) ? parsed.ids.map(String).slice(0, 50) : [];
                   if (!ids.length) return json(res, 400, { error: 'Nothing selected to approve.' });
-                  const before = dashStore.approvedCount ? await dashStore.approvedCount(t).catch(() => null) : null;
+                  const before = dashStore.approvedCount ? await dashStore.approvedCount(t, ids).catch(() => null) : null;
                   let r;
                   if (dashStore.approveBatch) r = await dashStore.approveBatch(t, ids);
                   else { for (const id of ids) await dashStore.approveChange(t, id); r = { approved: ids.length, requested: ids.length }; }
@@ -603,9 +603,14 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                   if (m) {
                     // Creating or switching on an ad writes to Google Ads: plan only.
                     if ((m[2] === 'approve' || m[2] === 'enable') && !(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
-                    const r = dashStore.draftAction ? await dashStore.draftAction(t, m[1], m[2], parsed) : null;
+                    let r;
+                    try { r = dashStore.draftAction ? await dashStore.draftAction(t, m[1], m[2], parsed) : null; } catch (e) {
+                      // A new account we created is theirs once they accept Google's invitation; until then Google refuses us.
+                      if (/PERMISSION_DENIED|USER_PERMISSION|403/.test(String(e && (e.code || e.message)))) return json(res, 409, { error: 'Google has not let us into your Google Ads account yet. If we set it up for you, accept the invitation email from Google Ads first, then tap again.' });
+                      throw e;
+                    }
                     if (!r) return json(res, 404, { error: 'Unknown draft.' });
-                    if (r.error) return json(res, 409, { error: r.error, ...(r.steps ? { steps: r.steps } : {}) });
+                    if (r.error) return json(res, 409, { error: r.error, ...(r.steps ? { steps: r.steps } : {}), ...(r.billing_url ? { billing_url: r.billing_url } : {}) });
                     return json(res, 200, { ok: true, ...r });
                   }
                 }
@@ -632,7 +637,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           // and its undo. Both need a plan; the client opens the Plan sheet on 402.
           if (sub.startsWith('/approve/')) {
             if (!(await planActive(dashStore, t))) return json(res, 402, PLAN_REQUIRED);
-            const before = dashStore.approvedCount ? await dashStore.approvedCount(t).catch(() => null) : null;
+            const before = dashStore.approvedCount ? await dashStore.approvedCount(t, [sub.split('/')[2]]).catch(() => null) : null;
             await dashStore.approveChange(t, sub.split('/')[2]);
             return json(res, 200, { ok: true, first_approval: before === 0 });
           }

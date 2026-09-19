@@ -2,7 +2,7 @@
 // fixes" on Home and Approvals, "Do all N fixes" on the report. One helper so
 // the three doors behave the same: at active the batch is approved, below a
 // plan the Plan sheet opens with the batch pending and finishes it after.
-import { api, pushDL } from './api.js';
+import { api, pushDL, pushDLOnce } from './api.js';
 import { useAccess } from './access.jsx';
 import { needsWriteStep, goWriteStep } from './fix-access.js';
 
@@ -17,7 +17,7 @@ export function useBatchApprove() {
     if (!ids.length) return false;
     const run = async () => {
       const r = await api('/api/app/approve-batch', { method: 'POST', body: { ids } });
-      if (r && r.first_approval) pushDL('first_fix_approved', { plan: access && access.plan ? access.plan.tier : null });
+      if (r && r.first_approval) pushDLOnce('first_fix', 'first_fix_approved', { plan: access && access.plan ? access.plan.tier : null });
       bump();
     };
     const ran = await gate(run, { kind: 'approve-batch', id: ids.join(','), title, run });

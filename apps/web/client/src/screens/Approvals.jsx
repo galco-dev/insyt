@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Lock01 as Lock } from '@untitledui/icons';
 import clsx from 'clsx';
-import { api, pushDL } from '../lib/api.js';
+import { api, pushDL, pushDLOnce } from '../lib/api.js';
 import { useAccess, fmtMoney } from '../lib/access.jsx';
 import { MonoLabel, Button, Card, Chip, Spinner, EmptyState, ErrorNote, Receipt } from '../lib/ui.jsx';
 import { safeFixes, useBatchApprove } from '../lib/batch.jsx';
@@ -216,7 +216,7 @@ export function YourAds() {
       const d = (drafts || []).find((x) => x.id === id);
       const name = d && d.plain ? d.plain.headline : 'Your ad';
       if (action === 'approve') setNote({ tone: 'success', text: `Done. "${name}" is created in your Google Ads and switched off. Nothing spends until you switch it on here.` });
-      if (action === 'approve' && r.first_approval) pushDL('first_fix_approved', { plan: access && access.plan ? access.plan.tier : null });
+      if (action === 'approve' && r.first_approval) pushDLOnce('first_fix', 'first_fix_approved', { plan: access && access.plan ? access.plan.tier : null });
       if (action === 'enable') setNote({ tone: 'success', text: `Switched on. "${name}" is live from today${d && d.budget_daily_usd ? ` at up to ${fmtMoney(d.budget_daily_usd, (access && access.currency) || 'USD')} a day` : ''}. Pause it any time.` });
       if (action === 'dismiss') setNote({ tone: 'info', text: `Fine. "${name}" is set aside; nothing was created.` });
       if (action === 'edit') setNote({ tone: 'success', text: `Saved. "${name}" carries your wording now; nothing is live until you create it.` });
@@ -344,7 +344,7 @@ export default function Approvals() {
       } else {
         const body = kind === 'dismiss' ? { expanded_first: !!open[id] } : undefined;
         const r = await api(`/api/app/${kind}/${id}`, { method: 'POST', body });
-        if (kind === 'approve' && r && r.first_approval) pushDL('first_fix_approved', { plan: access && access.plan ? access.plan.tier : null });
+        if (kind === 'approve' && r && r.first_approval) pushDLOnce('first_fix', 'first_fix_approved', { plan: access && access.plan ? access.plan.tier : null });
       }
       if (kind === 'approve') setNote({ tone: 'success', text: `Done. "${p.title}"${partial ? ` (${keep.length} of ${p.list.length})` : ''} goes to your Google account within the hour, then we watch it for 48 hours. Undo is one tap.` });
       if (kind === 'dismiss') setNote({ tone: 'info', text: `Fine. "${p.title}" stays as it is and we will not raise it again. Nothing was changed.` });

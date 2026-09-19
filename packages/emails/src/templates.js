@@ -28,6 +28,7 @@ ${button}
 }
 
 const T = (id, stream, subject, paragraphs, cta) => ({ id, stream, subject, paragraphs, cta });
+const escapeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const TEMPLATES = [
   T('audit_ready', 'transactional',
@@ -174,7 +175,7 @@ const TEMPLATES = [
     (v) => [
       `${v.business || 'Your client'} uses Insyt to look after their Google Ads. They asked us to send you the tracking code for ${v.site || 'their website'}.`,
       'It goes on every page, just before the closing head tag. Once it is live we verify it automatically and nothing else is needed from you.',
-      v.code ? `Code to paste:\n${v.code}` : '',
+      v.code ? `Code to paste, on every page just before the closing head tag:<br><code style="display:block;white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:12px;background:#f4f4f4;padding:10px;border-radius:6px;">${escapeHtml(v.code)}</code>` : '',
     ].filter(Boolean),
     (v) => ({ label: 'Open the guide', url: v.guide_url })),
 

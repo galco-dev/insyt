@@ -18,11 +18,15 @@ import { api, onAccess, isPlanRequired, isDemo, track, pushDL, pushDLOnce, setDa
 // amount actually paid rides alongside, with internal_test when it was $0.
 async function pushPaymentEvent(kind) {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Only the record from this checkout counts: an older unlock must not be reported again.
+  let since = 0;
+  try { since = Number(sessionStorage.getItem('insyt_checkout_at') || 0); } catch { since = 0; }
+  const fresh = (row) => !since || !row.created_at || Date.parse(row.created_at) >= since - 5 * 60_000;
   for (let i = 0; i < 12; i += 1) {
     let d = null;
     try { d = await api('/api/app/last-payment'); } catch { d = null; }
-    const p = d && d.payment;
-    const s = d && d.subscription;
+    const p = d && d.payment && fresh(d.payment) ? d.payment : null;
+    const s = d && d.subscription && fresh(d.subscription) ? d.subscription : null;
     if (kind === 'paid' && p && p.transaction_id) {
       const bundle = p.kind === 'setup_bundle';
       pushDLOnce(p.transaction_id, bundle ? 'launch_bundle_purchased' : 'report_unlocked', {

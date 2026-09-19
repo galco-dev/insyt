@@ -223,7 +223,11 @@ export default function Confirm() {
       {data.duplicate_of && <AlreadyHere dup={data.duplicate_of} />}
 
       {data.can_create_ads_account && (noAccess || (doors.ads_account.state !== 'matched' && !(doors.ads_account.candidates || []).length)) && (
-        <CreateAdsAccount onDone={() => navigate('/app/first-ad')} />
+        <CreateAdsAccount onDone={async () => {
+          // The new account is linked already; confirming still queues the first check and starts the weekly rhythm.
+          try { await api('/api/app/confirm', { method: 'POST', body: { link: [], exceptions: [] } }); pushDL('confirm', { accounts_count: 1, has_ads: true }); } catch { /* the first check can start later */ }
+          navigate('/app/first-ad');
+        }} />
       )}
 
       {(noAccess || doors.ads_account.state === 'cannot_see') && (
