@@ -71,7 +71,7 @@ export default function FirstAd() {
     if (!(b >= 5 && b <= 500)) { setNote({ tone: 'error', text: 'Pick a daily budget between 5 and 500.' }); return; }
     setBusy(true); setNote(null);
     try {
-      await api('/api/app/drafts', { method: 'POST', body: { template: 'generic', inputs: { services: [s], location: place.canonical_name, geo_target_id: place.id, budget_daily_usd: b } } });
+      await api('/api/app/drafts', { method: 'POST', body: { template: 'generic', inputs: { services: [s], location: place.name, geo_target_id: place.id, budget_daily_usd: b } } });
       setDrafted((n) => n + 1);
       setNote({ tone: 'success', text: `Drafted. Read it below and change any wording you like. Nothing is created in Google until you tap "Create it, switched off", and nothing spends until you switch it on.` });
       if (tracking) {

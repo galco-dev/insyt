@@ -64,3 +64,4 @@ deploy request: the assistant reads its reply from the first text block (thinkin
 2026-09-19T07:48:02Z first ad: chosen place from Google's list, presence only, budget field default 10
 2026-09-19T07:54:38Z place names read naturally
 2026-09-19T08:10:09Z a refused campaign creation is a plain reason, both consoles
+2026-09-19T08:13:41Z first ad names the place by its short name; the chosen id does the targeting
