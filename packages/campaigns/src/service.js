@@ -44,12 +44,14 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     const steps = [];
     if (!kinds.has('ga4_property')) steps.push({ key: 'ga4', label: 'Set up visit tracking', detail: 'We create it for you in one tap on Google\'s permission screen.', done: false, insyt_does_it: true });
     else steps.push({ key: 'ga4', label: 'Visit tracking', done: true });
-    if (!kinds.has('gtm_container')) steps.push({ key: 'gtm', label: 'Add the tracking code to your site', detail: 'We place it for you where your website builder allows; otherwise a picture guide.', done: false, insyt_does_it: true });
+    if (!kinds.has('gtm_container')) steps.push({ key: 'gtm', label: 'Add the tracking code to your site', detail: 'One paste on your website; we show you exactly where, or send it to whoever looks after your site.', done: false, insyt_does_it: true });
     else steps.push({ key: 'gtm', label: 'Tracking code on your site', done: gates.tag !== false, detail: gates.tag === false ? 'Waiting to see it live on your site.' : undefined });
     steps.push({ key: 'goal', label: 'Counting customer actions', done: !goalBroken, detail: goalBroken ? 'Your enquiries or bookings are not being counted yet; we fix that first.' : undefined });
     if (critTracking) steps.push({ key: 'critical', label: `${critTracking} tracking issue${critTracking === 1 ? '' : 's'} to clear`, done: false, detail: 'These land in your approvals; each is one tap.' });
     steps.push({ key: 'billing', label: 'Ad money connected to Google', done: gates.billing !== false, detail: gates.billing === false ? 'One step in Google Ads; we send you the link.' : undefined });
-    return { health, steps, journey: journey ? journey.journey : 'A', gates };
+    // Counting is live when both pieces exist, the tag has been seen on the site and the goal is healthy.
+    const tracking_live = kinds.has('gtm_container') && kinds.has('ga4_property') && gates.tag !== false && !goalBroken;
+    return { health, steps, journey: journey ? journey.journey : 'A', gates, tracking_live };
   }
 
   async function create({ tenantId, agencyId = null, seatId = null, template, inputs = {}, sourceFinding = null }) {
@@ -72,6 +74,8 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     });
     const spec = buildCampaignSpec({
       template, business, services: inputs.services || [], location: inputs.location || null, currency,
+      // Clicks until counting is live; the switch to bookings is a later card for their yes.
+      bidding: inputs.bidding || (gates.tracking_live ? 'conversions' : 'clicks'),
       budget_daily_usd: inputs.budget_daily_usd, conversion_goal: inputs.conversion_goal || null,
       existing_campaign_names: (existing || []).map((c) => c.name),
       final_url: inputs.final_url || (tenant && tenant.website_url) || null,
@@ -166,7 +170,8 @@ function createDraftService({ db, google = null, model = null, modelId = null })
     if (d.status !== 'created_paused') return { error: `Cannot enable a ${d.status} draft.` };
     const gates = await gatesFor(tenantId);
     const g = gates.gates || {};
-    if (!(g.tag !== false && g.billing !== false)) return { error: 'Tracking and billing must both be in place before this switches on.', steps: gates.steps };
+    // Only ad money gates the switch-on: Google will not serve without a card. Tracking catches up when the customer is ready.
+    if (g.billing === false) return { error: 'Google needs a card for the clicks before this switches on. Add it in Google Ads under Billing; we check and open this step for you.', steps: gates.steps };
     if (String(d.google_campaign_id || '').startsWith('draft-')) {
       await patch(draftId, { status: 'enabled' });
       return { status: 'enabled', provisional: true };

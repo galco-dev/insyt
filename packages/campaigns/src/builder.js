@@ -75,6 +75,7 @@ function serviceAdGroup({ business, service, location }) {
  *   services: ['Gel nails', ...],          // generic template
  *   location: 'Dubai' | null,
  *   budget_daily_usd: number,
+ *   bidding: 'conversions' | 'clicks',     // clicks only while nothing is counted
  *   conversion_goal: 'booking_confirmed',  // the key event bidding steers to
  *   existing_campaign_names: [ ... ],      // collision-safe naming
  *   final_url: 'https://…',                // landing page (tenant site by default)
@@ -91,10 +92,11 @@ function buildCampaignSpec(input) {
   let name;
   let adGroups;
   let channel = 'search';
-  // New campaigns NEVER launch on Maximise clicks: with a healthy conversion
-  // goal we bid to conversions from day one - that's the whole point of
-  // fixing measurement first.
-  let bidding = 'Maximise conversions';
+  // Bids to bookings when counting is live. A first ad for a business with
+  // no tracking yet runs on clicks at its cap (Max, 19 Sep 2026: tracking is
+  // offered, never required); the switch to bookings is drafted for their
+  // yes the day tracking is verified.
+  let bidding = input.bidding === 'clicks' ? 'Maximise clicks' : 'Maximise conversions';
 
   if (template === 'brand') {
     name = `Brand - ${business}`;
@@ -175,7 +177,7 @@ function validateSpec(spec, health = {}) {
   if (spec && spec.settings && spec.settings.start_paused !== true) {
     blockers.push('Campaigns must start paused - enabling is a separate explicit action.');
   }
-  if (health.conversionGoalHealthy === false) {
+  if (health.conversionGoalHealthy === false && spec && spec.bidding !== 'Maximise clicks') {
     blockers.push('The conversion goal this campaign would bid to is broken or silent - fix tracking first. A campaign born on bad measurement wastes money from hour one.');
   }
   if (health.openCriticalTracking > 0) {
@@ -223,7 +225,9 @@ function renderPlain(spec) {
     who_sees_it: `This shows to ${who}.`,
     what_it_says: example ? `${example.rsa.headlines[0]} - ${example.rsa.descriptions[0]}` : '',
     what_you_pay: `Up to ${fmtMoney(spec.budget_daily_usd, spec.currency || 'USD')} a day. You only pay when someone clicks. It starts switched off - nothing spends until you say go.`,
-    safety_line: 'We checked your setup first, so every click gets counted correctly from day one.',
+    safety_line: spec.bidding === 'Maximise clicks'
+      ? 'Nothing is counted yet, so your report will show what you spent and which searches, not bookings. Add tracking any time and we switch the ad to aim for bookings.'
+      : 'We checked your setup first, so every click gets counted correctly from day one.',
   };
 }
 

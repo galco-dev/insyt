@@ -51,7 +51,7 @@ function planMutations(spec, { customerId, finalUrl, geoTargetIds = [], language
       resourceName: campaignTmp, name: spec.name, status: 'PAUSED',
       advertisingChannelType: spec.channel === 'display' ? 'DISPLAY' : 'SEARCH',
       campaignBudget: budgetTmp,
-      maximizeConversions: {},
+      ...(spec.bidding === 'Maximise clicks' ? { targetSpend: {} } : { maximizeConversions: {} }),
       networkSettings: spec.channel === 'display' ? { targetContentNetwork: true } : { targetGoogleSearch: true, targetSearchNetwork: false, targetContentNetwork: false, targetPartnerSearchNetwork: false },
       containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING',
     } } },

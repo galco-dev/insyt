@@ -81,3 +81,16 @@ test('builder: budget lines and excluded-term reasons use the account currency',
   const sourced = sourceKeywords({ business: 'Marina Dental', services: ['implants'], searchTerms: [{ term: 'implants dubai', conversions_90d: 2, spend_90d_usd: 900 }], accountMedianCpaUsd: 100, currency: 'AED' });
   assert.match(sourced.excluded[0].reason, /cost per result AED 450 above target AED 100/);
 });
+
+test('a first ad with nothing counted runs on clicks: no goal blocker, Google gets a spend target, plain copy says so', () => {
+  const { planMutations } = require('../src/executor');
+  const clicks = buildCampaignSpec({ template: 'generic', business: 'Smile Dental', services: ['Dentist'], location: 'Manchester', budget_daily_usd: 10, bidding: 'clicks' });
+  assert.strictEqual(clicks.bidding, 'Maximise clicks');
+  assert.strictEqual(validateSpec(clicks, { conversionGoalHealthy: false, billingAttached: true, openCriticalTracking: 0 }).ok, true, 'a broken goal does not block an ad that does not bid to it');
+  const ops = JSON.stringify(planMutations(clicks, { customerId: '1234567890', finalUrl: 'https://smile.com' }));
+  assert.ok(ops.includes('"targetSpend"') && !ops.includes('"maximizeConversions"'));
+  assert.match(renderPlain(clicks).safety_line, /Nothing is counted yet/);
+  const bookings = buildCampaignSpec({ template: 'generic', business: 'Smile Dental', services: ['Dentist'], location: 'Manchester', budget_daily_usd: 10 });
+  assert.strictEqual(bookings.bidding, 'Maximise conversions');
+  assert.strictEqual(validateSpec(bookings, { conversionGoalHealthy: false }).ok, false);
+});

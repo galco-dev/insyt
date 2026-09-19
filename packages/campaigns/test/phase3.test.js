@@ -156,10 +156,11 @@ test('service.approve without credentials stays provisional; enable refuses when
   state.draft = { id: 'd3', tenant_id: 't1', status: 'draft', spec: row.spec };
   const a = await svc.approve({ tenantId: 't1', draftId: 'd3' });
   assert.deepStrictEqual({ st: a.status, prov: a.provisional }, { st: 'created_paused', prov: true });
-  state.journey = { journey: 'B', gates: { tag: false, billing: true } };
+  // Tracking never gates the switch-on (it catches up when the customer is ready); ad money does.
+  state.journey = { journey: 'B', gates: { tag: false, billing: false } };
   state.draft.status = 'created_paused'; state.draft.google_campaign_id = 'draft-d3';
   const e = await svc.enable({ tenantId: 't1', draftId: 'd3' });
-  assert.match(e.error, /Tracking and billing/);
+  assert.match(e.error, /needs a card/);
 });
 
 test('service.edit: validated, diff recorded to draft_edits with the model version', async () => {
