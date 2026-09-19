@@ -56,3 +56,10 @@ test('nothing pushed contains an @', async () => {
   assert.ok(!('nested' in row));
   assert.ok(!JSON.stringify(row).includes('@'));
 });
+
+test('a profession page\'s src=launch-dentists counts as the launch journey', async () => {
+  const { journeyOf } = await load();
+  assert.equal(journeyOf({ src: 'launch-dentists' }), 'B');
+  assert.equal(journeyOf({ src: 'launch' }), 'B');
+  assert.equal(journeyOf({ src: 'launchpad' }), 'A');
+});

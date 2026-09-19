@@ -31,6 +31,11 @@ if (window.location.pathname === '/app/start') {
     const v = params.get(k);
     if (v && v.length <= 200) store.set(`insyt_${k}`, v);
   }
+  // The profession pages send src=launch-dentists (one field); the app reads
+  // it as src=launch plus trade=dentists, so both forms mean the same thing.
+  const src = params.get('src') || '';
+  const m = /^launch-([a-z0-9-]{2,40})$/i.exec(src);
+  if (m) { store.set('insyt_src', 'launch'); if (!params.get('trade')) store.set('insyt_trade', m[1].toLowerCase()); }
 }
 export const attribution = () => {
   const out = {};

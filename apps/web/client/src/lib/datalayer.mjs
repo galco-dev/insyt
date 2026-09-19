@@ -12,7 +12,7 @@
 const PII_RE = /@/;
 
 export function journeyOf(attribution) {
-  return attribution && attribution.src === 'launch' ? 'B' : 'A';
+  return attribution && /^launch(-|$)/i.test(String(attribution.src || '')) ? 'B' : 'A';
 }
 
 export function buildRow(event, extra = {}, { demo = false, attribution = {}, userId = null } = {}) {
