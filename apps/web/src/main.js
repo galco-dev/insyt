@@ -148,11 +148,28 @@ const provisioner = googleAuth ? {
 } : null;
 // Launch journey: a Google Ads account for a business that has none, created
 // under our manager account with Insyt's own credentials (never the customer's).
-const adsAccountCreator = googleAuth && googleAuth.config.developerToken && process.env.GOOGLE_ADS_MANAGER_REFRESH_TOKEN ? {
+// The manager credentials are Insyt's own Google login (the user that
+// administers the manager account), which signs in to the app like anyone
+// else: its refresh token already lives in google_connections. An env
+// override (GOOGLE_ADS_MANAGER_REFRESH_TOKEN) wins when set.
+const MANAGER_EMAIL = (process.env.GOOGLE_ADS_MANAGER_EMAIL || 'hello@tryinsyt.com').toLowerCase();
+async function managerRefreshToken() {
+  if (process.env.GOOGLE_ADS_MANAGER_REFRESH_TOKEN) return process.env.GOOGLE_ADS_MANAGER_REFRESH_TOKEN;
+  const users = await db.select('users', `email=ilike.${qd(MANAGER_EMAIL)}&select=id&order=last_seen_at.desc.nullslast&limit=5`).catch(() => []);
+  for (const u of users || []) {
+    const c = await db.select('google_connections', `user_id=eq.${qd(u.id)}&status=eq.valid&select=refresh_token,granted_scopes&limit=1`, { single: true }).catch(() => null);
+    if (c && c.refresh_token && (!Array.isArray(c.granted_scopes) || c.granted_scopes.some((s) => /adwords/.test(s)))) return c.refresh_token;
+  }
+  return null;
+}
+const adsAccountCreator = googleAuth && googleAuth.config.developerToken ? {
+  available: async () => !!(await managerRefreshToken().catch(() => null)),
   create: async ({ descriptiveName, currency, timeZone, ownerEmail }) => {
     const { createAdsAccount } = require('../../../packages/google/src/create-account');
+    const token = await managerRefreshToken();
+    if (!token) throw new Error('manager credentials not configured');
     return createAdsAccount({
-      clientId: googleClientId, clientSecret: googleClientSecret, managerRefreshToken: process.env.GOOGLE_ADS_MANAGER_REFRESH_TOKEN,
+      clientId: googleClientId, clientSecret: googleClientSecret, managerRefreshToken: token,
       developerToken: googleAuth.config.developerToken, managerId: googleAuth.config.loginCustomerId, descriptiveName, currency, timeZone, ownerEmail,
     });
   },

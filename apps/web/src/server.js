@@ -404,7 +404,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/last-payment') return json(res, 200, dashStore.lastPayment ? await dashStore.lastPayment(t) : { payment: null, subscription: null });
           if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t, new Date(now())), access: await accessWithRole() });
           if (sub === '/runs') return json(res, 200, { runs: dashStore.runs ? await dashStore.runs(t) : [] });
-          if (sub === '/discovery') return json(res, 200, { ...(await dashStore.discovery(t)), can_create_ads_account: !!(dashStore.adsAccountAvailable && dashStore.adsAccountAvailable()) });
+          if (sub === '/discovery') return json(res, 200, { ...(await dashStore.discovery(t)), can_create_ads_account: !!(dashStore.adsAccountAvailable && await dashStore.adsAccountAvailable()) });
           if (sub === '/plan') return json(res, 200, { plan: await dashStore.planOptions(t) });
           if (sub === '/first-fix') return json(res, 200, { fix: await dashStore.firstFix(t) });
           if (sub === '/journey') return json(res, 200, { journey: await dashStore.journey(t) });
@@ -459,7 +459,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
                 // never an error the UI has to handle.
                 // Launch journey: a Google Ads account for a business that has none. Theirs from the first minute.
                 if (sub === '/ads-account') {
-                  if (!(dashStore.createAdsAccount && dashStore.adsAccountAvailable && dashStore.adsAccountAvailable())) return json(res, 501, { error: 'Not available yet.' });
+                  if (!(dashStore.createAdsAccount && dashStore.adsAccountAvailable && await dashStore.adsAccountAvailable())) return json(res, 501, { error: 'Not available yet.' });
                   try {
                     const r = await dashStore.createAdsAccount(t, { currency: String(parsed.currency || 'USD').toUpperCase(), time_zone: String(parsed.time_zone || 'UTC') });
                     return json(res, r.error ? 400 : 200, r);

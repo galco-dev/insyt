@@ -649,7 +649,7 @@ function dashStore(db, deps = {}) {
       return plainDraft(await draftsSvc.create({ tenantId, template, inputs: input }));
     },
     // Launch journey: a Google Ads account for a business that has none.
-    adsAccountAvailable: () => !!deps.adsAccountCreator,
+    adsAccountAvailable: async () => !!(deps.adsAccountCreator && (typeof deps.adsAccountCreator.available !== 'function' || await deps.adsAccountCreator.available())),
     createAdsAccount: async (tenantId, { currency = 'USD', time_zone = 'UTC' } = {}) => {
       if (!deps.adsAccountCreator) return { error: 'Not available yet.' };
       const existing = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&linked=eq.true&select=external_id&limit=1`, { single: true }).catch(() => null);
