@@ -180,3 +180,20 @@ test('service.edit: validated, diff recorded to draft_edits with the model versi
   const bad = await svc.edit({ tenantId: 't1', draftId: 'd4', adGroups: [{ name: g.name, rsa: { ...edited, headlines: ['The best nails guaranteed forever and ever'] } }] });
   assert.match(bad.error, /superlative/);
 });
+
+test('service.enable reads the card live: no card refuses with Google\'s billing page; a card opens the gate even when the record said no', async () => {
+  const state = {};
+  const db = fakeDb(state);
+  let has = false;
+  const svc = createDraftService({ db, google: { billingStatus: async () => ({ has_billing: has, status: has ? 'approved' : 'none' }) } });
+  const row = await svc.create({ tenantId: 't1', template: 'brand', inputs: {} });
+  state.draft = { id: 'd9', tenant_id: 't1', status: 'created_paused', google_campaign_id: 'draft-d9', spec: row.spec };
+  state.journey = { journey: 'B', gates: { tag: true, billing: true } };
+  const refused = await svc.enable({ tenantId: 't1', draftId: 'd9' });
+  assert.match(refused.error, /needs a card/);
+  assert.match(refused.billing_url, /ads\.google\.com/);
+  has = true;
+  state.journey = { journey: 'B', gates: { tag: false, billing: false } };
+  const ok = await svc.enable({ tenantId: 't1', draftId: 'd9' });
+  assert.strictEqual(ok.status, 'enabled');
+});

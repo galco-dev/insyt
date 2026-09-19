@@ -43,7 +43,7 @@ start({
 
 // §9 tag-install polls run on their own 1-minute pump (journey_state, not watches).
 setInterval(() => {
-  pumpTagInstalls({ db, crawler, advance })
+  pumpTagInstalls({ db, crawler, advance, queue })
     .then((r) => { if (r.polled) console.log(`tag-install polls: ${r.polled}, verified: ${r.verified}`); })
     .catch((e) => console.error('tag-install pump failed:', e.message));
 }, 60_000);

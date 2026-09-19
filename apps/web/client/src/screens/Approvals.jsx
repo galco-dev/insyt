@@ -206,7 +206,7 @@ export function YourAds() {
     // Without one the Plan sheet opens with this draft as the pending action.
     if (action === 'approve' || action === 'enable') {
       const d = (drafts || []).find((x) => x.id === id);
-      const ran = await gate(() => run(), { kind: `draft.${action}`, id, title: d ? d.plain.headline : 'Your ad', run: () => run() }).catch((e) => { setNote({ tone: 'error', text: e.message }); return true; });
+      const ran = await gate(() => run(), { kind: `draft.${action}`, id, title: d ? d.plain.headline : 'Your ad', run: () => run() }).catch((e) => { setNote({ tone: 'error', text: e.message, href: e.data && e.data.billing_url, label: 'Open Google Ads billing' }); return true; });
       if (!ran) setBusy(null);
       return;
     }
@@ -295,7 +295,12 @@ export function YourAds() {
           );
         })}
       </div>
-      {note && <div className="mt-3">{note.tone === 'error' ? <ErrorNote message={note.text} /> : <Receipt tone={note.tone} to="/app/ledger" linkLabel="See it in History">{note.text}</Receipt>}</div>}
+      {note && (
+        <div className="mt-3">
+          {note.tone === 'error' ? <ErrorNote message={note.text} /> : <Receipt tone={note.tone} to="/app/ledger" linkLabel="See it in History">{note.text}</Receipt>}
+          {note.href && <a href={note.href} target="_blank" rel="noreferrer" className="mt-2 inline-block text-small underline underline-offset-2">{note.label || 'Open it'}</a>}
+        </div>
+      )}
     </div>
   );
 }

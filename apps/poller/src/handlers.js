@@ -78,7 +78,7 @@ async function resumeJourneyLink(db, tenantId, now) {
   return link.url;
 }
 
-async function pumpTagInstalls({ db, crawler, advance, now = Date.now, limit = 20 }) {
+async function pumpTagInstalls({ db, crawler, advance, now = Date.now, limit = 20, queue = null }) {
   const q = (s) => encodeURIComponent(s);
   const nowIso = new Date(now()).toISOString();
   const due = await db.select('journey_state',
@@ -120,6 +120,15 @@ async function pumpTagInstalls({ db, crawler, advance, now = Date.now, limit = 2
       if (e.type === 'watch') {
         await db.insert('watches', [{ tenant_id: row.tenant_id, kind: e.kind, status: 'active' }], { returning: false }).catch(() => {});
         actions.verified += 1;
+        // Tracking just went live: a check now finds what counting still needs
+        // (the booking event, the link to Ads) and drafts it as cards for their yes.
+        const key = `tag_verified:${row.tenant_id}:${nowIso.slice(0, 10)}`;
+        const open = await db.select('runs', `tenant_id=eq.${q(row.tenant_id)}&status=in.(queued,running)&select=id&limit=1`).catch(() => []);
+        if (!open || !open.length) {
+          const [run] = await db.insert('runs', [{ tenant_id: row.tenant_id, type: 'triggered', status: 'queued', idempotency_key: key }]).catch(() => [null]);
+          if (run && queue) await queue.enqueue('runs-weekly', run).catch(() => {});
+        }
+        await db.insert('ledger', [{ tenant_id: row.tenant_id, event: 'tag_verified', actor: 'system', summary_text: 'Your tracking is live. We are checking what counting still needs; anything to set up lands in your approvals.' }], { returning: false }).catch(() => {});
       }
     }
     await db.update('journey_state', `id=eq.${q(row.id)}`, { tag_install: next, updated_at: nowIso }).catch(() => {});

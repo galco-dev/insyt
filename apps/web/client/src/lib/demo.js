@@ -330,9 +330,6 @@ function customerDemo(path, method, body) {
       return { conversation_id: 'demo', messages: s.chat, usage: { pct: 12, consented: false, included_usd: 30 } };
     }
     if (p === '/api/app/tracking') return { started: true, platform: 'wix', stage: 'awaiting_install', verified_at: null, nudges_sent: [], gtm_id: 'GTM-K2P9QX', ga4: true, tag_live: false, website: 'glowstudio.com', business: 'Glow Studio' };
-    if (p === '/api/app/tracking/start') return { ok: true, started: true, platform: 'wix', gtm_id: 'GTM-K2P9QX', ga4: true };
-    if (p === '/api/app/tracking/handoff') return { ok: true, sent_to: String((body && body.email) || '').toLowerCase() };
-    if (p === '/api/app/tracking/check') return { ok: true };
     if (p === '/api/app/first-ad') return { business: 'Glow Studio', website: 'glowstudio.com', trade: null, service: 'Gel nails', launch: false, campaigns_count: 3, drafts_count: 1 };
     if (p === '/api/app/drafts') {
       if (!s.drafts) {
@@ -471,6 +468,9 @@ function customerDemo(path, method, body) {
     if (i !== -1) { const item = s.pending.splice(i, 1)[0]; s.ledger.unshift({ id: `l-${Date.now()}`, event: 'change_requested', actor: 'user', summary_text: `Later: ${item.title}. It comes back on ${new Date(until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`, created_at: cnow() }); }
     return { ok: true, until };
   }
+  if (p === '/api/app/tracking/start') return { ok: true, started: true, platform: 'wix', gtm_id: 'GTM-K2P9QX', ga4: true };
+  if (p === '/api/app/tracking/handoff') return { ok: true, sent_to: String((body && body.email) || '').toLowerCase() };
+  if (p === '/api/app/tracking/check') return { ok: true };
   if (p.startsWith('/api/app/approve-part/')) { const id = p.split('/').pop(); const i = s.pending.findIndex((x) => x.id === id); if (i !== -1) { const item = s.pending.splice(i, 1)[0]; s.cumulative.fixes += 1; s.ledger.unshift({ id: `l-${Date.now()}`, event: 'fix_applied', actor: 'user', change_id: id, summary_text: `Excluded ${(body && body.keep ? body.keep.length : 0)} searches from your ads. Reversible with one tap.`, created_at: cnow() }); } return { ok: true }; }
   if (p === '/api/app/exceptions') {
     if (!s.exceptions) s.exceptions = [];

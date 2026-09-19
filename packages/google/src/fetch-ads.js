@@ -38,6 +38,20 @@ async function search({ auth, tenantId, customerId, developerToken, loginCustome
 
 const micros = (v) => Number(v || 0) / 1_000_000;
 
+/**
+ * Ad money (launch journey): does the account have an approved billing setup?
+ * Google will not serve an ad without one and we cannot add a card for anyone.
+ * Returns { has_billing, status } or null when the read fails (unknown, never a gate).
+ */
+async function fetchBillingStatus({ auth, tenantId, customerId, developerToken, loginCustomerId }) {
+  try {
+    const rows = await search({ auth, tenantId, customerId, developerToken, loginCustomerId, query: 'SELECT billing_setup.id, billing_setup.status FROM billing_setup' });
+    const statuses = rows.map((r) => r.billingSetup && r.billingSetup.status).filter(Boolean);
+    const approved = statuses.includes('APPROVED') || statuses.includes('APPROVED_HELD');
+    return { has_billing: approved, status: approved ? 'approved' : statuses.includes('PENDING') ? 'pending' : 'none' };
+  } catch { return null; }
+}
+
 /** Layer 4 contract. */
 // GA4-imported action names read "<property> (web) <event_name>"; older
 // imports read "<event_name> (GA4)". The event is what identifies a double count.
@@ -213,4 +227,4 @@ async function fetchPulse({ auth, tenantId, customerId, developerToken, loginCus
   };
 }
 
-module.exports = { fetchAds, fetchWindow, fetchPulse, search, gaqlDate, micros, VERSION };
+module.exports = { fetchAds, fetchWindow, fetchPulse, search, gaqlDate, micros, VERSION, fetchBillingStatus };
