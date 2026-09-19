@@ -3,10 +3,12 @@
 // (launch journey, account creation). Runs on your Mac, prints the key in
 // your terminal only. Nothing is stored anywhere by this script.
 //
-//   GOOGLE_OAUTH_CLIENT_ID=... GOOGLE_OAUTH_CLIENT_SECRET=... node scripts/manager-token.js
+//   node scripts/manager-token.js
 //
-// Steps: it opens a Google sign-in page; sign in as the user that administers
-// manager account 331-582-4995 and click Allow; the key is printed here.
+// Steps: it prints a Google sign-in link; open it, sign in as the user that
+// administers manager account 331-582-4995 and click Allow. Only then does it
+// ask for the OAuth client secret (typed hidden, from Railway), and prints
+// the key. No secret ever sits on the command line or in scrollback.
 // Then: Railway, web service, Variables, add GOOGLE_ADS_MANAGER_REFRESH_TOKEN,
 // paste, save. Railway redeploys on its own.
 //
@@ -22,15 +24,21 @@ const PORT = 8765;
 const REDIRECT = `http://localhost:${PORT}/callback`;
 const SCOPE = 'https://www.googleapis.com/auth/adwords';
 
-async function ask(question) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => rl.question(question, (a) => { rl.close(); resolve(a.trim()); }));
+const APP_CLIENT_ID = '919969667785-h80l2se6de9ogm988v5c60e5u1j0ohai.apps.googleusercontent.com';
+
+async function ask(question, { hidden = false } = {}) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  if (hidden) {
+    // Echo nothing while the secret is typed.
+    rl._writeToOutput = function (str) { if (/\n/.test(str)) rl.output.write('\n'); };
+    process.stdout.write(question);
+  }
+  return new Promise((resolve) => rl.question(hidden ? '' : question, (a) => { rl.close(); resolve(a.trim()); }));
 }
 
 async function main() {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || await ask('OAuth client id (from Railway, web service): ');
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || await ask('OAuth client secret: ');
-  if (!clientId || !clientSecret) { console.error('Both the client id and the client secret are needed.'); process.exit(1); }
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || APP_CLIENT_ID;
+  if (!/\.apps\.googleusercontent\.com$/.test(clientId)) { console.error('That does not look like a Google OAuth client id.'); process.exit(1); }
 
   const state = Math.random().toString(36).slice(2);
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
@@ -46,21 +54,23 @@ async function main() {
     const err = url.searchParams.get('error');
     if (err) { done(`Google said: ${err}. You can close this tab.`); return finish(1, `Google refused: ${err}`); }
     const code = url.searchParams.get('code');
+    done('Google answered. Back in the terminal: type the OAuth client secret when asked. You can close this tab.');
+    const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || await ask('OAuth client secret (from Railway, web service; typing is hidden): ', { hidden: true });
+    if (!clientSecret) return finish(1, 'No secret given; run it again.');
     try {
       const r = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: REDIRECT, grant_type: 'authorization_code' }),
       });
       const body = await r.json();
-      if (!r.ok || !body.refresh_token) { done('No refresh token came back. You can close this tab.'); return finish(1, `Token exchange failed: ${JSON.stringify(body).slice(0, 200)}`); }
+      if (!r.ok || !body.refresh_token) return finish(1, `Token exchange failed: ${JSON.stringify(body).slice(0, 200)}`);
       const scopes = String(body.scope || '');
-      done('Done. Your key is in the terminal. You can close this tab.');
       console.log('\nGOOGLE_ADS_MANAGER_REFRESH_TOKEN=' + body.refresh_token + '\n');
       if (!scopes.includes('adwords')) console.log('Warning: the Google Ads permission was not granted. Sign in again and tick it.');
       console.log('Next: Railway, web service, Variables, add GOOGLE_ADS_MANAGER_REFRESH_TOKEN with the value above, save.');
       console.log('Keep it like a password. To revoke it later: myaccount.google.com, Security, third-party access.');
       return finish(0);
-    } catch (e) { done('Something went wrong. See the terminal.'); return finish(1, `Token exchange failed: ${e.message}`); }
+    } catch (e) { return finish(1, `Token exchange failed: ${e.message}`); }
   });
 
   function finish(code, message) {
@@ -70,9 +80,9 @@ async function main() {
   }
 
   server.listen(PORT, () => {
-    console.log('Opening Google sign-in. Sign in as the user that administers the manager account, then click Allow.');
-    console.log(`If nothing opens, paste this in a browser:\n${authUrl}\n`);
-    execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [authUrl], () => {});
+    console.log('Open this link, sign in as the user that administers the manager account, then click Allow:');
+    console.log(`\n${authUrl}\n`);
+    if (process.argv.includes('--open')) execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [authUrl], () => {});
   });
 }
 
