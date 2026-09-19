@@ -41,7 +41,7 @@ test('template set: the §12 catalogue is present with correct streams', () => {
   for (const required of ['audit_ready', 'report_weekly_core', 'report_weekly_autopilot', 'fix_verified_48h', 'revert_notice', 'tag_verified', 'first_conversion', 'launch_live', 'reconnect_needed', 'card_failed_grace', 'milestone_smart_bidding', 'graduation_prompt', 'monthly_pulse']) {
     assert.ok(ids.includes(required), `missing ${required}`);
   }
-  assert.ok(TEMPLATES.filter((t) => t.id.startsWith('tag_guide_')).length === 5, 'one guide per platform');
+  assert.ok(TEMPLATES.filter((t) => t.id.startsWith('tag_guide_')).length === 6, 'one guide per platform, plus one for any other builder');
   assert.strictEqual(TEMPLATES.find((t) => t.id === 'report_weekly_core').stream, 'report');
   assert.strictEqual(TEMPLATES.find((t) => t.id === 'reconnect_needed').stream, 'transactional');
 });

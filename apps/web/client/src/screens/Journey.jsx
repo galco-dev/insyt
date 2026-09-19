@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle as CheckCircle2, Circle } from '@untitledui/icons';
 import { api } from '../lib/api.js';
 import { MonoLabel, Card, Spinner, ErrorNote } from '../lib/ui.jsx';
+import { TrackingBlock } from './TrackingBlock.jsx';
 
 const GATE_LABEL = {
   tag: 'Tracking installed and verified',
@@ -29,6 +30,8 @@ export default function Journey() {
         <MonoLabel>Next step</MonoLabel>
         <p className="mt-1 text-h5">{journey.instruction_line}</p>
       </Card>
+
+      <TrackingBlock />
 
       <Card className="mt-3 divide-y divide-neutral-200">
         {Object.entries(GATE_LABEL).map(([key, label]) => {

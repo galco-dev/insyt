@@ -675,6 +675,79 @@ function dashStore(db, deps = {}) {
       return { error: `Unknown action ${action}.` };
     },
     setupSteps: async (tenantId) => draftsSvc.gatesFor(tenantId),
+    // ---- Tracking (launch journey, 19 Sep 2026): offered, never required.
+    // What the tracking block shows: what exists, which builder, where the install got to.
+    trackingState: async (tenantId) => {
+      const [j, assets, t] = await Promise.all([
+        db.select('journey_state', `tenant_id=eq.${q(tenantId)}&select=id,gates,tag_install&limit=1`, { single: true }).catch(() => null),
+        db.select('assets', `tenant_id=eq.${q(tenantId)}&linked=eq.true&kind=in.(gtm_container,ga4_property)&select=kind,external_id`).catch(() => []),
+        db.select('tenants', `id=eq.${q(tenantId)}&select=website_url,business_name`, { single: true }).catch(() => null),
+      ]);
+      const gtm = (assets || []).find((a) => a.kind === 'gtm_container');
+      const ga4 = (assets || []).find((a) => a.kind === 'ga4_property');
+      const ti = (j && j.tag_install) || {};
+      return {
+        started: !!(j && ti.guide_issued_at), platform: ti.platform || null, stage: ti.stage || null, verified_at: ti.verified_at || null,
+        nudges_sent: ti.nudges_sent || [], gtm_id: gtm ? gtm.external_id : null, ga4: !!ga4, tag_live: !!(j && j.gates && j.gates.tag),
+        website: (t && t.website_url) || null, business: (t && t.business_name) || null,
+      };
+    },
+    // One tap: create what is missing in their Google account, remember the
+    // builder, start the quiet checks and send the guide. Safe to call twice.
+    startTracking: async (tenantId, { now = Date.now() } = {}) => {
+      const nowIso = new Date(now).toISOString();
+      let provision = null;
+      if (deps.provisioner) { try { provision = await deps.provisioner.provision(tenantId); } catch (e) { provision = { error: String(e && e.message || e).slice(0, 200), guides: [] }; } }
+      const t = await db.select('tenants', `id=eq.${q(tenantId)}&select=website_url,business_name`, { single: true }).catch(() => null);
+      const host = t && t.website_url ? String(t.website_url).replace(/^https?:\/\//i, '').replace(/^www\./, '').replace(/\/.*$/, '') : null;
+      const crawl = host ? await db.select('crawls', `url=ilike.*${q(host)}*&cms_fingerprint=not.is.null&select=cms_fingerprint&order=created_at.desc&limit=1`, { single: true }).catch(() => null) : null;
+      const known = ['shopify', 'wordpress', 'webflow', 'wix', 'squarespace'];
+      const platform = crawl && known.includes(String(crawl.cms_fingerprint).toLowerCase()) ? String(crawl.cms_fingerprint).toLowerCase() : 'other';
+      const existing = await db.select('journey_state', `tenant_id=eq.${q(tenantId)}&select=id,gates,tag_install&limit=1`, { single: true }).catch(() => null);
+      const issued = !!(existing && existing.tag_install && existing.tag_install.guide_issued_at);
+      if (!issued) {
+        const tag_install = { platform, guide_issued_at: nowIso, poll_count: 0, next_poll_at: new Date(now + 2 * 60_000).toISOString(), stage: 'awaiting_install', nudges_sent: [] };
+        if (existing) await db.update('journey_state', `id=eq.${q(existing.id)}`, { tag_install, updated_at: nowIso }).catch(() => {});
+        // Ad money and approvals stay open here: only the tag is what these checks are for.
+        else await db.insert('journey_state', [{ tenant_id: tenantId, journey: 'B', stage: 'awaiting_install', gates: { tag: false, billing: true, approval: true }, tag_install }], { returning: false }).catch(() => {});
+        const owner = await db.select('users', `tenant_id=eq.${q(tenantId)}&select=email&limit=1`, { single: true }).catch(() => null);
+        if (owner && owner.email) {
+          const guide_url = await store.resumeLink(tenantId, now);
+          await db.insert('emails', [{ tenant_id: tenantId, template_id: `tag_guide_${platform}`, to_email: owner.email, stream: 'transactional', status: 'queued', payload: { guide_url } }], { returning: false }).catch(() => {});
+        }
+        await db.insert('ledger', [{ tenant_id: tenantId, event: 'connection_changed', actor: 'user', summary_text: 'You asked us to set up tracking. We check your site every few minutes for the tracking code and tell you the moment it is live.' }], { returning: false }).catch(() => {});
+      }
+      const state = await store.trackingState(tenantId);
+      return { ...state, provision, guides: (provision && provision.guides) || [], already_started: issued };
+    },
+    // The code and the guide go to whoever looks after the site; we keep checking.
+    trackingHandoff: async (tenantId, email, { now = Date.now() } = {}) => {
+      const to = String(email || '').trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return { error: 'That does not look like an email address.' };
+      const state = await store.trackingState(tenantId);
+      if (!state.gtm_id) return { error: 'Your tracking code is not created yet. Tap "Set up tracking" first.' };
+      const guide_url = await store.resumeLink(tenantId, now);
+      const code = `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${state.gtm_id}');</script>`;
+      await db.insert('emails', [{ tenant_id: tenantId, template_id: 'tracking_handoff', to_email: to, stream: 'transactional', status: 'queued', payload: { business: state.business, site: state.website, code, guide_url } }], { returning: false });
+      await db.insert('ledger', [{ tenant_id: tenantId, event: 'connection_changed', actor: 'user', summary_text: `You sent the tracking code to ${to}. We keep checking your site and tell you when it is live.` }], { returning: false }).catch(() => {});
+      return { ok: true, sent_to: to };
+    },
+    // "I have pasted it": the next check runs now instead of on the schedule.
+    trackingCheckNow: async (tenantId, { now = Date.now() } = {}) => {
+      const j = await db.select('journey_state', `tenant_id=eq.${q(tenantId)}&select=id,tag_install&limit=1`, { single: true }).catch(() => null);
+      if (!j || !j.tag_install || !j.tag_install.guide_issued_at) return { error: 'Tracking is not set up yet.' };
+      await db.update('journey_state', `id=eq.${q(j.id)}`, { tag_install: { ...j.tag_install, next_poll_at: new Date(now).toISOString() }, updated_at: new Date(now).toISOString() }).catch(() => {});
+      return { ok: true };
+    },
+    // A signed-in link back to the setup screen, 72 hours, for the guide emails.
+    resumeLink: async (tenantId, now = Date.now()) => {
+      const { mintLink } = require('../../emails/src/magic-links');
+      const baseUrl = process.env.APP_BASE_URL || 'https://app.tryinsyt.com';
+      const inserts = [];
+      const link = mintLink({ tenantId, purpose: 'resume_journey', targetId: null, baseUrl, now }, { insertLink: (row) => inserts.push(db.insert('magic_links', [row], { returning: false })) });
+      await Promise.all(inserts).catch(() => {});
+      return link.url;
+    },
     // §5.1: one tap → we create what is missing (GA4 property, GTM container).
     provisionSetup: async (tenantId) => {
       if (!deps.provisioner) return { error: 'Not available yet.' };

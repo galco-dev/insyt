@@ -422,6 +422,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             return json(res, 200, await dashStore.chatTranscript(t, u.searchParams.get('conversation') || null));
           }
           if (sub === '/setup') return json(res, 200, dashStore.setupSteps ? await dashStore.setupSteps(t) : { steps: [] });
+          if (sub === '/tracking') return json(res, 200, dashStore.trackingState ? await dashStore.trackingState(t) : { started: false });
           if (sub.startsWith('/report/')) {
             const id = sub.split('/')[2];
             if (!id || id === 'null' || id === 'undefined') return json(res, 404, { error: 'Report not found.' });
@@ -448,7 +449,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub === '/pause' || sub === '/invite' || /^\/alerts\/[^/]+\/expected$/.test(sub) || sub === '/add-business' || sub === '/switch-tenant' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub.startsWith('/tracking/') || sub === '/pause' || sub === '/invite' || /^\/alerts\/[^/]+\/expected$/.test(sub) || sub === '/add-business' || sub === '/switch-tenant' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -456,6 +457,22 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               try {
                 // §11 telemetry: client-side interactions. Fire-and-forget,
                 // never an error the UI has to handle.
+                // Tracking (launch journey): set it up, hand it off, check now. Never a gate on the ad.
+                if (sub === '/tracking/start') {
+                  if (!dashStore.startTracking) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.startTracking(t);
+                  return json(res, 200, { ok: true, ...r });
+                }
+                if (sub === '/tracking/handoff') {
+                  if (!dashStore.trackingHandoff) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.trackingHandoff(t, parsed.email);
+                  return json(res, r.error ? 400 : 200, r);
+                }
+                if (sub === '/tracking/check') {
+                  if (!dashStore.trackingCheckNow) return json(res, 501, { error: 'Not available yet.' });
+                  const r = await dashStore.trackingCheckNow(t);
+                  return json(res, r.error ? 409 : 200, r);
+                }
                 if (sub === '/chat') {
                   if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
                   const text = String(parsed.text || '').trim();

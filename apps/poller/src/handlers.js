@@ -69,6 +69,15 @@ async function ownerEmail(db, tenantId) {
  * rows whose tag_install.next_poll_at is due, advances the state machine, and
  * applies its effects (emails, gates, watch creation).
  */
+// A signed-in link back to the setup screen, so the nudge lands on the guide, not a sign-in wall.
+async function resumeJourneyLink(db, tenantId, now) {
+  const { mintLink } = require('../../../packages/emails/src/magic-links');
+  const inserts = [];
+  const link = mintLink({ tenantId, purpose: 'resume_journey', targetId: null, baseUrl: process.env.APP_BASE_URL || 'https://app.tryinsyt.com', now }, { insertLink: (row) => inserts.push(db.insert('magic_links', [row], { returning: false })) });
+  await Promise.all(inserts);
+  return link.url;
+}
+
 async function pumpTagInstalls({ db, crawler, advance, now = Date.now, limit = 20 }) {
   const q = (s) => encodeURIComponent(s);
   const nowIso = new Date(now()).toISOString();
@@ -102,7 +111,7 @@ async function pumpTagInstalls({ db, crawler, advance, now = Date.now, limit = 2
         await db.insert('emails', [{
           tenant_id: row.tenant_id, template_id: e.template_id,
           to_email: await ownerEmail(db, row.tenant_id), stream: 'transactional', status: 'queued',
-          payload: { guide_url: `${process.env.APP_BASE_URL || 'https://app.tryinsyt.com'}/app/journey` },
+          payload: { guide_url: await resumeJourneyLink(db, row.tenant_id, now()).catch(() => `${process.env.APP_BASE_URL || 'https://app.tryinsyt.com'}/app/journey`) },
         }], { returning: false }).catch(() => {});
       }
       if (e.type === 'gate') {

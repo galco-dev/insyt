@@ -329,6 +329,10 @@ function customerDemo(path, method, body) {
       if (!s.chat) s.chat = [];
       return { conversation_id: 'demo', messages: s.chat, usage: { pct: 12, consented: false, included_usd: 30 } };
     }
+    if (p === '/api/app/tracking') return { started: true, platform: 'wix', stage: 'awaiting_install', verified_at: null, nudges_sent: [], gtm_id: 'GTM-K2P9QX', ga4: true, tag_live: false, website: 'glowstudio.com', business: 'Glow Studio' };
+    if (p === '/api/app/tracking/start') return { ok: true, started: true, platform: 'wix', gtm_id: 'GTM-K2P9QX', ga4: true };
+    if (p === '/api/app/tracking/handoff') return { ok: true, sent_to: String((body && body.email) || '').toLowerCase() };
+    if (p === '/api/app/tracking/check') return { ok: true };
     if (p === '/api/app/first-ad') return { business: 'Glow Studio', website: 'glowstudio.com', trade: null, service: 'Gel nails', launch: false, campaigns_count: 3, drafts_count: 1 };
     if (p === '/api/app/drafts') {
       if (!s.drafts) {

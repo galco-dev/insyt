@@ -349,3 +349,26 @@ test('api: /api/app/first-ad answers from the store, and a draft approve says wh
     assert.equal(anon.status, 401);
   });
 });
+
+test('api: tracking is read, started, handed off and checked through the store; a bad hand-off address is a 400', async () => {
+  const ds = dashStore();
+  const calls = [];
+  ds.trackingState = async () => ({ started: true, platform: 'wix', gtm_id: 'GTM-1', verified_at: null });
+  ds.startTracking = async (t) => { calls.push(['start', t]); return { started: true, platform: 'wix', gtm_id: 'GTM-1', already_started: false }; };
+  ds.trackingHandoff = async (t, email) => (email && email.includes('@') ? { ok: true, sent_to: email } : { error: 'That does not look like an email address.' });
+  ds.trackingCheckNow = async () => ({ ok: true });
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const h = { cookie: authedCookie(), 'content-type': 'application/json' };
+    const st = await (await fetch(`${base}/api/app/tracking`, { headers: h })).json();
+    assert.equal(st.platform, 'wix');
+    const start = await (await fetch(`${base}/api/app/tracking/start`, { method: 'POST', headers: h, body: '{}' })).json();
+    assert.deepStrictEqual({ ok: start.ok, gtm: start.gtm_id }, { ok: true, gtm: 'GTM-1' });
+    assert.equal(calls.length, 1);
+    const bad = await fetch(`${base}/api/app/tracking/handoff`, { method: 'POST', headers: h, body: JSON.stringify({ email: 'nope' }) });
+    assert.equal(bad.status, 400);
+    const good = await (await fetch(`${base}/api/app/tracking/handoff`, { method: 'POST', headers: h, body: JSON.stringify({ email: 'dev@example.com' }) })).json();
+    assert.equal(good.sent_to, 'dev@example.com');
+    const chk = await (await fetch(`${base}/api/app/tracking/check`, { method: 'POST', headers: h, body: '{}' })).json();
+    assert.equal(chk.ok, true);
+  });
+});
