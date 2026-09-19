@@ -146,6 +146,17 @@ const provisioner = googleAuth ? {
     return provisionMissing({ auth, db, tenantId, websiteUrl: t.website_url, displayName: t.business_name || t.website_url });
   },
 } : null;
+// Launch journey: a Google Ads account for a business that has none, created
+// under our manager account with Insyt's own credentials (never the customer's).
+const adsAccountCreator = googleAuth && googleAuth.config.developerToken && process.env.GOOGLE_ADS_MANAGER_REFRESH_TOKEN ? {
+  create: async ({ descriptiveName, currency, timeZone, ownerEmail }) => {
+    const { createAdsAccount } = require('../../../packages/google/src/create-account');
+    return createAdsAccount({
+      clientId: googleClientId, clientSecret: googleClientSecret, managerRefreshToken: process.env.GOOGLE_ADS_MANAGER_REFRESH_TOKEN,
+      developerToken: googleAuth.config.developerToken, managerId: googleAuth.config.loginCustomerId, descriptiveName, currency, timeZone, ownerEmail,
+    });
+  },
+} : null;
 // §7 assistant: read-only tools + interpreter + chat over the same model client.
 const { createReadTools } = require('../../../packages/assistant/src/tools');
 const { createAssistant } = require('../../../packages/assistant/src/chat');
@@ -157,7 +168,7 @@ const assistant = draftModel ? createAssistant({
   // then consent is recorded + ledgered and nothing is charged.
   usage: process.env.STRIPE_SECRET_KEY ? null : null,
 }) : null;
-const draftDeps = { google: draftGoogle, model: draftModel, modelId: MODEL_ID, provisioner, assistant };
+const draftDeps = { google: draftGoogle, model: draftModel, modelId: MODEL_ID, provisioner, assistant, adsAccountCreator };
 
 // Connected data screen: reads through the same Google client the worker
 // uses; Ads actions become approved change rows the worker applies.

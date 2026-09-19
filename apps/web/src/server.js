@@ -404,7 +404,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
           if (sub === '/last-payment') return json(res, 200, dashStore.lastPayment ? await dashStore.lastPayment(t) : { payment: null, subscription: null });
           if (sub === '/settings') return json(res, 200, { settings: await dashStore.settings(t, new Date(now())), access: await accessWithRole() });
           if (sub === '/runs') return json(res, 200, { runs: dashStore.runs ? await dashStore.runs(t) : [] });
-          if (sub === '/discovery') return json(res, 200, await dashStore.discovery(t));
+          if (sub === '/discovery') return json(res, 200, { ...(await dashStore.discovery(t)), can_create_ads_account: !!(dashStore.adsAccountAvailable && dashStore.adsAccountAvailable()) });
           if (sub === '/plan') return json(res, 200, { plan: await dashStore.planOptions(t) });
           if (sub === '/first-fix') return json(res, 200, { fix: await dashStore.firstFix(t) });
           if (sub === '/journey') return json(res, 200, { journey: await dashStore.journey(t) });
@@ -449,7 +449,7 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
             if (!(dashStore.assistantEnabled && await dashStore.assistantEnabled(t))) return json(res, 404, { error: 'Not available yet.' });
             return json(res, 200, await dashStore.chatConsent(t));
           }
-          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub.startsWith('/tracking/') || sub === '/pause' || sub === '/invite' || /^\/alerts\/[^/]+\/expected$/.test(sub) || sub === '/add-business' || sub === '/switch-tenant' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
+          if (sub === '/autopilot' || sub === '/request-change' || sub === '/event' || sub === '/chat' || sub === '/approve-batch' || sub === '/business' || sub === '/emails' || sub === '/confirm' || sub === '/access-request' || sub === '/exceptions' || sub.startsWith('/tracking/') || sub === '/ads-account' || sub === '/pause' || sub === '/invite' || /^\/alerts\/[^/]+\/expected$/.test(sub) || sub === '/add-business' || sub === '/switch-tenant' || sub.startsWith('/snooze/') || sub.startsWith('/approve-part/') || sub.startsWith('/dismiss/') || sub.startsWith('/drafts')) {
             let body = '';
             req.on('data', (c) => { body += c; });
             req.on('end', async () => {
@@ -457,6 +457,17 @@ function createApp({ store, crawler, now = Date.now, dashStore = null, agencySto
               try {
                 // §11 telemetry: client-side interactions. Fire-and-forget,
                 // never an error the UI has to handle.
+                // Launch journey: a Google Ads account for a business that has none. Theirs from the first minute.
+                if (sub === '/ads-account') {
+                  if (!(dashStore.createAdsAccount && dashStore.adsAccountAvailable && dashStore.adsAccountAvailable())) return json(res, 501, { error: 'Not available yet.' });
+                  try {
+                    const r = await dashStore.createAdsAccount(t, { currency: String(parsed.currency || 'USD').toUpperCase(), time_zone: String(parsed.time_zone || 'UTC') });
+                    return json(res, r.error ? 400 : 200, r);
+                  } catch (e) {
+                    console.error(`ads account creation for ${t} failed: ${e && e.message}`);
+                    return json(res, 502, { error: 'Google did not let us create the account just now. Try again in a minute, or sign in with a Google account that already has Google Ads.' });
+                  }
+                }
                 // Tracking (launch journey): set it up, hand it off, check now. Never a gate on the ad.
                 if (sub === '/tracking/start') {
                   if (!dashStore.startTracking) return json(res, 501, { error: 'Not available yet.' });

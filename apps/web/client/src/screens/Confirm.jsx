@@ -92,6 +92,41 @@ function AlreadyHere({ dup }) {
 }
 
 // "This login cannot see it": ask whoever holds the Google account, one email.
+// Launch journey: no Google Ads account at all. We set one up under our
+// manager account; it is theirs (their login is the admin, their card pays
+// Google). Currency cannot change later, so it is the one thing we ask.
+function CreateAdsAccount({ onDone }) {
+  const [currency, setCurrency] = useState('USD');
+  const [state, setState] = useState('idle'); // idle | busy | error
+  const [msg, setMsg] = useState(null);
+  async function create() {
+    setState('busy'); setMsg(null);
+    try {
+      const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
+      const r = await api('/api/app/ads-account', { method: 'POST', body: { currency, time_zone: tz } });
+      onDone(r);
+    } catch (e) { setState('error'); setMsg(e.message); }
+  }
+  return (
+    <Card className="mt-3 p-4">
+      <MonoLabel>No Google Ads account yet?</MonoLabel>
+      <p className="mt-2 text-small text-neutral-900">
+        We set it up for you. Afterwards you sign in to Google Ads once to accept the invitation and add a billing card. Google charges that card for clicks; Insyt never does. The account is yours from the first minute.
+      </p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <label className="text-tiny text-neutral-900">Currency you pay Google in
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency" className="ml-2 rounded border border-neutral-300 bg-page px-2 py-2 text-small">
+            {['USD', 'GBP', 'EUR', 'AED', 'AUD', 'CAD', 'NZD', 'SAR', 'ZAR', 'INR', 'SGD'].map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <Button onClick={create} disabled={state === 'busy'} className="!px-5 !py-2.5">{state === 'busy' ? 'Setting it up' : 'Set up my Google Ads account'}</Button>
+      </div>
+      <p className="mt-2 text-tiny text-neutral-900">Currency cannot be changed later, so pick the one on the card you will use.</p>
+      {msg && <div className="mt-3"><ErrorNote message={msg} /></div>}
+    </Card>
+  );
+}
+
 function AskSomeone() {
   const [email, setEmail] = useState('');
   const [state, setState] = useState('idle'); // idle | busy | sent | error
@@ -186,6 +221,10 @@ export default function Confirm() {
       )}
 
       {data.duplicate_of && <AlreadyHere dup={data.duplicate_of} />}
+
+      {data.can_create_ads_account && (noAccess || (doors.ads_account.state !== 'matched' && !(doors.ads_account.candidates || []).length)) && (
+        <CreateAdsAccount onDone={() => navigate('/app/first-ad')} />
+      )}
 
       {(noAccess || doors.ads_account.state === 'cannot_see') && (
         <Card className="mt-3 p-4">

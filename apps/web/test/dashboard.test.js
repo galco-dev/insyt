@@ -372,3 +372,25 @@ test('api: tracking is read, started, handed off and checked through the store; 
     assert.equal(chk.ok, true);
   });
 });
+
+test('api: discovery says whether we can create a Google Ads account, and the creation route answers from the store', async () => {
+  const ds = dashStore();
+  ds.discovery = async () => ({ matched: [], unmatched: [], doors: { ads_account: { state: 'unused', matched: [], candidates: [] }, ga4_property: { state: 'unused', matched: [], candidates: [] }, gtm_container: { state: 'unused', matched: [], candidates: [] } }, campaigns: [], site: 'smile.com', no_access: true });
+  ds.adsAccountAvailable = () => true;
+  const asked = [];
+  ds.createAdsAccount = async (t, opts) => { asked.push(opts); return { ok: true, customer_id: '123-456-7890', invitation_link: 'https://ads.google.com/invite/x', currency: opts.currency }; };
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: ds, sessionSecret: SECRET }, async (base) => {
+    const h = { cookie: authedCookie(), 'content-type': 'application/json' };
+    const d = await (await fetch(`${base}/api/app/discovery`, { headers: h })).json();
+    assert.equal(d.can_create_ads_account, true);
+    const r = await (await fetch(`${base}/api/app/ads-account`, { method: 'POST', headers: h, body: JSON.stringify({ currency: 'gbp', time_zone: 'Europe/London' }) })).json();
+    assert.deepStrictEqual({ ok: r.ok, id: r.customer_id }, { ok: true, id: '123-456-7890' });
+    assert.deepStrictEqual(asked[0], { currency: 'GBP', time_zone: 'Europe/London' });
+  });
+  const off = dashStore();
+  off.adsAccountAvailable = () => false;
+  await withApp({ store: baseStore(), crawler: okCrawler, dashStore: off, sessionSecret: SECRET }, async (base) => {
+    const r = await fetch(`${base}/api/app/ads-account`, { method: 'POST', headers: { cookie: authedCookie(), 'content-type': 'application/json' }, body: '{}' });
+    assert.equal(r.status, 501);
+  });
+});

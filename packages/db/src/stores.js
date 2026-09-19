@@ -648,6 +648,27 @@ function dashStore(db, deps = {}) {
       }
       return plainDraft(await draftsSvc.create({ tenantId, template, inputs: input }));
     },
+    // Launch journey: a Google Ads account for a business that has none.
+    adsAccountAvailable: () => !!deps.adsAccountCreator,
+    createAdsAccount: async (tenantId, { currency = 'USD', time_zone = 'UTC' } = {}) => {
+      if (!deps.adsAccountCreator) return { error: 'Not available yet.' };
+      const existing = await db.select('assets', `tenant_id=eq.${q(tenantId)}&kind=eq.ads_account&linked=eq.true&select=external_id&limit=1`, { single: true }).catch(() => null);
+      if (existing) return { ok: true, customer_id: existing.external_id, already: true };
+      const [t, owner] = await Promise.all([
+        db.select('tenants', `id=eq.${q(tenantId)}&select=business_name,website_url`, { single: true }).catch(() => null),
+        db.select('users', `tenant_id=eq.${q(tenantId)}&select=email&limit=1`, { single: true }).catch(() => null),
+      ]);
+      const name = (t && (t.business_name || t.website_url)) || 'New account';
+      const tz = /^[A-Za-z]+(?:\/[A-Za-z_+-]+)*$/.test(String(time_zone || '')) ? String(time_zone) : 'UTC';
+      const r = await deps.adsAccountCreator.create({ descriptiveName: name, currency, timeZone: tz, ownerEmail: owner ? owner.email : null });
+      await db.insert('assets', [{
+        tenant_id: tenantId, kind: 'ads_account', external_id: r.formatted, display_name: name, currency: r.currency, linked: true, created_by_us: true,
+        metadata: { under_mcc: true, invitation_link: r.invitation_link, time_zone: r.time_zone },
+      }], { returning: false });
+      await db.insert('ledger', [{ tenant_id: tenantId, event: 'connection_changed', actor: 'system', summary_text: `We set up your Google Ads account (${r.formatted}). It is yours: sign in to Google Ads once to accept the invitation and add a card. Google charges that card for clicks; Insyt never does.` }], { returning: false }).catch(() => {});
+      await tel.event({ tenantId, name: 'ads_account.created', props: { currency: r.currency }, source: 'server' }).catch(() => {});
+      return { ok: true, customer_id: r.formatted, invitation_link: r.invitation_link, currency: r.currency };
+    },
     // The first-ad screen (launch journey): what we know before the customer types anything.
     firstAd: async (tenantId) => {
       const [t, camps, drafts] = await Promise.all([
