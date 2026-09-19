@@ -206,3 +206,15 @@ test('service.enable reads the card live: no card refuses with Google\'s billing
   const ok = await svc.enable({ tenantId: 't1', draftId: 'd9' });
   assert.strictEqual(ok.status, 'enabled');
 });
+
+test('service.approve: a refusal from the executor (no place) comes back as a plain reason, the draft stays a draft', async () => {
+  const state = {};
+  const db = fakeDb(state);
+  const api = { 'ads.create_campaign_draft': async () => { throw new Error('No location for "Nowhere": choose the place its customers are in before creating it.'); } };
+  const svc = createDraftService({ db, google: { transportsFor: async () => api } });
+  const row = await svc.create({ tenantId: 't1', template: 'generic', inputs: { services: ['Dentist'], location: 'Nowhere', geo_target_id: '1' } });
+  state.draft = { id: 'd-np', tenant_id: 't1', status: 'draft', spec: row.spec };
+  const r = await svc.approve({ tenantId: 't1', draftId: 'd-np' });
+  assert.match(r.error, /no place to show in/);
+  assert.ok(!db.writes.some((w) => w.table === 'changes'), 'nothing recorded as applied');
+});

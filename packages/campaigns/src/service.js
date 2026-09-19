@@ -157,7 +157,13 @@ function createDraftService({ db, google = null, model = null, modelId = null })
       await db.insert('campaigns', [{ tenant_id: tenantId, google_campaign_id: placeholder, name: d.spec.name, status: 'paused', channel: d.spec.channel, budget_daily_usd: d.spec.budget_daily_usd, bidding: d.spec.bidding }], { returning: false }).catch(() => {});
       return { status: 'created_paused', provisional: true, reason: api ? 'no landing page on file' : 'Google credentials not configured' };
     }
-    const result = await api['ads.create_campaign_draft']({ spec: d.spec, final_url: d.spec.final_url });
+    let result;
+    try { result = await api['ads.create_campaign_draft']({ spec: d.spec, final_url: d.spec.final_url }); } catch (e) {
+      // Google said no (or we refused: no place chosen). The draft stays a draft and the reason is shown, never a bare failure.
+      const msg = String(e && e.message || e);
+      if (/PERMISSION_DENIED|USER_PERMISSION|403/.test(String(e && (e.code || e.message)))) throw e; // the route explains the invitation
+      return { error: /No location/.test(msg) ? 'This ad has no place to show in. Choose the city or area first, then try again.' : `Google did not create it: ${msg.slice(0, 200)}`, steps: gates.steps };
+    }
     const after = result.after;
     await patch(draftId, { status: 'created_paused', google_campaign_id: after.campaign_id, spec: { ...d.spec, created: after } });
     await db.upsert('campaigns', [{ tenant_id: tenantId, google_campaign_id: after.campaign_id, name: d.spec.name, status: 'paused', channel: d.spec.channel, budget_daily_usd: d.spec.budget_daily_usd, bidding: d.spec.bidding, last_seen_at: new Date().toISOString() }], 'tenant_id,google_campaign_id').catch(() => {});
